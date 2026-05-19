@@ -1322,7 +1322,7 @@ if bloque_trabajo == "modelo_base":
         "Iniciar Extracción del Modelo Base",
         type="primary",
         use_container_width=True,
-        disabled=not _can_mod or st.session_state.mod_running,
+        disabled=IS_CLOUD or not _can_mod or st.session_state.mod_running,
     ):
         # Limpiar archivos previos
         for _f in (_mod_status_file, _mod_log_file):
@@ -1496,7 +1496,7 @@ if bloque_trabajo == "modelo_base":
             f"{_lbl_icon} Ejecutar",
             key=f"btn_{pfx}",
             type="primary",
-            disabled=not _can or _is_running or any_other_running,
+            disabled=IS_CLOUD or not _can or _is_running or any_other_running,
         ):
             for _old in (_sf, _lf):
                 if os.path.exists(_old):
@@ -1958,7 +1958,7 @@ elif bloque_trabajo == "carga_datos":
                         "Ejecutar Extracción de Datos",
                         type="primary",
                         use_container_width=True,
-                        disabled=not _can_ext or st.session_state.ext_running,
+                        disabled=IS_CLOUD or not _can_ext or st.session_state.ext_running,
                     )
 
                 _ext_status_file = st.session_state.get("ext_status_file") or os.path.join(ev_path, "_ext_status.txt")
@@ -2208,7 +2208,7 @@ elif bloque_trabajo == "carga_datos":
                         "Generar Condiciones Iniciales",
                         type="primary",
                         use_container_width=True,
-                        disabled=not _can_ci or st.session_state.ci_running,
+                        disabled=IS_CLOUD or not _can_ci or st.session_state.ci_running,
                     )
 
                 _ci_status_file = st.session_state.get("ci_status_file") or os.path.join(ev_path, "_ci_status.txt")
@@ -2641,7 +2641,7 @@ elif bloque_trabajo == "carga_datos":
             with col_btn:
                 run_btn = st.button(
                     "Ejecutar en PowerFactory",
-                    disabled=not _can_run or st.session_state.pf_running,
+                    disabled=IS_CLOUD or not _can_run or st.session_state.pf_running,
                     type="primary",
                     use_container_width=True,
                 )
@@ -3093,7 +3093,7 @@ elif bloque_trabajo == "analisis_datos":
                 "Ejecutar Ordenador de Datos SCADA",
                 type="primary",
                 use_container_width=True,
-                disabled=not _can_scada or st.session_state.scada_running,
+                disabled=IS_CLOUD or not _can_scada or st.session_state.scada_running,
             )
 
         _scada_status_file = st.session_state.get("scada_status_file") or os.path.join(ev_path, "_scada_status.txt")
@@ -3455,7 +3455,7 @@ elif bloque_trabajo == "analisis_datos":
                 "Ejecutar Extractor de Gráficos EMF",
                 type="primary",
                 use_container_width=True,
-                disabled=not _can_emf or st.session_state.emf_running,
+                disabled=IS_CLOUD or not _can_emf or st.session_state.emf_running,
             )
 
         _emf_status_file = st.session_state.get("emf_status_file") or os.path.join(ev_path, "_emf_status.txt")
