@@ -4098,15 +4098,38 @@ elif bloque_trabajo == "analisis_simulacion":
                         break # type: ignore
                 if _sel_file_b3: break
 
+    # ── Auto-detección de t₀ desde el archivo de simulación ─────────────────────
+    _b3_event_id = f"{st.session_state.semestre_global}|{st.session_state.evento_global}|{_sel_file_b3}"
+    _t0_autodet = float(_event_cfg.get("t_sim_falla", 5.0))
+    if _sel_file_b3 and os.path.isdir(_dir0_b3):
+        _autodet_path = os.path.join(_dir0_b3, _sel_file_b3)
+        if os.path.isfile(_autodet_path):
+            try:
+                _df_ad = pd.read_excel(_autodet_path, engine="calamine").dropna()
+                _t_ad = pd.to_numeric(_df_ad.iloc[:, 0], errors='coerce').values
+                _fc_ad = [c for c in _df_ad.columns[1:] if _is_frequency_column(c, _df_ad[c])]
+                if _fc_ad:
+                    _fq_ad = pd.to_numeric(_df_ad[_fc_ad[0]], errors='coerce').ffill().bfill().values
+                    _fq_ad = _fq_ad * 50.0 if np.nanmax(_fq_ad) < 2.0 else _fq_ad
+                    _idx_ad = _detectar_inicio_falla(_fq_ad)
+                    if _idx_ad > 0 and _idx_ad < len(_t_ad):
+                        _t0_autodet = float(_t_ad[_idx_ad])
+            except Exception:
+                pass
+    # Resetear t₀ cuando cambia el evento o la unidad para que el default se re-aplique
+    if st.session_state.get("b3_last_event_id") != _b3_event_id:
+        st.session_state.b3_last_event_id = _b3_event_id
+        st.session_state.b3_t_falla = _t0_autodet
+
     # ── Parámetros de análisis CNDC (compartidos entre pestañas) ────────────────
     st.markdown("---") # type: ignore
     st.markdown("### ⚙️ Parámetros de Análisis CNDC")
     _bp1, _bp2 = st.columns(2)
     _b3_t_falla = _bp1.number_input(
         "Tiempo de falla en simulación (t₀) [s]",
-        value=float(_event_cfg.get("t_sim_falla", 5.0)),
+        value=float(_event_cfg.get("t_sim_falla", _t0_autodet)),
         min_value=0.0, max_value=300.0, step=0.5,
-        help="Instante t en PowerFactory donde ocurre el evento (t=0 en la comparativa).",
+        help=f"Instante t₀ del evento (auto-detectado: {_t0_autodet:.1f} s). Ajuste si es necesario.",
         key="b3_t_falla",
     )
     _b3_dt = int(_bp2.number_input( # type: ignore
@@ -4116,7 +4139,15 @@ elif bloque_trabajo == "analisis_simulacion":
         help="Tiempo desde t₀ para evaluar f_Δt y P_Δt. CNDC usa 30–50 s (típicamente 35 s).",
         key="b3_dt",
     ))
-    
+    _bsave1, _bsave2 = st.columns(2)
+    if _bsave1.button("💾 Guardar t₀ y Δt", key="save_b3_params", help="Guarda t₀ y Δt en la configuración del evento para próximas sesiones."):
+        _save_event_cfg(ev_path, "t_sim_falla", _b3_t_falla)
+        _save_event_cfg(ev_path, "delta_t_cndc", _b3_dt)
+        st.toast(f"Guardado t₀={_b3_t_falla:.1f} s, Δt={_b3_dt} s", icon="✅")
+    if _bsave2.button("↩ Usar t₀ auto-detectado", key="reset_b3_t0", help=f"Restaurar t₀ al valor auto-detectado ({_t0_autodet:.1f} s)."):
+        st.session_state.b3_t_falla = _t0_autodet
+        st.rerun()
+
     tab_sim_cndc, tab_sim_cobee, tab_sim_comp = st.tabs([ # type: ignore
         f"Simulación E{n_evento}.0 (CNDC)",
         f"Simulación E{n_evento}.1 (COBEE)",
@@ -4253,10 +4284,15 @@ t_eval_abs=((t_fault_abs_plot if 't_fault_abs_plot' in locals() else t_falla) + 
     def _create_comp_figure(df0, df1, sim_label0, sim_label1, unit_name, ev_path, n_evento, show_hhmmss, xaxis_range=None, yaxis1_range=None, yaxis2_range=None):
         # Estandarización de comparativa de simulación (E0 vs E1) siguiendo el patrón del Bloque 3
         _tc0 = df0.columns[0]; _tc1 = df1.columns[0]
-        _fc0 = [c for c in df0.columns[1:] if _is_frequency_column(c, df0[c])][0]
-        _pc0 = [c for c in df0.columns[1:] if c != _fc0][0]
-        _fc1 = [c for c in df1.columns[1:] if _is_frequency_column(c, df1[c])][0]
-        _pc1 = [c for c in df1.columns[1:] if c != _fc1][0]
+        _fc0_cands = [c for c in df0.columns[1:] if _is_frequency_column(c, df0[c])]
+        _fc1_cands = [c for c in df1.columns[1:] if _is_frequency_column(c, df1[c])]
+        if not _fc0_cands or not _fc1_cands:
+            st.warning("No se pudieron identificar columnas de frecuencia en los archivos de simulación.")
+            return None
+        _fc0 = _fc0_cands[0]
+        _pc0 = next((c for c in df0.columns[1:] if c != _fc0), _fc0)
+        _fc1 = _fc1_cands[0]
+        _pc1 = next((c for c in df1.columns[1:] if c != _fc1), _fc1)
 
         _gcfg = st.session_state.graph_config
         
