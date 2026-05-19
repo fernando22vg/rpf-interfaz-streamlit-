@@ -1782,34 +1782,37 @@ if bloque_trabajo == "modelo_base":
 
 elif bloque_trabajo == "config_unidades":
     st.header("Bloque 2: Configuración y Observación de Unidades")
-    st.info("Visualice y ajuste los parámetros técnicos de las unidades detectadas en el evento.")
-    
-    if not st.session_state.evento_global:
-        st.warning("👈 Seleccione un evento en la barra lateral.")
+    st.info("Parámetros técnicos de las 23 unidades COBEE. Independiente del evento seleccionado.")
+
+    _tmap = _load_tech_map(LOC_NAMES_GEN_PATH)
+
+    if not _tmap:
+        st.error(f"No se pudo cargar `loc_names_gen.xlsx` desde:\n`{LOC_NAMES_GEN_PATH}`")
         st.stop()
 
-    _units_cfg = get_event_units(st.session_state.ev_path_global, st.session_state.n_evento_global)
-    if not _units_cfg: # type: ignore
-        st.info("No se detectaron unidades procesadas para este evento.")
-    else:
-        _pmax_map = _load_pmax_cargado(st.session_state.ev_path_global, st.session_state.n_evento_global)
-        _tmap = _load_tech_map(LOC_NAMES_GEN_PATH)
-        
-        st.subheader("📋 Inventario de Unidades del Evento")
-        
-        _cfg_rows = []
-        for _u in _units_cfg:
-            _pm_v, _tk, _src = _get_pmax_from_cargado(_u, _pmax_map, _tmap)
-            # Solo incluir si resolvimos un ID de PowerFactory real (evita páginas de resumen)
-            if "sym_" in _tk.lower() or _src == "datos_cargados" or _src == "loc_names_gen":
-                _rp_v = _get_rp_default(_tk, LOC_NAMES_GEN_PATH)
-                _cfg_rows.append({
-                    "Unidad": _u,
-                    "ID PowerFactory": _tk,
-                    "P_max [MW]": _pm_v,
-                    "Estatismo (Rp) [%]": _rp_v,
-                    "Fuente Pmax": _src or "Default"
-                })
+    # Pmax desde datos_cargados si hay evento cargado, si no desde loc_names_gen
+    _pmax_map = {}
+    if st.session_state.get("ev_path_global") and st.session_state.get("n_evento_global"):
+        _pmax_map = _load_pmax_cargado(
+            st.session_state.ev_path_global, st.session_state.n_evento_global
+        )
+
+    st.subheader("📋 Inventario de Unidades COBEE")
+
+    _cfg_rows = []
+    for _tk in sorted(_tmap.keys()):
+        _rp_v = _get_rp_default(_tk, LOC_NAMES_GEN_PATH)
+        # Pmax: primero desde datos_cargados, luego desde loc_names_gen
+        _pm_v = _pmax_map.get(_tk, _tmap[_tk].get("P_max (MW)", 0.0))
+        _src  = "datos_cargados" if _tk in _pmax_map else "loc_names_gen"
+        _cfg_rows.append({
+            "ID PowerFactory": _tk,
+            "P_max [MW]": _pm_v,
+            "Estatismo (Rp) [%]": _rp_v,
+            "Fuente Pmax": _src,
+        })
+
+    if _cfg_rows:
         
         st.dataframe(_df_safe(pd.DataFrame(_cfg_rows)), use_container_width=True, hide_index=True)
         
@@ -1843,8 +1846,8 @@ elif bloque_trabajo == "config_unidades":
         with ci2:
             st.markdown("**Guardar estado actual:**")
             _export_csv = pd.DataFrame(_cfg_rows).to_csv(index=False).encode('utf-8')
-            st.download_button("⬇️ Descargar Configuración Actual (CSV)", _export_csv, 
-                               file_name=f"config_rpf_Ev{st.session_state.n_evento_global}.csv", mime="text/csv")
+            st.download_button("⬇️ Descargar Configuración Actual (CSV)", _export_csv,
+                               file_name="config_rpf_unidades.csv", mime="text/csv")
 
         st.markdown("---") # type: ignore
         st.subheader("✏️ Edición de Parámetros")
