@@ -218,7 +218,7 @@ def descargar_evento(semestre: str, evento: str, progress_cb=None) -> Path:
     También descarga los archivos directos del semestre (Tabla_Eventos_*.xlsx, etc.).
     Devuelve la ruta local equivalente a ev_path.
     """
-    local_path = _TMP_ROOT / semestre / evento
+    local_path = _TMP_ROOT / semestre / "Análisis_todos_los_eventos" / evento
     session, site_url, raiz = _raiz_path()
 
     # Descargar archivos del nivel semestre (p.ej. Tabla_Eventos_*.xlsx)
@@ -319,7 +319,7 @@ def descargar_scada_falla(fecha_evento) -> Path:
 
 
 def limpiar_cache_evento(semestre: str, evento: str):
-    local_path = _TMP_ROOT / semestre / evento
+    local_path = _TMP_ROOT / semestre / "Análisis_todos_los_eventos" / evento
     if local_path.exists():
         shutil.rmtree(local_path)
 
