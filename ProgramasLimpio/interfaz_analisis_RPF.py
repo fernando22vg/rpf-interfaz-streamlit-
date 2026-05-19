@@ -370,10 +370,31 @@ def get_event_units(ev_path=None, n_evento=None):
         names = {os.path.splitext(f)[0].replace("sym_", "").replace("SYM_", "") for f in files}
         return {n for n in names if _is_valid_unit(n)}
 
+    def _clean_list_emf(d, p, min_power_mw=1.0):
+        """Como _clean_list pero excluye unidades cuya potencia máxima < min_power_mw."""
+        files = _listar_archivos_cache(d, p)
+        valid = set()
+        for f in files:
+            name = os.path.splitext(f)[0].replace("sym_", "").replace("SYM_", "")
+            if not _is_valid_unit(name):
+                continue
+            try:
+                df = pd.read_excel(os.path.join(d, f), engine="calamine")
+                pot_cols = [c for c in df.columns if c.lower() not in ("tiempo_s", "frecuencia_hz", "hora")]
+                if pot_cols:
+                    max_val = pd.to_numeric(df[pot_cols[0]], errors="coerce").abs().max()
+                    if pd.notna(max_val) and max_val >= min_power_mw:
+                        valid.add(name)
+                else:
+                    valid.add(name)
+            except Exception:
+                valid.add(name)
+        return valid
+
     # Buscar en SCADA
     u_scada = _clean_list(os.path.join(ev_path, "Graficas Registro 1SEG COBEE"), "*.xlsx")
-    # Buscar en EMF
-    u_emf   = _clean_list(os.path.join(ev_path, CARPETA_COBEE_EMF), "*.xlsx")
+    # Buscar en EMF — excluir unidades con potencia máxima < 1 MW
+    u_emf   = _clean_list_emf(os.path.join(ev_path, CARPETA_COBEE_EMF), "*.xlsx")
     # Buscar en Simulación (E0 y E1)
     u_sim0  = _clean_list(os.path.join(ev_path, f"E{n_evento}.0", CARPETA_DATOS_CURVAS), "*.xlsx")
     u_sim1  = _clean_list(os.path.join(ev_path, f"E{n_evento}.1", CARPETA_DATOS_CURVAS), "*.xlsx")
