@@ -25,6 +25,19 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 
+# Detecta si la app corre en Streamlit Cloud (sin acceso a rutas Windows locales)
+IS_CLOUD = not os.path.isdir(r"C:\Datos del CNDC")
+
+if IS_CLOUD:
+    try:
+        import sharepoint_client as _sp
+        _SP_OK = True
+    except Exception as _sp_err:
+        _SP_OK = False
+        _SP_ERR_MSG = str(_sp_err)
+else:
+    _SP_OK = False
+
 # ─────────────────────────────────────────────────────────────────────────────
 # MÓDULOS DE GRÁFICAS ESTÁNDARES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -991,78 +1004,141 @@ with st.sidebar:
 
     show_hhmmss = st.checkbox("Mostrar tiempo en HH:MM:SS", value=False, key="global_show_hhmmss")
 
-    # Selector de semestre
-    if os.path.isdir(RAIZ):
-        semestres = sorted(
-            d for d in os.listdir(RAIZ)
-            if os.path.isdir(os.path.join(RAIZ, d))
-        )
-        if semestres:
-            idx_sem = 0
-            if st.session_state.semestre_global in semestres:
-                idx_sem = semestres.index(st.session_state.semestre_global)
-
-            semestre_sel = st.selectbox(
-                "Seleccione Semestre",
-                semestres,
-                index=idx_sem,
-                key="sel_semestre_global"
-            )
-            st.session_state.semestre_global = semestre_sel
+    # ── Selector de semestre y evento ────────────────────────────────────────
+    if IS_CLOUD:
+        # ── Modo nube: datos desde SharePoint ────────────────────────────────
+        if not _SP_OK:
+            st.error(f"❌ No se pudo conectar a SharePoint: {_SP_ERR_MSG}")
+            st.session_state.semestre_global = None
         else:
-            st.warning("❌ No se encontraron semestres")
-            st.session_state.semestre_global = None # type: ignore
-    else:
-        st.error(f"❌ Ruta no encontrada:\n{RAIZ}")
-        st.session_state.semestre_global = None
+            try:
+                semestres = _sp.listar_semestres()
+            except Exception as _e:
+                st.error(f"❌ Error listando semestres en SharePoint:\n{_e}")
+                semestres = []
 
-    # Selector de evento
-    if st.session_state.semestre_global:
-        base_ev = os.path.join(RAIZ, st.session_state.semestre_global, "Análisis_todos_los_eventos")
-        if os.path.isdir(base_ev):
-            eventos = sorted(
-                d for d in os.listdir(base_ev)
-                if os.path.isdir(os.path.join(base_ev, d))
-            )
-            if eventos:
-                idx_ev = 0
-                if st.session_state.evento_global in eventos:
-                    idx_ev = eventos.index(st.session_state.evento_global)
-
-                evento_sel = st.selectbox(
-                    "Seleccione Evento",
-                    eventos,
-                    index=idx_ev,
-                    key="sel_evento_global"
+            if semestres:
+                idx_sem = 0
+                if st.session_state.semestre_global in semestres:
+                    idx_sem = semestres.index(st.session_state.semestre_global)
+                semestre_sel = st.selectbox(
+                    "Seleccione Semestre", semestres, index=idx_sem, key="sel_semestre_global"
                 )
-                st.session_state.evento_global = evento_sel
-
-                ev_path = os.path.join(RAIZ, st.session_state.semestre_global,
-                                       "Análisis_todos_los_eventos", st.session_state.evento_global)
-                m_ev = re.search(r"(\d+)$", st.session_state.evento_global.strip())
-                n_evento = m_ev.group(1) if m_ev else st.session_state.evento_global.split()[-1]
-
-                st.session_state.ev_path_global = ev_path
-                st.session_state.n_evento_global = n_evento
-
-                # Limpiar buffers de descarga masiva al cambiar de evento para evitar confusión
-                if st.session_state.get("last_n_evento_global") != n_evento:
-                    st.session_state.b3_kpi_zip_bytes = None
-                    st.session_state.b3_kpi_excel_bytes = None
-                    st.session_state.b3_plots_zip_bytes = None
-                    st.session_state.b4_sim_zip_bytes = None
-                    st.session_state.last_n_evento_global = n_evento
-
-                st.success(f"Evento {n_evento} seleccionado")
+                st.session_state.semestre_global = semestre_sel
             else:
-                st.warning("❌ No hay eventos en este semestre")
+                st.warning("❌ No se encontraron semestres en SharePoint")
+                st.session_state.semestre_global = None
+
+            if st.session_state.semestre_global:
+                try:
+                    eventos = _sp.listar_eventos(st.session_state.semestre_global)
+                except Exception as _e:
+                    st.error(f"❌ Error listando eventos:\n{_e}")
+                    eventos = []
+
+                if eventos:
+                    idx_ev = 0
+                    if st.session_state.evento_global in eventos:
+                        idx_ev = eventos.index(st.session_state.evento_global)
+                    evento_sel = st.selectbox(
+                        "Seleccione Evento", eventos, index=idx_ev, key="sel_evento_global"
+                    )
+                    st.session_state.evento_global = evento_sel
+
+                    # Descargar evento a /tmp/ si cambia la selección
+                    _ev_key = f"{st.session_state.semestre_global}/{st.session_state.evento_global}"
+                    if st.session_state.get("_sp_ev_key") != _ev_key:
+                        with st.spinner("⬇️ Descargando datos del evento desde SharePoint..."):
+                            try:
+                                _local_ev = _sp.descargar_evento(
+                                    st.session_state.semestre_global,
+                                    st.session_state.evento_global,
+                                )
+                                st.session_state._sp_ev_local = str(_local_ev)
+                                st.session_state._sp_ev_key = _ev_key
+                            except Exception as _e:
+                                st.error(f"❌ Error descargando evento:\n{_e}")
+                                st.session_state._sp_ev_local = None
+
+                    ev_path = st.session_state.get("_sp_ev_local")
+                    if ev_path:
+                        m_ev = re.search(r"(\d+)$", st.session_state.evento_global.strip())
+                        n_evento = m_ev.group(1) if m_ev else st.session_state.evento_global.split()[-1]
+                        st.session_state.ev_path_global = ev_path
+                        st.session_state.n_evento_global = n_evento
+                        if st.session_state.get("last_n_evento_global") != n_evento:
+                            st.session_state.b3_kpi_zip_bytes = None
+                            st.session_state.b3_kpi_excel_bytes = None
+                            st.session_state.b3_plots_zip_bytes = None
+                            st.session_state.b4_sim_zip_bytes = None
+                            st.session_state.last_n_evento_global = n_evento
+                        st.success(f"Evento {n_evento} listo")
+                else:
+                    st.warning("❌ No hay eventos en este semestre")
+                    st.session_state.evento_global = None
+            else:
+                st.info("← Seleccione semestre primero")
+                st.session_state.evento_global = None
+
+    else:
+        # ── Modo local: rutas de Windows ─────────────────────────────────────
+        if os.path.isdir(RAIZ):
+            semestres = sorted(
+                d for d in os.listdir(RAIZ)
+                if os.path.isdir(os.path.join(RAIZ, d))
+            )
+            if semestres:
+                idx_sem = 0
+                if st.session_state.semestre_global in semestres:
+                    idx_sem = semestres.index(st.session_state.semestre_global)
+                semestre_sel = st.selectbox(
+                    "Seleccione Semestre", semestres, index=idx_sem, key="sel_semestre_global"
+                )
+                st.session_state.semestre_global = semestre_sel
+            else:
+                st.warning("❌ No se encontraron semestres")
+                st.session_state.semestre_global = None
+        else:
+            st.error(f"❌ Ruta no encontrada:\n{RAIZ}")
+            st.session_state.semestre_global = None
+
+        if st.session_state.semestre_global:
+            base_ev = os.path.join(RAIZ, st.session_state.semestre_global, "Análisis_todos_los_eventos")
+            if os.path.isdir(base_ev):
+                eventos = sorted(
+                    d for d in os.listdir(base_ev)
+                    if os.path.isdir(os.path.join(base_ev, d))
+                )
+                if eventos:
+                    idx_ev = 0
+                    if st.session_state.evento_global in eventos:
+                        idx_ev = eventos.index(st.session_state.evento_global)
+                    evento_sel = st.selectbox(
+                        "Seleccione Evento", eventos, index=idx_ev, key="sel_evento_global"
+                    )
+                    st.session_state.evento_global = evento_sel
+                    ev_path = os.path.join(RAIZ, st.session_state.semestre_global,
+                                           "Análisis_todos_los_eventos", st.session_state.evento_global)
+                    m_ev = re.search(r"(\d+)$", st.session_state.evento_global.strip())
+                    n_evento = m_ev.group(1) if m_ev else st.session_state.evento_global.split()[-1]
+                    st.session_state.ev_path_global = ev_path
+                    st.session_state.n_evento_global = n_evento
+                    if st.session_state.get("last_n_evento_global") != n_evento:
+                        st.session_state.b3_kpi_zip_bytes = None
+                        st.session_state.b3_kpi_excel_bytes = None
+                        st.session_state.b3_plots_zip_bytes = None
+                        st.session_state.b4_sim_zip_bytes = None
+                        st.session_state.last_n_evento_global = n_evento
+                    st.success(f"Evento {n_evento} seleccionado")
+                else:
+                    st.warning("❌ No hay eventos en este semestre")
+                    st.session_state.evento_global = None
+            else:
+                st.error("❌ Carpeta de eventos no encontrada")
                 st.session_state.evento_global = None
         else:
-            st.error("❌ Carpeta de eventos no encontrada")
+            st.info("← Seleccione semestre primero")
             st.session_state.evento_global = None
-    else:
-        st.info("← Seleccione semestre primero")
-        st.session_state.evento_global = None
     
     # Validación de flujo: avisar si falta evento para bloques 1-5
     if bloque_trabajo != "modelo_base" and not st.session_state.evento_global:
