@@ -32,11 +32,26 @@ except (FileNotFoundError, ValueError) as _e:
 
 _base_ev_rpf = os.path.join(_RAIZ_RPF, _SEM, "Análisis_todos_los_eventos")
 try:
-    _evs    = sorted(d for d in os.listdir(_base_ev_rpf) if os.path.isdir(os.path.join(_base_ev_rpf, d)))
-    _EV_IDX = str(_evs.index(_EV) + 1)
-except (FileNotFoundError, ValueError) as _e:
-    print(f"[ERROR] Evento '{_EV}' no encontrado en {_base_ev_rpf}: {_e}")
+    _evs = sorted(d for d in os.listdir(_base_ev_rpf) if os.path.isdir(os.path.join(_base_ev_rpf, d)))
+except FileNotFoundError as _e:
+    print(f"[ERROR] Carpeta de eventos no encontrada: {_base_ev_rpf}: {_e}")
     sys.exit(1)
+
+print(f"[DEBUG] Eventos disponibles en {_base_ev_rpf}: {_evs}")
+print(f"[DEBUG] Buscando evento: {repr(_EV)}")
+
+# Coincidencia exacta primero; si falla, normalizar (strip + sin distinción de mayúsculas)
+try:
+    _EV_IDX = str(_evs.index(_EV) + 1)
+except ValueError:
+    _ev_norm = _EV.strip().lower()
+    _match = next((i for i, d in enumerate(_evs) if d.strip().lower() == _ev_norm), None)
+    if _match is None:
+        print(f"[ERROR] Evento '{_EV}' no encontrado en {_base_ev_rpf}. Disponibles: {_evs}")
+        sys.exit(1)
+    _EV = _evs[_match]
+    _EV_IDX = str(_match + 1)
+    print(f"[INFO] Coincidencia aproximada: '{_EV}' → índice {_EV_IDX}")
 
 # ── Monkey-patch input() ──────────────────────────────────────────────────────
 _elegir_count = [0]
