@@ -1,0 +1,167 @@
+\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Study Cases.IntPrjfolder\CNDC.IntCase\ASCII Result Export.ComRes: 
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ANG01.ElmSym':
+  1   m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ANG02.ElmSym':
+  2   m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ANG03.ElmSym':
+  3   m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ARJ08.ElmSym':
+  4   m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_BOT01.ElmSym':
+  5   m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_BOT02.ElmSym':
+  6   m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_BOT03.ElmSym':
+  7   m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_BUL01.ElmSym':
+  8   m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CAH01.ElmSym':
+  9   m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CAH02.ElmSym':
+  10  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CHJ01.ElmSym':
+  11  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CHO01.ElmSym':
+  12  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CHO02.ElmSym':
+  13  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CHO03.ElmSym':
+  14  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CHU01.ElmSym':
+  15  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CHU02.ElmSym':
+  16  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_COR01.ElmSym':
+  17  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_COR02.ElmSym':
+  18  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_COR03.ElmSym':
+  19  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_COR04.ElmSym':
+  20  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_COR05.ElmSym':
+  21  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CRB01.ElmSym':
+  22  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CUT01.ElmSym':
+  23  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CUT02.ElmSym':
+  24  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CUT03.ElmSym':
+  25  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CUT04.ElmSym':
+  26  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_CUT05.ElmSym':
+  27  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ERI30.ElmSym':
+  28  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ERI31.ElmSym':
+  29  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ERI32.ElmSym':
+  30  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ERI40.ElmSym':
+  31  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ERI41.ElmSym':
+  32  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ERI42.ElmSym':
+  33  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ERI50.ElmSym':
+  34  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ERI51.ElmSym':
+  35  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ERI52.ElmSym':
+  36  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_GCH09.ElmSym':
+  37  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_GCH10.ElmSym':
+  38  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_GCH11.ElmSym':
+  39  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_GCH12.ElmSym':
+  40  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_HAR01.ElmSym':
+  41  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_HAR02.ElmSym':
+  42  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_HUA01.ElmSym':
+  43  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_HUA02.ElmSym':
+  44  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_KAN01.ElmSym':
+  45  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_MIG01.ElmSym':
+  46  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_MIG02.ElmSym':
+  47  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_MIS01.ElmSym':
+  48  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_MIS02.ElmSym':
+  49  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_MIS03.ElmSym':
+  50  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_QUE01.ElmSym':
+  51  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_QUE02.ElmSym':
+  52  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SAI01.ElmSym':
+  53  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SIS01.ElmSym':
+  54  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SIS02.ElmSym':
+  55  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SIS03.ElmSym':
+  56  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SIS04.ElmSym':
+  57  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SIS05.ElmSym':
+  58  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SJA01.ElmSym':
+  59  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SJA02.ElmSym':
+  60  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SJE01.ElmSym':
+  61  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SJE02.ElmSym':
+  62  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SJS01.ElmSym':
+  63  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SJS02.ElmSym':
+  64  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SRO01.ElmSym':
+  65  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SRO02.ElmSym':
+  66  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SUR10.ElmSym':
+  67  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SUR11.ElmSym':
+  68  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SUR12.ElmSym':
+  69  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SUR20.ElmSym':
+  70  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SUR21.ElmSym':
+  71  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SUR22.ElmSym':
+  72  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_SUR42.ElmSym':
+  73  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_TIQ01.ElmSym':
+  74  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_WAR05.ElmSym':
+  75  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_WAR12.ElmSym':
+  76  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_WAR20.ElmSym':
+  77  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_WAR21.ElmSym':
+  78  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_WAR40.ElmSym':
+  79  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_WAR41.ElmSym':
+  80  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_WAR42.ElmSym':
+  81  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_YAN01.ElmSym':
+  82  m:Psum:bus1      : in MW     ( Total Active Power )
+'\jose.lozano.IntUser\PMP_NOV25_OCT29_31102025(3).IntPrj\Network Model.IntPrjfolder\Network Data.IntPrjfolder\SIN.ElmNet\sym_ZON01.ElmSym':
+  83  m:Psum:bus1      : in MW     ( Total Active Power )

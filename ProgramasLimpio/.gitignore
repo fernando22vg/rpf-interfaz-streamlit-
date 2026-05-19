@@ -1,0 +1,57 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Streamlit
+.streamlit/cache/
+.streamlit/secrets.toml
+
+# Project-specific
+config_rutas.json
+*.xlsx~$*
+__pycache__/*
+.pytest_cache/
+.sixth/
+
+# Large data files (keep local)
+Datos_Frecuencias/*.csv
+Resultados_COBEE/*
+Datos Curvas/*
+Costo Marginal STI/*
+
+# Temporary files
+*.tmp
+*.bak
+*.log

@@ -1,0 +1,28 @@
+﻿Resumen de exportación - DatosCurvas_v3
+========================================================================
+Fecha      : 2026-04-27 13:43:10
+Proyecto   : PMP_NOV25_OCT29_31102025(3)
+Caso       : CNDC
+Carpeta    : C:\Programas Python\ProgramasLimpio\Datos_Frecuencias
+Exportados : 13
+Omitidos   : 0
+
+Exportados
+------------------------------------------------------------------------
+- F.P. Zon -> F.P. Zon.csv | curvas=2 | elmres=All calculations | modo=base | tiempo=sí
+- F.P. TIQ -> F.P. TIQ.csv | curvas=2 | elmres=All calculations | modo=base | tiempo=sí
+- F.P. BOT -> F.P. BOT.csv | curvas=4 | elmres=All calculations | modo=base | tiempo=sí
+- F.P. CUT -> F.P. CUT.csv | curvas=6 | elmres=All calculations | modo=base | tiempo=sí
+- F.P. CHU -> F.P. CHU.csv | curvas=3 | elmres=All calculations | modo=base | tiempo=sí
+- F.P. HAR -> F.P. HAR.csv | curvas=3 | elmres=All calculations | modo=base | tiempo=sí
+- P.F CAH -> P.F CAH.csv | curvas=3 | elmres=All calculations | modo=base | tiempo=sí
+- F.P. SRO -> F.P. SRO.csv | curvas=3 | elmres=All calculations | modo=base | tiempo=sí
+- F.P. SAI1 -> F.P. SAI1.csv | curvas=2 | elmres=All calculations | modo=base | tiempo=sí
+- F.slack -> F.slack.csv | curvas=2 | elmres=All calculations | modo=base | tiempo=sí
+- F. Barras SIN -> F. Barras SIN.csv | curvas=5 | elmres=All calculations | modo=base | tiempo=sí
+- Velocidades -> Velocidades.csv | curvas=144 | elmres=All calculations | modo=base | tiempo=sí
+- Ángulos -> Ángulos.csv | curvas=143 | elmres=All calculations | modo=base | tiempo=sí
+
+Omitidos / errores
+------------------------------------------------------------------------
+(ninguno)
