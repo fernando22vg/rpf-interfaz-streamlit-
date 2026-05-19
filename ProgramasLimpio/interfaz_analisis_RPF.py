@@ -3203,27 +3203,43 @@ elif bloque_trabajo == "analisis_datos":
                         _b2_vent_suav = st.number_input("Ventana suavizado", value=5,
                                                          min_value=2, max_value=20, step=1, key="b2_sc_vsuav")
 
-                    _idx_auto_b2  = _detectar_inicio_falla(_freq_b2_arr, float(_b2_umbral_k), int(_b2_vent_suav))
+                    _idx_auto_b2 = _detectar_inicio_falla(_freq_b2_arr, float(_b2_umbral_k), int(_b2_vent_suav))
+                    _t_auto_b2   = float(t_norm.iloc[_idx_auto_b2])
                     _idx_saved_b2 = _get_unit_cfg(ev_path, _sel_unit, "scada_idx_falla", None)
-                    _idx_auto_b2  = _detectar_inicio_falla(_freq_b2_arr, float(_b2_umbral_k), int(_b2_vent_suav)) if _idx_saved_b2 is None else int(_idx_saved_b2) # type: ignore
-                    
-                    _csl, _cbt, _cmt    = st.columns([3, 0.5, 1])
-                    _idx_falla_b2 = _csl.slider(
-                        "Índice inicio de falla (ajuste si auto-detección falla):",
-                        min_value=0, max_value=len(_freq_b2_arr) - 1,
-                        value=_idx_auto_b2, key="b2_sc_idx_falla",
-                        help=f"Auto-detección: índice {_idx_auto_b2}  "
-                             f"(t = {float(t_norm.iloc[_idx_auto_b2]):.0f} s del registro).",
+                    _t_default_b2 = (
+                        float(t_norm.iloc[min(int(_idx_saved_b2), len(t_norm)-1)])
+                        if _idx_saved_b2 is not None else _t_auto_b2
                     )
-                    _cbt.markdown("&nbsp;", unsafe_allow_html=True)
-                    if _cbt.button("💾", key="save_idx_scada", help="Guardar inicio de falla para esta unidad"):
-                        if _save_unit_cfg(ev_path, _sel_unit, "scada_idx_falla", _idx_falla_b2):
-                            st.toast(f"Inicio de falla guardado para {_sel_unit}", icon="✅")
+                    # Resetear al cambiar evento/unidad
+                    _b2sc_uid = f"{st.session_state.semestre_global}|{st.session_state.evento_global}|{_sel_unit}"
+                    if st.session_state.get("b2_sc_last_uid") != _b2sc_uid:
+                        st.session_state.b2_sc_last_uid = _b2sc_uid
+                        st.session_state.b2_sc_t_falla = _t_default_b2
 
-                    with _cmt:
-                        st.metric("t falla", f"{float(t_norm.iloc[_idx_falla_b2]):.0f} s")
-                        st.metric("f₀", f"{_freq_b2_arr[_idx_falla_b2]:.4f} Hz")
-                        st.metric("P₀", f"{_pot_b2_arr[_idx_falla_b2]:.3f} MW")
+                    _cin1, _cin2, _cbt = st.columns([3, 1, 1])
+                    _t_input_b2 = _cin1.number_input(
+                        "t₀ inicio de falla [s]",
+                        value=_t_default_b2,
+                        min_value=float(t_norm.min()),
+                        max_value=float(t_norm.max()),
+                        step=1.0, format="%.1f",
+                        key="b2_sc_t_falla",
+                        help=f"Escriba el tiempo exacto en segundos. Auto-detectado: {_t_auto_b2:.1f} s",
+                    )
+                    _idx_falla_b2 = int(np.argmin(np.abs(t_norm.values - _t_input_b2)))
+                    if _cin2.button("↩ Auto", key="reset_b2sc_t0",
+                                    help=f"Restaurar al tiempo auto-detectado ({_t_auto_b2:.1f} s)"):
+                        st.session_state.b2_sc_t_falla = _t_auto_b2
+                        st.rerun()
+                    if _cbt.button("💾 Guardar", key="save_idx_scada",
+                                   help="Guardar t₀ para esta unidad y evento"):
+                        if _save_unit_cfg(ev_path, _sel_unit, "scada_idx_falla", _idx_falla_b2):
+                            st.toast(f"t₀ = {_t_input_b2:.1f} s guardado para {_sel_unit}", icon="✅")
+
+                    _cm1, _cm2, _cm3 = st.columns(3)
+                    _cm1.metric("t falla", f"{float(t_norm.iloc[_idx_falla_b2]):.1f} s")
+                    _cm2.metric("f₀", f"{_freq_b2_arr[_idx_falla_b2]:.4f} Hz")
+                    _cm3.metric("P₀", f"{_pot_b2_arr[_idx_falla_b2]:.3f} MW")
 
                     _t_falla_abs = float(t_norm.iloc[_idx_falla_b2])
                     _t_al_b2     = (t_norm - t_norm.iloc[_idx_falla_b2]).values
@@ -3580,15 +3596,37 @@ elif bloque_trabajo == "analisis_datos":
                     _freq_emf_arr = pd.to_numeric(df_emf[col_freq], errors='coerce').ffill().values
                     _pot_emf_arr = pd.to_numeric(df_emf[cols_pot[0]], errors='coerce').ffill().values
                     _initial_auto_idx_emf = _detectar_inicio_falla(_freq_emf_arr, _emf_umbral_k)
-
+                    _t_auto_emf = float(t_norm.iloc[_initial_auto_idx_emf])
                     _idx_saved_emf = _get_unit_cfg(ev_path, _sel_unit, "emf_idx_falla", None)
-                    _default_idx_for_slider_emf = int(_idx_saved_emf) if _idx_saved_emf is not None else _initial_auto_idx_emf
-                    
-                    c_emf_1, c_emf_btn = st.columns([3, 1])
-                    _idx_falla_emf = c_emf_1.slider("Ajuste t₀ (falla):", 0, len(_freq_emf_arr)-1, _default_idx_for_slider_emf, key="b2_emf_idx")
-                    if c_emf_btn.button("💾 Guardar t₀ EMF", key="save_idx_emf"):
+                    _t_default_emf = (
+                        float(t_norm.iloc[min(int(_idx_saved_emf), len(t_norm)-1)])
+                        if _idx_saved_emf is not None else _t_auto_emf
+                    )
+                    # Resetear al cambiar evento/unidad
+                    _b2emf_uid = f"{st.session_state.semestre_global}|{st.session_state.evento_global}|{_sel_unit}"
+                    if st.session_state.get("b2_emf_last_uid") != _b2emf_uid:
+                        st.session_state.b2_emf_last_uid = _b2emf_uid
+                        st.session_state.b2_emf_t_falla = _t_default_emf
+
+                    _cemf1, _cemf2, _cemf_btn = st.columns([3, 1, 1])
+                    _t_input_emf = _cemf1.number_input(
+                        "t₀ inicio de falla [s]",
+                        value=_t_default_emf,
+                        min_value=float(t_norm.min()),
+                        max_value=float(t_norm.max()),
+                        step=1.0, format="%.1f",
+                        key="b2_emf_t_falla",
+                        help=f"Escriba el tiempo exacto en segundos. Auto-detectado: {_t_auto_emf:.1f} s",
+                    )
+                    _idx_falla_emf = int(np.argmin(np.abs(t_norm.values - _t_input_emf)))
+                    if _cemf2.button("↩ Auto", key="reset_b2emf_t0",
+                                     help=f"Restaurar al tiempo auto-detectado ({_t_auto_emf:.1f} s)"):
+                        st.session_state.b2_emf_t_falla = _t_auto_emf
+                        st.rerun()
+                    if _cemf_btn.button("💾 Guardar t₀ EMF", key="save_idx_emf",
+                                        help="Guardar t₀ para esta unidad y evento"):
                         if _save_unit_cfg(ev_path, _sel_unit, "emf_idx_falla", _idx_falla_emf): # type: ignore
-                            st.toast(f"Inicio falla EMF guardado", icon="✅") # type: ignore
+                            st.toast(f"t₀ = {_t_input_emf:.1f} s guardado", icon="✅") # type: ignore
                     
                     # Opciones de ejes
                     with st.expander("Opciones de Ejes"):
