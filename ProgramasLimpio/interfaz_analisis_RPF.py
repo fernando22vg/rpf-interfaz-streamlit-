@@ -3465,6 +3465,7 @@ elif bloque_trabajo == "analisis_datos":
                     _scada_rc = -1
                 st.session_state.scada_return_code = _scada_rc
                 st.session_state.scada_running = False
+                _listar_archivos_cache.clear()
                 st.rerun()
             else:
                 st.info("⏳ Procesamiento SCADA en curso...")
@@ -3843,6 +3844,7 @@ elif bloque_trabajo == "analisis_datos":
                     _emf_rc = -1
                 st.session_state.emf_return_code = _emf_rc
                 st.session_state.emf_running = False
+                _listar_archivos_cache.clear()
                 st.rerun()
             else:
                 st.info("⏳ Extracción EMF en curso...")
