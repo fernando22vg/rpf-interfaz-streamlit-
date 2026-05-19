@@ -443,7 +443,15 @@ def _event_cfg_path(ev_path):
 
 def _global_unit_cfg_path():
     """Ruta al archivo de configuración global de unidades (independiente del evento)."""
-    return os.path.join(os.path.dirname(LOC_NAMES_GEN_PATH), "unit_global_config.json")
+    if IS_CLOUD:
+        import tempfile
+        return os.path.join(tempfile.gettempdir(), "rpf_sharepoint", "unit_global_config.json")
+    # Local: junto a loc_names_gen.xlsx (definido más adelante en el script)
+    try:
+        return os.path.join(os.path.dirname(LOC_NAMES_GEN_PATH), "unit_global_config.json")
+    except NameError:
+        import tempfile
+        return os.path.join(tempfile.gettempdir(), "rpf_sharepoint", "unit_global_config.json")
 
 def _load_global_unit_cfg():
     p = _global_unit_cfg_path()
