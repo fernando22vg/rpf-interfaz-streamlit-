@@ -1193,6 +1193,10 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────────────
 # TÍTULO PRINCIPAL
 # ─────────────────────────────────────────────────────────────────────────────
+# En modo nube, RAIZ apunta a la carpeta temporal donde se descargaron los archivos
+if IS_CLOUD and _SP_OK:
+    RAIZ = str(_sp.TMP_RAIZ)
+
 st.title("Interfaz de Análisis RPF")
 
 # ─── PANEL DE ESTADO DEL PROYECTO (Encabezado Dinámico) ───────────────────

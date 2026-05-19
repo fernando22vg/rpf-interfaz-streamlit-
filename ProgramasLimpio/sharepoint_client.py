@@ -176,18 +176,38 @@ def listar_eventos(semestre: str) -> list:
     return sorted(f["Name"] for f in folders)
 
 
+# Ruta temporal raíz (equivalente a RAIZ local). Se usa en interfaz_analisis_RPF.py
+TMP_RAIZ = _TMP_ROOT
+
+
 def descargar_evento(semestre: str, evento: str, progress_cb=None) -> Path:
     """
     Descarga la carpeta del evento a /tmp/ usando la sesión de SharePoint.
-    Devuelve la ruta local (equivalente a ev_path).
+    También descarga los archivos directos del semestre (Tabla_Eventos_*.xlsx, etc.).
+    Devuelve la ruta local equivalente a ev_path.
     """
     local_path = _TMP_ROOT / semestre / evento
-    if local_path.exists():
-        return local_path
-
     session, site_url, raiz = _raiz_path()
-    sp_event_path = f"{raiz}/{semestre}/Análisis_todos_los_eventos/{evento}"
-    _download_tree(session, site_url, sp_event_path, local_path, progress_cb)
+
+    # Descargar archivos del nivel semestre (p.ej. Tabla_Eventos_*.xlsx)
+    sem_local = _TMP_ROOT / semestre
+    sem_local.mkdir(parents=True, exist_ok=True)
+    sp_sem_path = f"{raiz}/{semestre}"
+    for f in _list_files(session, site_url, sp_sem_path):
+        dest_f = sem_local / f["Name"]
+        if not dest_f.exists():
+            srv_url = f["ServerRelativeUrl"]
+            dl_url = (
+                f"{site_url}/_api/web"
+                f"/GetFileByServerRelativeUrl('{_sp_path(srv_url)}')/$value"
+            )
+            _download_file(session, dl_url, dest_f)
+
+    # Descargar carpeta del evento
+    if not local_path.exists():
+        sp_event_path = f"{raiz}/{semestre}/Análisis_todos_los_eventos/{evento}"
+        _download_tree(session, site_url, sp_event_path, local_path, progress_cb)
+
     return local_path
 
 
