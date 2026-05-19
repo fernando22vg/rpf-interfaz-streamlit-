@@ -13,7 +13,7 @@ Flujo:
   4. Lee el archivo "1 seg.DD.MM.YY_hrs.HH.MM.xls"
   5. Genera un CSV por unidad COBEE con columnas: Tiempo_s, Frecuencia_Hz, {Unidad}
 
-Salida: CARPETA_SAL\{semestre}\{evento}\{unidad}.csv
+Salida: CARPETA_SAL/{semestre}/{evento}/{unidad}.csv
 """
 
 import os
