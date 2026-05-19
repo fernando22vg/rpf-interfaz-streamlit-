@@ -10,8 +10,10 @@ import shutil
 import tempfile
 import threading
 import time
+import re
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
+from datetime import datetime
 
 import requests
 import streamlit as st
@@ -238,6 +240,81 @@ def descargar_evento(semestre: str, evento: str, progress_cb=None) -> Path:
         sp_event_path = f"{raiz}/{semestre}/Análisis_todos_los_eventos/{evento}"
         _download_tree(session, site_url, sp_event_path, local_path, progress_cb)
 
+    return local_path
+
+
+_PAT_FALLA = re.compile(
+    r'FALLA\s+(\d{2})\.(\d{2})\.(\d{2,4})\s+HRS\s*(\d{2})\.(\d{2})',
+    re.IGNORECASE,
+)
+
+
+def descargar_scada_falla(fecha_evento) -> Path:
+    """
+    Busca y descarga desde SharePoint la carpeta FALLA que corresponde a
+    fecha_evento: 02_DATOS CNDC_RPF/{año}/FALLA DD.MM.YYYY HRS HH.MM/
+
+    Devuelve la ruta local bajo TMP_DATOS (misma estructura que RAIZ_DATOS local).
+    """
+    session, site_url, root_path = _get_session()
+    yr4 = fecha_evento.year
+    yr2 = yr4 % 100
+    dd, mm = fecha_evento.day, fecha_evento.month
+    hh, mi = fecha_evento.hour, fecha_evento.minute
+
+    datos_base = f"{root_path}/{_DATOS_FOLDER}"
+
+    def _buscar_en_year(year_sp_path):
+        try:
+            folders = _list_folders(session, site_url, year_sp_path)
+        except Exception:
+            return None
+        candidatos = []
+        for f in folders:
+            m = _PAT_FALLA.match(f["Name"])
+            if not m:
+                continue
+            fd_s, fm_s, fy_s, fh_s, fmi_s = m.groups()
+            fd, fm, fh, fmi = int(fd_s), int(fm_s), int(fh_s), int(fmi_s)
+            fy = int(fy_s) % 100
+            if fd == dd and fm == mm and fy == yr2:
+                diff = abs(fh * 60 + fmi - hh * 60 - mi)
+                candidatos.append((diff, f["Name"]))
+        if not candidatos:
+            return None
+        candidatos.sort()
+        return candidatos[0][1]
+
+    # Intentar con el año exacto primero
+    falla_name = _buscar_en_year(f"{datos_base}/{yr4}")
+    used_yr4 = yr4
+
+    # Fallback: recorrer todos los años disponibles
+    if falla_name is None:
+        try:
+            top = _list_folders(session, site_url, datos_base)
+        except Exception as exc:
+            raise FileNotFoundError(
+                f"No se pudo acceder a '{_DATOS_FOLDER}' en SharePoint: {exc}"
+            ) from exc
+        for tf in sorted(top, key=lambda f: f["Name"]):
+            if tf["Name"].isdigit() and int(tf["Name"]) != yr4:
+                candidate = _buscar_en_year(f"{datos_base}/{tf['Name']}")
+                if candidate:
+                    falla_name = candidate
+                    used_yr4 = int(tf["Name"])
+                    break
+
+    if falla_name is None:
+        raise FileNotFoundError(
+            f"No se encontró carpeta FALLA para {fecha_evento.strftime('%d.%m.%Y')} "
+            f"bajo SharePoint/{_DATOS_FOLDER}"
+        )
+
+    falla_sp_path = f"{datos_base}/{used_yr4}/{falla_name}"
+    local_path = TMP_DATOS / str(used_yr4) / falla_name
+    if not local_path.exists():
+        _download_tree(session, site_url, falla_sp_path, local_path)
     return local_path
 
 

@@ -18,6 +18,7 @@ import json
 import subprocess
 import threading
 import time
+from datetime import datetime
 from plotly.subplots import make_subplots
 
 import numpy as np
@@ -410,14 +411,39 @@ def _get_rp_default(loc_key, loc_gen_path, fallback=5.0):
 def _event_cfg_path(ev_path):
     return os.path.join(ev_path, "event_config.json")
 
-def _load_event_cfg(ev_path):
-    p = _event_cfg_path(ev_path)
+def _global_unit_cfg_path():
+    """Ruta al archivo de configuración global de unidades (independiente del evento)."""
+    return os.path.join(os.path.dirname(LOC_NAMES_GEN_PATH), "unit_global_config.json")
+
+def _load_global_unit_cfg():
+    p = _global_unit_cfg_path()
     try:
         if os.path.isfile(p):
             with open(p, "r", encoding="utf-8") as f:
                 return json.load(f)
-    except Exception:
-        pass
+    except Exception: pass
+    return {}
+
+def _save_global_unit_cfg(unit, key, value):
+    p = _global_unit_cfg_path()
+    cfg = _load_global_unit_cfg()
+    if unit not in cfg: cfg[unit] = {}
+    cfg[unit][key] = value
+    try:
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception: return False
+
+def _load_event_cfg(ev_path):
+    if ev_path:
+        p = _event_cfg_path(ev_path)
+        try:
+            if os.path.isfile(p):
+                with open(p, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
     return {}
 
 def _save_event_cfg(ev_path, key, value):
@@ -433,10 +459,16 @@ def _save_event_cfg(ev_path, key, value):
         return False
 
 def _get_unit_cfg(ev_path, unit, key, default):
+    # Las escalas de ejes y auto-escala ahora son globales por unidad (persisten entre eventos)
+    if key in {"y_f_min", "y_f_max", "y_p_min", "y_p_max", "y_auto"}:
+        g_cfg = _load_global_unit_cfg()
+        return g_cfg.get(unit, {}).get(key, default)
     cfg = _load_event_cfg(ev_path)
     return cfg.get("units", {}).get(unit, {}).get(key, default)
 
 def _save_unit_cfg(ev_path, unit, key, value):
+    if key in {"y_f_min", "y_f_max", "y_p_min", "y_p_max", "y_auto"}:
+        return _save_global_unit_cfg(unit, key, value)
     cfg = _load_event_cfg(ev_path)
     if "units" not in cfg:
         cfg["units"] = {}
@@ -1795,10 +1827,12 @@ elif bloque_trabajo == "config_unidades":
 
         st.markdown("---") # type: ignore
         st.subheader("✏️ Edición de Parámetros")
-        _u_to_edit = st.selectbox("Seleccione unidad para modificar:", _units_cfg)
+        _master_ids = [r["ID PowerFactory"] for r in _cfg_rows]
+        _u_to_edit = st.selectbox("Seleccione unidad para modificar:", _master_ids)
         
         if _u_to_edit:
-            _pm_e, _tk_e, _ = _get_pmax_from_cargado(_u_to_edit, _pmax_map, _tmap)
+            _pm_e = _get_pmax(_tmap.get(_u_to_edit, {}))
+            _tk_e = _u_to_edit
             st.markdown(f"**Editando:** `{_tk_e}`")
             _widget_pmax_rp(_tk_e, LOC_NAMES_GEN_PATH, key_prefix="cfg_edit")
 
@@ -3093,12 +3127,28 @@ elif bloque_trabajo == "analisis_datos":
                 "Ejecutar Ordenador de Datos SCADA",
                 type="primary",
                 use_container_width=True,
-                disabled=IS_CLOUD or not _can_scada or st.session_state.scada_running,
+                disabled=not _can_scada or st.session_state.scada_running,
             )
 
         _scada_status_file = st.session_state.get("scada_status_file") or os.path.join(ev_path, "_scada_status.txt")
 
         if scada_btn and _can_scada:
+            if IS_CLOUD and _SP_OK:
+                try:
+                    import OrdenadorDatosEvento as _ode
+                    _ode.RAIZ_RPF = RAIZ  # apuntar a la ruta temporal descargada
+                    _fe = _ode.leer_fecha_evento(semestre, int(n_evento))
+                    if _fe:
+                        with st.spinner(f"⬇️ Descargando registros de falla ({_fe.strftime('%d.%m.%y')}) desde SharePoint..."):
+                            _sp.descargar_scada_falla(_fe)
+                            st.toast("Carpeta de FALLA descargada desde SharePoint.", icon="📂")
+                    else:
+                        st.error("No se pudo identificar la fecha del evento en Tabla_Eventos.")
+                        st.stop()
+                except Exception as _e:
+                    st.error(f"Error descargando datos desde SharePoint: {_e}")
+                    st.stop()
+
             _scada_status_f = os.path.join(ev_path, "_scada_status.txt")
             if os.path.exists(_scada_status_f):
                 try:
@@ -3234,6 +3284,9 @@ elif bloque_trabajo == "analisis_datos":
                     if _cbt.button("💾 Guardar", key="save_idx_scada",
                                    help="Guardar t₀ para esta unidad y evento"):
                         if _save_unit_cfg(ev_path, _sel_unit, "scada_idx_falla", _idx_falla_b2):
+                            # Guardar también el wall-clock absoluto para sincronizar otras pestañas
+                            _wall_t0 = float(t_raw.iloc[_idx_falla_b2])
+                            _save_unit_cfg(ev_path, _sel_unit, "scada_wall_clock_t0", _wall_t0)
                             st.toast(f"t₀ = {_t_input_b2:.1f} s guardado para {_sel_unit}", icon="✅")
 
                     _cm1, _cm2, _cm3 = st.columns(3)
@@ -3472,7 +3525,7 @@ elif bloque_trabajo == "analisis_datos":
                 "Ejecutar Extractor de Gráficos EMF",
                 type="primary",
                 use_container_width=True,
-                disabled=IS_CLOUD or not _can_emf or st.session_state.emf_running,
+                disabled=not _can_emf or st.session_state.emf_running,
             )
 
         _emf_status_file = st.session_state.get("emf_status_file") or os.path.join(ev_path, "_emf_status.txt")
@@ -3559,9 +3612,18 @@ elif bloque_trabajo == "analisis_datos":
                     cols_pot = [c for c in df_emf.columns if c not in [col_tiempo, col_freq, 'hora']]
 
                     fig_emf = go.Figure()
+                    
+                    # Recuperar el clock de SCADA para sincronizar el formato HH:MM:SS
+                    _scada_wall_t0 = _get_unit_cfg(ev_path, _sel_unit, "scada_wall_clock_t0", 0.0)
 
-                    # Eje X: tiempo absoluto (t_raw) cuando HH:MM:SS, relativo (t_norm) si no.
-                    x_axis = _to_plotly_time(t_raw if show_hhmmss else t_norm, show_hhmmss)
+                    if show_hhmmss and _scada_wall_t0 > 0:
+                        # Sincronización inversa: proyectar tiempo relativo de EMF sobre el reloj de SCADA
+                        _idx_f_emf_tmp = _get_unit_cfg(ev_path, _sel_unit, "emf_idx_falla", 0)
+                        _t_f_emf_rel = float(t_norm.iloc[_idx_f_emf_tmp]) if _idx_f_emf_tmp < len(t_norm) else 0.0
+                        x_axis_raw = (t_norm - _t_f_emf_rel) + _scada_wall_t0
+                        x_axis = _to_plotly_time(x_axis_raw, True)
+                    else:
+                        x_axis = _to_plotly_time(t_norm, False)
 
                     if col_freq is not None:
                         fig_emf.add_trace(go.Scatter(
@@ -3858,15 +3920,26 @@ elif bloque_trabajo == "analisis_datos":
                 p_col_s = df_s.columns[2]
                 p_col_e = [c for c in df_e.columns if c not in ['tiempo_s', 'frecuencia_hz', 'hora', 't_norm']][0]
 
+                # Recuperar hora real del SCADA
+                _scada_wall_t0 = _get_unit_cfg(ev_path, _sel_unit, "scada_wall_clock_t0", 0.0)
+                
+                # Preparar ejes X (Relativo vs Reloj)
+                if show_hhmmss and _scada_wall_t0 > 0:
+                    t_scada_plot = t_scada_aligned + _scada_wall_t0
+                    t_emf_plot = t_emf_aligned + _scada_wall_t0
+                else:
+                    t_scada_plot = t_scada_aligned
+                    t_emf_plot = t_emf_aligned
+
                 # 1. Crear base con SCADA (igual que Tab 1)
                 fig_c = create_dual_axis_timeseries(
-                    t_data=t_scada_aligned,
+                    t_data=t_scada_plot,
                     freq_data=df_s['Frecuencia_Hz'],
                     pot_data=df_s[p_col_s],
                     title=f"Comparativa Registro Real vs CNDC — {_sel_unit}",
                     freq_label="Frec. SCADA",
                     pot_label="Pot. SCADA",
-                    show_hhmmss=False,
+                    show_hhmmss=show_hhmmss,
                     freq_color=_gcfg["freq_color_real"],
                     pot_color=_gcfg["pot_color_real"],
                     line_width=_gcfg["line_width"],
@@ -3877,7 +3950,7 @@ elif bloque_trabajo == "analisis_datos":
                 # 2. Añadir capas de CNDC (EMF) usando colores distintos para diferenciar fuente
                 #    (SCADA = tonos "real", EMF = tonos "sim" para que se vean claramente)
                 fig_c.add_trace(go.Scatter(
-                    x=t_emf_aligned,
+                    x=_to_plotly_time(t_emf_plot, show_hhmmss),
                     y=df_e['frecuencia_hz'],
                     name="Frec. CNDC (EMF)",
                     line=dict(color="cyan", width=_gcfg["line_width"]),
@@ -4702,62 +4775,40 @@ elif bloque_trabajo == "analisis_simulacion":
 
                 # ── Análisis de desviación ────────────────────────────────────
                 with st.expander("Análisis de desviación"):
-                    if is_multi:
-                        pares = list(zip(sel0, sel1))
-                        if not pares:
-                            st.info("Seleccione curvas en ambas simulaciones para calcular desviaciones.")
-                        else:
-                            rows = []
-                            for c0, c1 in pares:
-                                if c0 not in df0.columns or c1 not in df1.columns:
-                                    continue
-                                s0 = pd.to_numeric(df0[c0], errors='coerce').dropna()
-                                s1 = pd.to_numeric(df1[c1], errors='coerce').dropna()
-                                if s0.empty or s1.empty:
-                                    continue
-                                rows.append({
-                                    "Curva E{}.0".format(n_evento): _short_col_name(c0),
-                                    "Curva E{}.1".format(n_evento): _short_col_name(c1),
-                                    "Media E.0": f"{s0.mean():.4f}",
-                                    "Media E.1": f"{s1.mean():.4f}",
-                                    "Dif. media": f"{abs(s0.mean() - s1.mean()):.4f}",
-                                    "Dif. máx.": f"{abs(s0.max() - s1.max()):.4f}",
-                                    "Dif. mín.": f"{abs(s0.min() - s1.min()):.4f}",
-                                })
-                            if rows:
-                                st.dataframe(pd.DataFrame(rows), use_container_width=True)
+                    # Sección 1 y 2: Definición de pares basada en columnas ya detectadas
+                    items_comparar = []
+                    if _fc0 and _fc1:
+                        items_comparar.append((_fc0[0], _fc1[0], "Frecuencia", "Hz"))
+                    if _pc0 and _pc1:
+                        items_comparar.append((_pc0[0], _pc1[0], "Potencia", "MW"))
+
+                    if not items_comparar:
+                        st.info("No se identificaron pares de curvas equivalentes para calcular desviaciones.")
                     else:
-                        # Emparejar por tipo (freq↔freq, potencia↔potencia)
-                        # para no depender del orden de columnas entre proyectos.
-                        def _clasificar(df, cols):
-                            freq, other = [], []
-                            for c in cols:
-                                num = pd.to_numeric(df[c], errors='coerce').dropna()
-                                (freq if _is_frequency_column(c, num) else other).append(c)
-                            return freq, other
-
-                        freq0, other0 = _clasificar(df0, dc0)
-                        freq1, other1 = _clasificar(df1, dc1)
-
-                        rows = []
-                        for pares, unidad in [(zip(freq0, freq1), "Hz"),
-                                              (zip(other0, other1), "MW")]:
-                            for col0, col1 in pares:
-                                s0 = pd.to_numeric(df0[col0], errors='coerce').dropna()
-                                s1 = pd.to_numeric(df1[col1], errors='coerce').dropna()
-                                if s0.empty or s1.empty:
-                                    continue
-                                rows.append({
-                                    "Variable": _short_col_name(col0),
-                                    "Unidad": unidad,
-                                    "Media E.0": f"{s0.mean():.4f}",
-                                    "Media E.1": f"{s1.mean():.4f}",
-                                    "Dif. media": f"{abs(s0.mean() - s1.mean()):.4f}",
-                                    "Dif. máx.": f"{abs(s0.max() - s1.max()):.4f}",
-                                    "Dif. mín.": f"{abs(s0.min() - s1.min()):.4f}",
-                                })
-                        if rows:
-                            st.dataframe(pd.DataFrame(rows), use_container_width=True)
+                        # Sección 3: Construcción de tabla simplificada
+                        res_rows = []
+                        for c0, c1, label, unit in items_comparar:
+                            s0 = pd.to_numeric(df0[c0], errors='coerce').dropna()
+                            s1 = pd.to_numeric(df1[c1], errors='coerce').dropna()
+                            if s0.empty or s1.empty:
+                                continue
+                            
+                            res_rows.append({
+                                "Variable": label,
+                                "Unidad": unit,
+                                f"Media E{n_evento}.0": f"{s0.mean():.4f}",
+                                f"Media E{n_evento}.1": f"{s1.mean():.4f}",
+                                "Dif. media": f"{abs(s0.mean() - s1.mean()):.4f}",
+                                "Dif. máx.": f"{abs(s0.max() - s1.max()):.4f}",
+                                "Dif. mín.": f"{abs(s0.min() - s1.min()):.4f}",
+                            })
+                        
+                        if res_rows:
+                            st.dataframe(
+                                pd.DataFrame(res_rows), 
+                                use_container_width=True, 
+                                hide_index=True
+                            )
 
                 # ── Comparativa KPIs CNDC entre E0 y E1 ──────────────────────
                 st.markdown("---") # type: ignore
@@ -5348,4 +5399,3 @@ if bloque_trabajo == "reporte_tecnico":
             os.startfile(ev_path)
         else:
             st.error("La ruta del evento no es válida.")
-
