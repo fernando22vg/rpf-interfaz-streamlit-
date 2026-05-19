@@ -1877,7 +1877,7 @@ elif bloque_trabajo == "carga_datos":
                     "Cantidad": len(archivos),
                 })
 
-                st.dataframe(pd.DataFrame(status_archivos), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(status_archivos), use_container_width=True, hide_index=True)
 
             # Vista previa de Entradas: DC y DCDR
             if dc_files or dcdr_files:
