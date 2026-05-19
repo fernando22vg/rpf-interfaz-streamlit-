@@ -758,7 +758,7 @@ def _mostrar_tabla_cndc(kpi, p_max, delta_t, fuente="Valor", rocof=None):
                 v = str(row.iloc[i])
                 styles[i] = 'background-color:#d4edda' if '✅' in v else 'background-color:#f8d7da'
         return styles
-    st.dataframe(_df_t.style.apply(_col_ap, axis=1), width='stretch', hide_index=True)
+    st.dataframe(_df_t.style.apply(_col_ap, axis=1), use_container_width=True, hide_index=True)
 
     # Export button for KPI table
     if st.button(f"⬇️ Descargar KPIs a Excel ({fuente})", key=f"dl_kpis_{fuente.replace(' ', '_')}"):
@@ -1206,8 +1206,22 @@ if st.session_state.evento_global:
     has_pf  = any(glob.glob(os.path.join(_ev_p, f"datos_cargados_Ev{_n_ev}*.xlsx"))) # type: ignore
     
     st.markdown(f"### 📍 Evento: `{st.session_state.evento_global}`")
-    
+
+    def _status_card(col, label, ready): # type: ignore
+        icon = "OK" if ready else "Pendiente"
+        color = "#28a745" if ready else "#6c757d"
+        col.markdown(
+            f"""<div style='border: 1px solid #eee; border-radius: 4px; padding: 6px; text-align: center; background-color: #fdfdfd; line-height: 1.1;'>
+            <div style='font-size: 16px; margin-bottom: 2px;'>{icon}</div>
+            <div style='font-size: 11px; color: {color}; font-weight: 700; text-transform: uppercase;'>{label}</div>
+            </div>""",
+            unsafe_allow_html=True
+        )
+
     st_cols = st.columns(3)
+    _status_card(st_cols[0], "1. Extracción CNDC", has_sim) # type: ignore
+    _status_card(st_cols[1], "2. Condiciones Iniciales", has_ci) # type: ignore
+    _status_card(st_cols[2], "3. Carga en PowerFactory", has_pf) # type: ignore
 
 # ─── BARRA DE UNIDAD GLOBAL (BLOQUES 3, 4, 5) ───────────────────────────── # type: ignore
 if bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_real_simu"]:
@@ -1217,7 +1231,7 @@ if bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_real
         _idx_current = 0
         if st.session_state.global_selected_unit in _available_units:
             _idx_current = _available_units.index(st.session_state.global_selected_unit)
-        
+
         _sel_global = st.segmented_control(
             "Cambio rápido de unidad (Sincronizado):",
             options=_available_units,
@@ -1226,31 +1240,15 @@ if bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_real
         )
         if _sel_global:
             st.session_state.global_selected_unit = _sel_global
-        
-        # ── Sincronización automática de Escalado al cambiar de Unidad o Carpeta de Evento ──
+
         if st.session_state.global_selected_unit and st.session_state.ev_path_global:
-            if (st.session_state.get("b3_last_unit") != st.session_state.global_selected_unit or 
+            if (st.session_state.get("b3_last_unit") != st.session_state.global_selected_unit or
                 st.session_state.get("b3_last_event_path") != st.session_state.ev_path_global):
                 _sync_session_scale_config(st.session_state.ev_path_global, st.session_state.global_selected_unit)
                 st.session_state.b3_last_unit = st.session_state.global_selected_unit
                 st.session_state.b3_last_event_path = st.session_state.ev_path_global
 
         st.divider()
-
-    def _status_card(col, label, ready): # type: ignore
-        icon = "OK" if ready else "Pendiente"
-        color = "#28a745" if ready else "#6c757d"
-        col.markdown(
-            f"""<div style='border: 1px solid #eee; border-radius: 4px; padding: 6px; text-align: center; background-color: #fdfdfd; line-height: 1.1;'>
-            <div style='font-size: 16px; margin-bottom: 2px;'>{icon}</div>
-            <div style='font-size: 11px; color: {color}; font-weight: 700; text-transform: uppercase;'>{label}</div>
-            </div>""", 
-            unsafe_allow_html=True
-        )
-
-    _status_card(st_cols[0], "1. Extracción CNDC", has_sim) # type: ignore
-    _status_card(st_cols[1], "2. Condiciones Iniciales", has_ci) # type: ignore
-    _status_card(st_cols[2], "3. Carga en PowerFactory", has_pf) # type: ignore
 
 def _df_safe(df):
     """Convierte columnas object con tipos mixtos a str para evitar ArrowTypeError."""
@@ -1309,7 +1307,7 @@ if bloque_trabajo == "modelo_base":
     if st.button(
         "Iniciar Extracción del Modelo Base",
         type="primary",
-        width='stretch',
+        use_container_width=True,
         disabled=not _can_mod or st.session_state.mod_running,
     ):
         # Limpiar archivos previos
@@ -1746,7 +1744,7 @@ elif bloque_trabajo == "config_unidades":
                     "Fuente Pmax": _src or "Default"
                 })
         
-        st.dataframe(_df_safe(pd.DataFrame(_cfg_rows)), width="stretch", hide_index=True)
+        st.dataframe(_df_safe(pd.DataFrame(_cfg_rows)), use_container_width=True, hide_index=True)
         
         st.markdown("---") # type: ignore
         st.subheader("📥 Importar / Exportar Configuración")
@@ -1879,7 +1877,7 @@ elif bloque_trabajo == "carga_datos":
                     "Cantidad": len(archivos),
                 })
 
-                st.dataframe(pd.DataFrame(status_archivos), width='stretch', hide_index=True)
+                st.dataframe(pd.DataFrame(status_archivos), use_container_width=True, hide_index=True)
 
             # Vista previa de Entradas: DC y DCDR
             if dc_files or dcdr_files:
@@ -1894,7 +1892,7 @@ elif bloque_trabajo == "carga_datos":
                                 tabs_dc = st.tabs(xl_dc.sheet_names)
                                 for i, sheet in enumerate(xl_dc.sheet_names):
                                     with tabs_dc[i]:
-                                        st.dataframe(_df_safe(xl_dc.parse(sheet).head(20)), width='stretch')
+                                        st.dataframe(_df_safe(xl_dc.parse(sheet).head(20)), use_container_width=True)
                             except Exception as e:
                                 st.error(f"Error al leer DC: {e}")
 
@@ -1906,7 +1904,7 @@ elif bloque_trabajo == "carga_datos":
                                 tabs_dcdr = st.tabs(xl_dcdr.sheet_names)
                                 for i, sheet in enumerate(xl_dcdr.sheet_names):
                                     with tabs_dcdr[i]:
-                                        st.dataframe(_df_safe(xl_dcdr.parse(sheet).head(20)), width='stretch')
+                                        st.dataframe(_df_safe(xl_dcdr.parse(sheet).head(20)), use_container_width=True)
                             except Exception as e:
                                 st.error(f"Error al leer DCDR: {e}")
 
@@ -1924,7 +1922,7 @@ elif bloque_trabajo == "carga_datos":
                             with tabs_out[i]:
                                 df_sheet = xl_out.parse(nombre_hoja)
                                 st.caption(f"Mostrando primeras 100 filas de '{nombre_hoja}'")
-                                st.dataframe(_df_safe(df_sheet.head(100)), width='stretch')
+                                st.dataframe(_df_safe(df_sheet.head(100)), use_container_width=True)
                     except Exception as e:
                         st.error(f"No se pudo leer la salida: {e}")
             else:
@@ -1945,7 +1943,7 @@ elif bloque_trabajo == "carga_datos":
                     ext_btn = st.button(
                         "Ejecutar Extracción de Datos",
                         type="primary",
-                        width="stretch",
+                        use_container_width=True,
                         disabled=not _can_ext or st.session_state.ext_running,
                     )
 
@@ -2126,14 +2124,14 @@ elif bloque_trabajo == "carga_datos":
                 },
             ]
 
-            st.dataframe(pd.DataFrame(archivos_requeridos), width="stretch", hide_index=True)
+            st.dataframe(pd.DataFrame(archivos_requeridos), use_container_width=True, hide_index=True)
 
             # Vista previa de Entrada: Datos de simulación
             if sim_files:
                 with st.expander("📋 Vista previa: Datos de Simulación (Entrada)"):
                     try:
                         df_sim_in = pd.read_excel(sim_files[0], engine="calamine")
-                        st.dataframe(_df_safe(df_sim_in.head(20)), width="stretch")
+                        st.dataframe(_df_safe(df_sim_in.head(20)), use_container_width=True)
                     except Exception as e:
                         st.error(f"Error al leer entrada de simulación: {e}")
 
@@ -2195,7 +2193,7 @@ elif bloque_trabajo == "carga_datos":
                     ci_btn = st.button(
                         "Generar Condiciones Iniciales",
                         type="primary",
-                        width="stretch",
+                        use_container_width=True,
                         disabled=not _can_ci or st.session_state.ci_running,
                     )
 
@@ -2407,7 +2405,7 @@ elif bloque_trabajo == "carga_datos":
                     "Carpeta": os.path.dirname(LOC_XFO_PATH),
                 },
             ])
-            st.dataframe(tabla_archivos, width='stretch', hide_index=True)
+            st.dataframe(tabla_archivos, use_container_width=True, hide_index=True)
 
             # ─── SECCIÓN 3 — VISTA PREVIA DE CONDICIONES INICIALES ───────────────
             if ci_files:
@@ -2631,7 +2629,7 @@ elif bloque_trabajo == "carga_datos":
                     "Ejecutar en PowerFactory",
                     disabled=not _can_run or st.session_state.pf_running,
                     type="primary",
-                    width="stretch",
+                    use_container_width=True,
                 )
             with col_reset:
                 if st.button("🔄 Liberar Licencia", help="Cierra procesos colgados de PowerFactory y limpia el estado"):
@@ -2787,7 +2785,7 @@ elif bloque_trabajo == "carga_datos":
 
                     if st.session_state.pf_waiting_close:
                         st.success("Datos cargados en PowerFactory. DIgSILENT permanece abierto.")
-                        if st.button("🔒 Cerrar PowerFactory", type="primary", width="stretch"):
+                        if st.button("🔒 Cerrar PowerFactory", type="primary", use_container_width=True):
                             with open(_flag_continue, "w") as _fc:
                                 _fc.write("continue")
                             st.info("Señal enviada — cerrando PowerFactory...")
@@ -2981,14 +2979,14 @@ elif bloque_trabajo == "carga_datos":
 
                         with _col_ta:
                             with st.expander("📋 Generadores (pgini final)"):
-                                st.dataframe(_df_safe(_df_gen_out), width="stretch", hide_index=True)
+                                st.dataframe(_df_safe(_df_gen_out), use_container_width=True, hide_index=True)
 
                         with _col_tb:
                             with st.expander(f"📋 Cargas ({_sheet_car})"):
-                                st.dataframe(_df_safe(_df_car_out), width="stretch", hide_index=True)
+                                st.dataframe(_df_safe(_df_car_out), use_container_width=True, hide_index=True)
 
                         with st.expander("📋 Resumen completo"):
-                            st.dataframe(_df_safe(_df_res_out), width="stretch", hide_index=True)
+                            st.dataframe(_df_safe(_df_res_out), use_container_width=True, hide_index=True)
 
                         with open(_rf, "rb") as _fdown:
                             st.download_button(
@@ -3325,7 +3323,7 @@ elif bloque_trabajo == "analisis_datos":
                             show_eval_line=False,
                         )
                     
-                    st.plotly_chart(fig, width='stretch')
+                    st.plotly_chart(fig, use_container_width=True)
 
                     with st.expander("📄 Ver tabla de datos"):
                         st.dataframe(_df_safe(df_scada), use_container_width=True)
@@ -3668,7 +3666,7 @@ elif bloque_trabajo == "analisis_datos":
                             show_eval_line=False,
                         )
                     
-                    st.plotly_chart(fig_emf, width='stretch')
+                    st.plotly_chart(fig_emf, use_container_width=True)
 
                     st.markdown("#### 📋 KPIs CNDC — Criterio RPF (Registro EMF)")
                     if st.button("Descargar datos EMF a Excel", key=f"dl_emf_data_{_sel_unit}"): # type: ignore
@@ -4332,7 +4330,7 @@ t_eval_abs=((t_fault_abs_plot if 't_fault_abs_plot' in locals() else t_falla) + 
         data_cols = [col for col in df_sim.columns if col != time_col]
 
         with st.expander("📄 Ver tabla de datos"):
-            st.dataframe(df_sim, width='stretch')
+            st.dataframe(df_sim, use_container_width=True)
         return df_sim, sel_file
 
     # Pestaña 1: Simulación E{N}.0 (CNDC)
@@ -5070,7 +5068,7 @@ t_eval_abs=((t_fault_abs_plot if 't_fault_abs_plot' in locals() else t_falla) + 
                 for _c in _df_kpi_v.columns:
                     if _df_kpi_v[_c].dtype == object:
                         _df_kpi_v[_c] = _df_kpi_v[_c].astype(str)
-                st.dataframe(_df_kpi_v, hide_index=True, width='stretch')
+                st.dataframe(_df_kpi_v, hide_index=True, use_container_width=True)
 
 
                 # --- Curva de Error y Barras KPI ---
@@ -5084,7 +5082,7 @@ t_eval_abs=((t_fault_abs_plot if 't_fault_abs_plot' in locals() else t_falla) + 
                             err = f_real_interp - s['f']
                             fig_err.add_trace(go.Scatter(x=s['t'], y=err, name=f"Err {s['ver']}", line=dict(color=s['color'])))
                         fig_err.update_layout(title="Error de Seguimiento (Hz)", height=350, template=_gcfg["template"])
-                        st.plotly_chart(fig_err, width='stretch')
+                        st.plotly_chart(fig_err, use_container_width=True)
                     
                     with bar_col:
                         fig_bar = go.Figure()
@@ -5093,7 +5091,7 @@ t_eval_abs=((t_fault_abs_plot if 't_fault_abs_plot' in locals() else t_falla) + 
                         fig_bar.add_trace(go.Bar(x=_fuentes, y=_dps, marker_color='#2ca02c', text=_dps, textposition='outside'))
                         fig_bar.add_hline(y=1.5, line_dash="dash", line_color="red", annotation_text="Mínimo 1.5%")
                         fig_bar.update_layout(title="Aporte Porcentual ΔP (%)", height=350, template=_gcfg["template"])
-                        st.plotly_chart(fig_bar, width='stretch')
+                        st.plotly_chart(fig_bar, use_container_width=True)
 else:
         st.info("ℹ️ Seleccione una unidad y verifique los archivos en las carpetas correspondientes.")
 
