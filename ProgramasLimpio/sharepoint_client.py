@@ -21,6 +21,10 @@ SHARE_URL = (
     "/IgDQ0-3WNNN1SYksWDQKnGTeAdQNzcw0KrsBYeBuI7_NAf0?e=SBurQb"
 )
 
+# Subcarpeta dentro de la raíz compartida donde están los semestres
+# Equivalente al RAIZ local: C:\Datos del CNDC\01_INFO CNDC_RPF
+_INNER_FOLDER = "01_INFO CNDC_RPF"
+
 _TMP_ROOT = Path(tempfile.gettempdir()) / "rpf_sharepoint"
 _session_cache: dict = {}
 _session_lock = threading.Lock()
@@ -150,17 +154,24 @@ def _list_files(session, site_url: str, sp_path: str) -> list:
 
 # ── API pública ───────────────────────────────────────────────────────────────
 
+def _raiz_path() -> tuple:
+    """Devuelve (session, site_url, raiz_path) donde raiz_path apunta a 01_INFO CNDC_RPF."""
+    session, site_url, root_path = _get_session()
+    raiz = f"{root_path}/{_INNER_FOLDER}"
+    return session, site_url, raiz
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def listar_semestres() -> list:
-    session, site_url, root_path = _get_session()
-    folders = _list_folders(session, site_url, root_path)
+    session, site_url, raiz = _raiz_path()
+    folders = _list_folders(session, site_url, raiz)
     return sorted(f["Name"] for f in folders)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
 def listar_eventos(semestre: str) -> list:
-    session, site_url, root_path = _get_session()
-    analisis_path = f"{root_path}/{semestre}/Análisis_todos_los_eventos"
+    session, site_url, raiz = _raiz_path()
+    analisis_path = f"{raiz}/{semestre}/Análisis_todos_los_eventos"
     folders = _list_folders(session, site_url, analisis_path)
     return sorted(f["Name"] for f in folders)
 
@@ -174,8 +185,8 @@ def descargar_evento(semestre: str, evento: str, progress_cb=None) -> Path:
     if local_path.exists():
         return local_path
 
-    session, site_url, root_path = _get_session()
-    sp_event_path = f"{root_path}/{semestre}/Análisis_todos_los_eventos/{evento}"
+    session, site_url, raiz = _raiz_path()
+    sp_event_path = f"{raiz}/{semestre}/Análisis_todos_los_eventos/{evento}"
     _download_tree(session, site_url, sp_event_path, local_path, progress_cb)
     return local_path
 
