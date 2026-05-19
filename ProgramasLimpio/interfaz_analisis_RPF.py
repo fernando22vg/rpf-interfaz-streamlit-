@@ -3307,32 +3307,33 @@ elif bloque_trabajo == "analisis_datos":
                     
                     # Añadir líneas de referencia (banda muerta, t₀, t₀+Δt)
                     if _kpi_b2:
-                        # El tiempo de falla debe ser absoluto si la base es t_raw
-                        _t_falla_plot = t_raw.iloc[_idx_falla_b2] if show_hhmmss else _t_falla_abs
-                        _t_dt_abs  = _t_falla_plot + int(_b2_dt)
-                        
-                        # Líneas de referencia
+                        # Con HH:MM:SS, la base del gráfico es t_raw (tiempo absoluto del día).
+                        # Las referencias y marcadores deben estar en la MISMA escala que t_base.
+                        _t_falla_plot = float(t_raw.iloc[_idx_falla_b2]) if show_hhmmss else _t_falla_abs
+
+                        # Líneas de referencia: se pasa _t_falla_plot para que add_reference_lines
+                        # aplique _to_plotly_time correctamente (segundos absolutos → ms de época).
                         fig = add_reference_lines(
                             fig,
-                            t_fault_abs=_t_falla_abs,
-                            t_eval_abs=_t_dt_abs,
+                            t_fault_abs=_t_falla_plot,
+                            t_eval_abs=_t_falla_plot + int(_b2_dt),
                             show_hhmmss=show_hhmmss,
                             show_deadband=_gcfg["show_deadband"],
                             show_fault_line=True,
                             show_eval_line=True,
                             eval_line_label=f"t₀+Δt ({int(_b2_dt)} s)",
                         )
-                        
-                        # Marcadores KPI CNDC
-                        # Tiempos plotables en la MISMA escala del eje X del gráfico
-                        # (create_dual_axis_timeseries usa x=t_base y show_hhmmss)
-                        _t0_plot  = _t_falla_plot
-                        _tmin_plot = _t0_plot + float(_kpi_b2['t_min'])
-                        _tdt_plot  = _t0_plot + int(_b2_dt)
+
+                        # Marcadores KPI: convertir a la misma escala del eje X con _to_plotly_time.
+                        # show_hhmmss=False → devuelve segundos sin cambio.
+                        # show_hhmmss=True  → convierte segundos a ms de época (lo que espera el eje 'date').
+                        _t0_plot   = _to_plotly_time(_t_falla_plot, show_hhmmss)
+                        _tmin_plot = _to_plotly_time(_t_falla_plot + float(_kpi_b2['t_min']), show_hhmmss)
+                        _tdt_plot  = _to_plotly_time(_t_falla_plot + int(_b2_dt), show_hhmmss)
 
                         fig = add_kpi_markers(
                             fig,
-                            t_fault_abs=_t_falla_abs,
+                            t_fault_abs=_t_falla_plot,
                             kpi_dict=_kpi_b2,
                             show_hhmmss=show_hhmmss,
                             dt_seconds=int(_b2_dt),
@@ -3559,8 +3560,8 @@ elif bloque_trabajo == "analisis_datos":
 
                     fig_emf = go.Figure()
 
-                    # Eje X: puede ser segundos o la columna de hora formateada
-                    x_axis = _to_plotly_time(t_norm, show_hhmmss)
+                    # Eje X: tiempo absoluto (t_raw) cuando HH:MM:SS, relativo (t_norm) si no.
+                    x_axis = _to_plotly_time(t_raw if show_hhmmss else t_norm, show_hhmmss)
 
                     if col_freq is not None:
                         fig_emf.add_trace(go.Scatter(
@@ -3659,8 +3660,10 @@ elif bloque_trabajo == "analisis_datos":
                     _kpi_emf = _cndc_kpis(_t_al_emf, _freq_emf_arr, _pot_emf_arr, _emf_pmax, _emf_rp_pct/100.0, _emf_dt)
                     
                     # ── Gráfico EMF con metodología CNDC (usando funciones estándares) ───
+                    # Con HH:MM:SS, usar t_raw (tiempo absoluto del día) como base del gráfico.
+                    _t_base_emf = t_raw if show_hhmmss else t_norm
                     fig_emf = create_dual_axis_timeseries(
-                        t_data=t_norm,
+                        t_data=_t_base_emf,
                         freq_data=_freq_emf_arr,
                         pot_data=_pot_emf_arr,
                         title=f"Análisis Metodológico EMF - {_emf_file}",
@@ -3677,28 +3680,29 @@ elif bloque_trabajo == "analisis_datos":
                         y1_range=None if auto_scale_emf else [st.session_state.b3_sync_y_f_min, st.session_state.b3_sync_y_f_max],
                         y2_range=None if auto_scale_emf else [st.session_state.b3_sync_y_p_min, st.session_state.b3_sync_y_p_max],
                     )
-                    
+
                     # Añadir líneas de referencia y marcadores KPI
                     if _kpi_emf:
+                        # Mismo patrón que SCADA: tiempo absoluto cuando show_hhmmss=True.
+                        _t_falla_emf_plot = float(t_raw.iloc[_idx_falla_emf]) if show_hhmmss else _t_falla_emf
                         fig_emf = add_reference_lines(
                             fig_emf,
-                            t_fault_abs=_t_falla_emf,
-                            t_eval_abs=_t_falla_emf + _emf_dt,
+                            t_fault_abs=_t_falla_emf_plot,
+                            t_eval_abs=_t_falla_emf_plot + _emf_dt,
                             show_hhmmss=show_hhmmss,
                             show_deadband=_gcfg["show_deadband"],
                             show_fault_line=True,
                             show_eval_line=True,
                             eval_line_label=f"t₀+Δt ({_emf_dt}s)",
                         )
-                        
-                        # Tiempos plotables en la MISMA escala del eje X del gráfico
-                        _t0_plot_emf  = _t_falla_emf
-                        _tmin_plot_emf = _t0_plot_emf + float(_kpi_emf['t_min'])
-                        _tdt_plot_emf  = _t0_plot_emf + int(_emf_dt)
+
+                        _t0_plot_emf   = _to_plotly_time(_t_falla_emf_plot, show_hhmmss)
+                        _tmin_plot_emf = _to_plotly_time(_t_falla_emf_plot + float(_kpi_emf['t_min']), show_hhmmss)
+                        _tdt_plot_emf  = _to_plotly_time(_t_falla_emf_plot + int(_emf_dt), show_hhmmss)
 
                         fig_emf = add_kpi_markers(
                             fig_emf,
-                            t_fault_abs=_t_falla_emf,
+                            t_fault_abs=_t_falla_emf_plot,
                             kpi_dict=_kpi_emf,
                             show_hhmmss=show_hhmmss,
                             dt_seconds=_emf_dt,
