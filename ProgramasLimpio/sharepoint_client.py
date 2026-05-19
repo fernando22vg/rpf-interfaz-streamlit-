@@ -1,172 +1,148 @@
 """
-sharepoint_client.py
-Acceso a la carpeta de SharePoint que contiene los datos de eventos RPF.
+sharepoint_client.py  (implementación Google Drive)
+Accede a la carpeta de Google Drive con los datos de eventos RPF.
 
-Autenticación: Azure App Registration (client credentials flow).
 Requiere en Streamlit secrets (Settings → Secrets):
 
-  [sharepoint]
-  tenant_id     = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-  client_id     = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-  client_secret = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  [gdrive]
+  api_key   = "AIzaSy..."          # Google API key (lectura, sin OAuth)
+  folder_id = "1ABCxyz..."         # ID de la carpeta raíz en Google Drive
+
+La carpeta debe estar compartida como "Cualquiera con el enlace puede ver".
+Estructura esperada en Google Drive:
+  📁 raíz/
+    └── 📁 Semestre_1/
+          └── 📁 Análisis_todos_los_eventos/
+                └── 📁 Evento_001/
+                      ├── 📁 Resultados_COBEE/
+                      ├── 📁 Graficas Registro 1SEG COBEE/
+                      ├── 📁 E1.0/Datos Curvas/
+                      └── 📁 E1.1/Datos Curvas/
 """
 
-import base64
 import shutil
 import tempfile
-import threading
-import time
 from pathlib import Path
 from typing import Optional
 
 import requests
 import streamlit as st
 
-# ── Carpeta raíz compartida en SharePoint ─────────────────────────────────────
-SHARE_URL = (
-    "https://cobee1-my.sharepoint.com/:f:/g/personal/angel_mariscal_cobee_com"
-    "/IgDQ0-3WNNN1SYksWDQKnGTeAdQNzcw0KrsBYeBuI7_NAf0?e=SBurQb"
-)
-
-_TMP_ROOT = Path(tempfile.gettempdir()) / "rpf_sharepoint"
-_token_cache: dict = {}
-_token_lock = threading.Lock()
-
-GRAPH = "https://graph.microsoft.com/v1.0"
+_TMP_ROOT = Path(tempfile.gettempdir()) / "rpf_gdrive"
+_DRIVE_API = "https://www.googleapis.com/drive/v3"
+_FOLDER_MIME = "application/vnd.google-apps.folder"
 
 
-# ── Autenticación ─────────────────────────────────────────────────────────────
+# ── Credenciales ──────────────────────────────────────────────────────────────
 
-def _get_access_token() -> str:
-    with _token_lock:
-        if _token_cache.get("expires_at", 0) > time.time() + 60:
-            return _token_cache["access_token"]
-
-        try:
-            import msal
-        except ImportError:
-            raise RuntimeError(
-                "Falta el paquete 'msal'. Agrégalo a requirements.txt."
-            )
-
-        try:
-            sp = st.secrets["sharepoint"]
-            tenant_id = sp["tenant_id"]
-            client_id = sp["client_id"]
-            client_secret = sp["client_secret"]
-        except (KeyError, AttributeError):
-            raise RuntimeError(
-                "Configura los secrets de Streamlit Cloud:\n"
-                "  [sharepoint]\n"
-                "  tenant_id     = '...'\n"
-                "  client_id     = '...'\n"
-                "  client_secret = '...'"
-            )
-
-        app = msal.ConfidentialClientApplication(
-            client_id,
-            authority=f"https://login.microsoftonline.com/{tenant_id}",
-            client_credential=client_secret,
+def _creds() -> tuple[str, str]:
+    """Devuelve (api_key, root_folder_id) desde Streamlit secrets."""
+    try:
+        cfg = st.secrets["gdrive"]
+        return cfg["api_key"], cfg["folder_id"]
+    except (KeyError, AttributeError):
+        raise RuntimeError(
+            "Configura los secrets de Streamlit Cloud:\n"
+            "  [gdrive]\n"
+            "  api_key   = 'AIzaSy...'\n"
+            "  folder_id = '1ABCxyz...'"
         )
-        result = app.acquire_token_for_client(
-            scopes=["https://graph.microsoft.com/.default"]
-        )
-        if "access_token" not in result:
-            raise RuntimeError(
-                f"Error de autenticación SharePoint: {result.get('error_description', result)}"
+
+
+# ── Google Drive API helpers ──────────────────────────────────────────────────
+
+def _list_children(folder_id: str, api_key: str) -> list:
+    """Lista todos los archivos/carpetas hijos de una carpeta."""
+    items, page_token = [], None
+    while True:
+        params = {
+            "q": f"'{folder_id}' in parents and trashed=false",
+            "key": api_key,
+            "fields": "nextPageToken,files(id,name,mimeType)",
+            "pageSize": 200,
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        r = requests.get(f"{_DRIVE_API}/files", params=params, timeout=20)
+        if r.status_code == 403:
+            raise PermissionError(
+                "Google Drive API key inválida o carpeta no es pública. "
+                "Verifica que la carpeta esté compartida como 'Cualquiera con el enlace'."
             )
-
-        _token_cache["access_token"] = result["access_token"]
-        _token_cache["expires_at"] = time.time() + result.get("expires_in", 3600)
-        return _token_cache["access_token"]
-
-
-def _headers() -> dict:
-    return {"Authorization": f"Bearer {_get_access_token()}", "Accept": "application/json"}
-
-
-# ── Graph API helpers ─────────────────────────────────────────────────────────
-
-def _encode_share_url(url: str) -> str:
-    b64 = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
-    return f"u!{b64}"
-
-
-@st.cache_data(ttl=300, show_spinner=False)
-def _get_root_item() -> dict:
-    encoded = _encode_share_url(SHARE_URL)
-    r = requests.get(f"{GRAPH}/shares/{encoded}/driveItem", headers=_headers(), timeout=20)
-    r.raise_for_status()
-    return r.json()
-
-
-def _children(drive_id: str, item_id: str) -> list:
-    items, url = [], f"{GRAPH}/drives/{drive_id}/items/{item_id}/children"
-    while url:
-        r = requests.get(url, headers=_headers(), timeout=20)
         r.raise_for_status()
         data = r.json()
-        items.extend(data.get("value", []))
-        url = data.get("@odata.nextLink")
+        items.extend(data.get("files", []))
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
     return items
 
 
-def _item_by_path(drive_id: str, root_id: str, rel_path: str) -> Optional[dict]:
-    r = requests.get(
-        f"{GRAPH}/drives/{drive_id}/items/{root_id}:/{rel_path}",
-        headers=_headers(), timeout=20
-    )
-    if r.status_code == 404:
-        return None
-    r.raise_for_status()
-    return r.json()
+def _find_child(folder_id: str, name: str, api_key: str) -> Optional[dict]:
+    """Busca un hijo por nombre exacto."""
+    for item in _list_children(folder_id, api_key):
+        if item["name"] == name:
+            return item
+    return None
 
 
-# ── API pública ───────────────────────────────────────────────────────────────
+# ── API pública (misma interfaz que sharepoint_client original) ───────────────
 
 @st.cache_data(ttl=300, show_spinner=False)
 def listar_semestres() -> list:
-    root = _get_root_item()
-    drive_id = root["parentReference"]["driveId"]
-    kids = _children(drive_id, root["id"])
-    return sorted(c["name"] for c in kids if "folder" in c)
+    """Lista semestres (carpetas de primer nivel en la raíz de GDrive)."""
+    api_key, root_id = _creds()
+    children = _list_children(root_id, api_key)
+    return sorted(c["name"] for c in children if c["mimeType"] == _FOLDER_MIME)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
 def listar_eventos(semestre: str) -> list:
-    root = _get_root_item()
-    drive_id = root["parentReference"]["driveId"]
-    analisis = _item_by_path(
-        drive_id, root["id"], f"{semestre}/Análisis_todos_los_eventos"
-    )
-    if not analisis:
+    """Lista eventos dentro de semestre/Análisis_todos_los_eventos/."""
+    api_key, root_id = _creds()
+
+    sem_item = _find_child(root_id, semestre, api_key)
+    if not sem_item:
         return []
-    kids = _children(drive_id, analisis["id"])
-    return sorted(c["name"] for c in kids if "folder" in c)
+
+    analisis_item = _find_child(sem_item["id"], "Análisis_todos_los_eventos", api_key)
+    if not analisis_item:
+        return []
+
+    children = _list_children(analisis_item["id"], api_key)
+    return sorted(c["name"] for c in children if c["mimeType"] == _FOLDER_MIME)
 
 
 def descargar_evento(semestre: str, evento: str, progress_cb=None) -> Path:
     """
-    Descarga la carpeta del evento desde SharePoint a /tmp/.
+    Descarga la carpeta del evento desde Google Drive a /tmp/.
     Devuelve la ruta local equivalente a ev_path.
-    Si ya existe en caché, retorna sin re-descargar.
+    Si ya existe en caché local, no re-descarga.
     """
     local_path = _TMP_ROOT / semestre / evento
     if local_path.exists():
         return local_path
 
-    root = _get_root_item()
-    drive_id = root["parentReference"]["driveId"]
-    rel = f"{semestre}/Análisis_todos_los_eventos/{evento}"
-    event_item = _item_by_path(drive_id, root["id"], rel)
-    if not event_item:
-        raise FileNotFoundError(f"Evento no encontrado en SharePoint: {rel}")
+    api_key, root_id = _creds()
 
-    _download_tree(drive_id, event_item["id"], local_path, progress_cb)
+    sem_item = _find_child(root_id, semestre, api_key)
+    if not sem_item:
+        raise FileNotFoundError(f"Semestre no encontrado en Google Drive: {semestre}")
+
+    analisis_item = _find_child(sem_item["id"], "Análisis_todos_los_eventos", api_key)
+    if not analisis_item:
+        raise FileNotFoundError(f"Carpeta 'Análisis_todos_los_eventos' no encontrada en {semestre}")
+
+    event_item = _find_child(analisis_item["id"], evento, api_key)
+    if not event_item:
+        raise FileNotFoundError(f"Evento no encontrado en Google Drive: {evento}")
+
+    _download_tree(event_item["id"], local_path, api_key, progress_cb)
     return local_path
 
 
 def limpiar_cache_evento(semestre: str, evento: str):
+    """Elimina el caché local de un evento para forzar re-descarga."""
     local_path = _TMP_ROOT / semestre / evento
     if local_path.exists():
         shutil.rmtree(local_path)
@@ -174,23 +150,25 @@ def limpiar_cache_evento(semestre: str, evento: str):
 
 # ── Descarga recursiva ────────────────────────────────────────────────────────
 
-def _download_tree(drive_id: str, item_id: str, dest: Path, progress_cb=None):
+def _download_tree(folder_id: str, dest: Path, api_key: str, progress_cb=None):
     dest.mkdir(parents=True, exist_ok=True)
-    for child in _children(drive_id, item_id):
-        name = child["name"]
-        if "folder" in child:
-            _download_tree(drive_id, child["id"], dest / name, progress_cb)
-        elif "file" in child:
+    for item in _list_children(folder_id, api_key):
+        name = item["name"]
+        if item["mimeType"] == _FOLDER_MIME:
+            _download_tree(item["id"], dest / name, api_key, progress_cb)
+        else:
             local_file = dest / name
             if not local_file.exists():
-                _download_file(child["@microsoft.graph.downloadUrl"], local_file)
+                _download_file(item["id"], local_file)
             if progress_cb:
                 progress_cb(name)
 
 
-def _download_file(url: str, dest: Path):
-    r = requests.get(url, stream=True, timeout=120)
-    r.raise_for_status()
-    with open(dest, "wb") as f:
-        for chunk in r.iter_content(chunk_size=65536):
-            f.write(chunk)
+def _download_file(file_id: str, dest: Path):
+    """Descarga un archivo público de Google Drive."""
+    url = f"https://drive.google.com/uc?id={file_id}&confirm=t&export=download"
+    with requests.get(url, stream=True, timeout=120) as r:
+        r.raise_for_status()
+        with open(dest, "wb") as f:
+            for chunk in r.iter_content(chunk_size=65536):
+                f.write(chunk)
