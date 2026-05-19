@@ -25,6 +25,10 @@ SHARE_URL = (
 # Equivalente al RAIZ local: C:\Datos del CNDC\01_INFO CNDC_RPF
 _INNER_FOLDER = "01_INFO CNDC_RPF"
 
+# Otras carpetas en la raíz compartida (misma estructura que local)
+_LOC_FOLDER   = "DATOS EXTRAIDOS DE DIGSILENT/Designacion de loc_name"
+_DATOS_FOLDER = "02_DATOS CNDC_RPF"
+
 _TMP_ROOT = Path(tempfile.gettempdir()) / "rpf_sharepoint"
 _session_cache: dict = {}
 _session_lock = threading.Lock()
@@ -176,8 +180,34 @@ def listar_eventos(semestre: str) -> list:
     return sorted(f["Name"] for f in folders)
 
 
-# Ruta temporal raíz (equivalente a RAIZ local). Se usa en interfaz_analisis_RPF.py
-TMP_RAIZ = _TMP_ROOT
+# Rutas temporales equivalentes a las carpetas locales
+TMP_RAIZ       = _TMP_ROOT                                    # ≡ C:\Datos del CNDC\01_INFO CNDC_RPF
+TMP_LOC_FOLDER = _TMP_ROOT.parent / _LOC_FOLDER              # ≡ C:\Datos del CNDC\DATOS EXTRAIDOS...
+TMP_DATOS      = _TMP_ROOT.parent / _DATOS_FOLDER            # ≡ C:\Datos del CNDC\02_DATOS CNDC_RPF
+
+
+def descargar_archivos_estaticos():
+    """
+    Descarga una sola vez los archivos de mapeo (loc_names_*.xlsx) desde SharePoint.
+    Estos archivos no cambian con cada evento.
+    """
+    dest = TMP_LOC_FOLDER
+    if dest.exists() and any(dest.glob("*.xlsx")):
+        return  # ya descargados
+
+    session, site_url, root_path = _get_session()
+    sp_loc_path = f"{root_path}/{_LOC_FOLDER}"
+    dest.mkdir(parents=True, exist_ok=True)
+
+    for f in _list_files(session, site_url, sp_loc_path):
+        local_file = dest / f["Name"]
+        if not local_file.exists():
+            srv_url = f["ServerRelativeUrl"]
+            dl_url = (
+                f"{site_url}/_api/web"
+                f"/GetFileByServerRelativeUrl('{_sp_path(srv_url)}')/$value"
+            )
+            _download_file(session, dl_url, local_file)
 
 
 def descargar_evento(semestre: str, evento: str, progress_cb=None) -> Path:

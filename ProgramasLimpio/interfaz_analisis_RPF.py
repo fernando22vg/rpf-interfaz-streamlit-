@@ -1193,9 +1193,19 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────────────
 # TÍTULO PRINCIPAL
 # ─────────────────────────────────────────────────────────────────────────────
-# En modo nube, RAIZ apunta a la carpeta temporal donde se descargaron los archivos
+# En modo nube, sobreescribir todas las rutas locales con las rutas temporales descargadas
 if IS_CLOUD and _SP_OK:
-    RAIZ = str(_sp.TMP_RAIZ)
+    RAIZ       = str(_sp.TMP_RAIZ)
+    RAIZ_DATOS = str(_sp.TMP_DATOS)
+    # Descargar archivos estáticos de mapeo (loc_names) si aún no están en caché
+    try:
+        _sp.descargar_archivos_estaticos()
+    except Exception:
+        pass
+    _loc_dir = str(_sp.TMP_LOC_FOLDER)
+    LOC_NAMES_GEN_PATH = os.path.join(_loc_dir, "loc_names_gen.xlsx")
+    LOC_CAR_PATH       = os.path.join(_loc_dir, "loc_name_cargas.xlsx")
+    LOC_XFO_PATH       = os.path.join(_loc_dir, "loc_names_xfo.xlsx")
 
 st.title("Interfaz de Análisis RPF")
 
