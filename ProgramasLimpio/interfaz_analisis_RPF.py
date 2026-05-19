@@ -4025,11 +4025,20 @@ elif bloque_trabajo == "analisis_datos":
                             y1_range=None if _y_auto else [_get_unit_cfg(ev_path, _uname, "y_f_min", None), _get_unit_cfg(ev_path, _uname, "y_f_max", None)],
                             y2_range=None if _y_auto else [_get_unit_cfg(ev_path, _uname, "y_p_min", None), _get_unit_cfg(ev_path, _uname, "y_p_max", None)],
                         )
-                        _fig = add_reference_lines(_fig, t_fault_abs=_t_f_abs if not show_hhmmss else _tr_s.iloc[_idx_f], 
+                        _fig = add_reference_lines(_fig, t_fault_abs=_t_f_abs if not show_hhmmss else _tr_s.iloc[_idx_f],
                                                   t_eval_abs=(_t_f_abs + _dt_v) if not show_hhmmss else (_tr_s.iloc[_idx_f] + _dt_v),
                                                   show_hhmmss=show_hhmmss)
-                        _fig = add_kpi_markers(_fig, t_fault_abs=_t_f_abs if not show_hhmmss else _tr_s.iloc[_idx_f], 
-                                              kpi_dict=_kpi, show_hhmmss=show_hhmmss, dt_seconds=_dt_v)
+                        _fig = add_kpi_markers(
+                            _fig,
+                            t_fault_abs=_t_f_abs if not show_hhmmss else float(_tr_s.iloc[_idx_f]),
+                            kpi_dict=_kpi,
+                            show_hhmmss=show_hhmmss,
+                            dt_seconds=_dt_v,
+                        )
+
+
+
+
                         
                         _img = to_image(_fig, format="png", width=1200, height=600, scale=2)
                         _zf.writestr(f"SCADA_{_uname}_Ev{n_evento}.png", _img)
@@ -4246,32 +4255,26 @@ elif bloque_trabajo == "analisis_simulacion":
         _freq_s = _freq_raw * 50.0 if np.nanmax(_freq_raw) < 2.0 else _freq_raw
         
         _pot_s  = pd.to_numeric(df_sim[_pc[0]], errors='coerce').ffill().bfill().values
-        # KPIs usan tiempo alineado a t0=0 (como Bloque 3)
+        # Tiempo alineado: t=0 en el instante de falla (idéntico a Bloque de validación)
         _t_al = _t_raw - t_falla
         _kpi  = _cndc_kpis(_t_al, _freq_s, _pot_s, _pm, _rp / 100.0, delta_t)
-
-        # Para ubicar marcadores/referencias en la curva, t_fault_abs debe estar en el
-        # mismo sistema de eje X que usa la gráfica: t_data=_t_raw (tiempo absoluto en el archivo).
-        # Por eso usamos explícitamente t_fault_abs=t_falla (no t0 alineado).
-        t_fault_abs_plot = t_falla
         _rocof  = _calcular_rocof(_t_al, _freq_s, 3.0)
 
         _c_f = _gcfg["freq_color_sim0"] if sim_label.endswith('.0') else _gcfg["freq_color_sim1"]
         _c_p = _gcfg["pot_color_sim0"]  if sim_label.endswith('.0') else _gcfg["pot_color_sim1"]
-
-        # Usar funciones constructoras estándares (idéntico al Bloque 3)
-        # Estandarización completa: mismas funciones y contrato visual que Bloque 3
-        # (doble eje Y + referencias CNDC + marcadores KPI + layout estándar)
         _show_deadband = _gcfg.get("show_deadband", True)
 
+        # Graficar en tiempo alineado (t=0 en falla): marcadores siempre coinciden
+        # con las curvas sin depender del valor exacto de t_falla.
+        # show_hhmmss=False: datos de simulación siempre en segundos.
         fig_ann = create_dual_axis_timeseries(
-            t_data=_t_raw,
+            t_data=_t_al,
             freq_data=_freq_s,
             pot_data=_pot_s,
             title=f"Puntos de evaluación CNDC — {sim_label}",
             freq_label="Frecuencia (Hz)",
             pot_label="Potencia (MW)",
-            show_hhmmss=show_hhmmss,
+            show_hhmmss=False,
             freq_color=_c_f,
             pot_color=_c_p,
             line_width=_gcfg.get("line_width", None),
@@ -4283,27 +4286,23 @@ elif bloque_trabajo == "analisis_simulacion":
             y2_range=yaxis2_range,
         )
 
-        # Referencias (banda muerta + t0 + t0+Δt) — mismas claves que Bloque 3
+        # t_fault_abs=0.0 porque el eje X ya está alineado (t=0 en falla)
         fig_ann = add_reference_lines(
             fig_ann,
-                            # Mantener compatibilidad: si `t_fault_abs_plot` no existe (algunos refactors),
-                            # se usa el t_falla recibido como referencia.
-t_fault_abs=(t_fault_abs_plot if 't_fault_abs_plot' in locals() else t_falla),
-t_eval_abs=((t_fault_abs_plot if 't_fault_abs_plot' in locals() else t_falla) + delta_t),
-            show_hhmmss=show_hhmmss,
+            t_fault_abs=0.0,
+            t_eval_abs=delta_t,
+            show_hhmmss=False,
             show_deadband=_show_deadband,
             show_fault_line=_gcfg.get("show_fault_line", True),
             show_eval_line=_gcfg.get("show_eval_line", True),
             eval_line_label=f"t₀+Δt ({int(delta_t)} s)",
         )
 
-        # KPIs/marcadores CNDC (○/×/●) con mismas funciones
-        # Nota: mantén exactamente los mismos marcadores/orden que Bloque 3.
         fig_ann = add_kpi_markers(
             fig_ann,
-            t_fault_abs=t_fault_abs_plot,
+            t_fault_abs=0.0,
             kpi_dict=_kpi,
-            show_hhmmss=show_hhmmss,
+            show_hhmmss=False,
             dt_seconds=int(delta_t),
             marker_size=_gcfg.get("marker_size", None),
             freq_color=_c_f,
@@ -4337,40 +4336,46 @@ t_eval_abs=((t_fault_abs_plot if 't_fault_abs_plot' in locals() else t_falla) + 
         _pc1 = next((c for c in df1.columns[1:] if c != _fc1), _fc1)
 
         _gcfg = st.session_state.graph_config
-        
-        # 1. Crear base con E0 (Simulación CNDC)
+        _t_falla = float(st.session_state.get("b3_t_falla", 0.0))
+        _dt = float(st.session_state.get("b3_dt", 35))
+
+        # Alinear ambos archivos a t=0 en el instante de falla
+        _t0_raw = pd.to_numeric(df0[_tc0], errors='coerce').values
+        _t1_raw = pd.to_numeric(df1[_tc1], errors='coerce').values
+        _t0_al = _t0_raw - _t_falla
+        _t1_al = _t1_raw - _t_falla
+
+        # 1. Crear base con E0 en tiempo alineado (show_hhmmss=False: simulación siempre en segundos)
         fig_cmp = create_dual_axis_timeseries(
-            t_data=df0[_tc0], freq_data=df0[_fc0], pot_data=df0[_pc0],
+            t_data=_t0_al, freq_data=df0[_fc0], pot_data=df0[_pc0],
             title=f"Comparativa de Simulaciones — {unit_name}",
             freq_label=f"Frec. {sim_label0}", pot_label=f"Pot. {sim_label0}",
-            show_hhmmss=show_hhmmss, freq_color=_gcfg["freq_color_sim0"], pot_color=_gcfg["pot_color_sim0"],
+            show_hhmmss=False, freq_color=_gcfg["freq_color_sim0"], pot_color=_gcfg["pot_color_sim0"],
             line_width=_gcfg["line_width"], template=_gcfg["template"], height=_gcfg["plot_height"],
             x_range=xaxis_range, y1_range=yaxis1_range, y2_range=yaxis2_range
         )
-        
-        # 2. Añadir capas de E1 (Simulación COBEE) con estilo discontinuo (dash)
+
+        # 2. Añadir capas de E1 también en tiempo alineado
         fig_cmp.add_trace(go.Scatter(
-            x=_to_plotly_time(df1[_tc1], show_hhmmss), y=df1[_fc1],
-            name=f"Frec. {sim_label1}", 
-            line=dict(color=_gcfg["freq_color_sim1"], width=_gcfg["line_width"], dash="dash"), 
+            x=_t1_al, y=df1[_fc1],
+            name=f"Frec. {sim_label1}",
+            line=dict(color=_gcfg["freq_color_sim1"], width=_gcfg["line_width"], dash="dash"),
             yaxis="y"
         ))
         fig_cmp.add_trace(go.Scatter(
-            x=_to_plotly_time(df1[_tc1], show_hhmmss), y=df1[_pc1],
-            name=f"Pot. {sim_label1}", 
-            line=dict(color=_gcfg["pot_color_sim1"], width=_gcfg["line_width"], dash="dash"), 
+            x=_t1_al, y=df1[_pc1],
+            name=f"Pot. {sim_label1}",
+            line=dict(color=_gcfg["pot_color_sim1"], width=_gcfg["line_width"], dash="dash"),
             yaxis="y2"
         ))
-        
-        # 3. Aplicar líneas de referencia estándar (t0 y delta_t)
-        _t_falla = st.session_state.b3_t_falla
-        _dt = st.session_state.b3_dt
+
+        # 3. Referencias con t=0 en falla (eje ya alineado)
         fig_cmp = add_reference_lines(
-            fig_cmp, t_fault_abs=_t_falla, t_eval_abs=_t_falla + _dt,
-            show_hhmmss=show_hhmmss, show_deadband=_gcfg["show_deadband"],
+            fig_cmp, t_fault_abs=0.0, t_eval_abs=_dt,
+            show_hhmmss=False, show_deadband=_gcfg["show_deadband"],
             eval_line_label=f"t₀+{int(_dt)}s"
         )
-        
+
         return fig_cmp
 
     def _display_sim_section(df_sim, sim_label, t_falla, delta_t, unit_name, ev_path, n_evento, show_hhmmss, xaxis_range=None, yaxis1_range=None, yaxis2_range=None):
@@ -4476,8 +4481,7 @@ t_eval_abs=((t_fault_abs_plot if 't_fault_abs_plot' in locals() else t_falla) + 
             st.session_state[f'file_sim_E{n_evento}.0'] = file_sim0
             _display_sim_section(df_sim0, f"E{n_evento}.0", _b3_t_falla, _b3_dt,
                             _sel_file_b3, ev_path, n_evento, show_hhmmss,
-                            # Pass ranges for display
-                            xaxis_range=None if auto_scale_s0 else [_to_plotly_time(xaxis_min, show_hhmmss), _to_plotly_time(xaxis_max, show_hhmmss)],
+                            xaxis_range=None if auto_scale_s0 else [xaxis_min - _b3_t_falla, xaxis_max - _b3_t_falla],
                             yaxis1_range=None if auto_scale_s0 else [yaxis1_min, yaxis1_max], yaxis2_range=None if auto_scale_s0 else [yaxis2_min, yaxis2_max])
 
     # Pestaña 2: Simulación E{N}.1 (COBEE)
@@ -4526,8 +4530,7 @@ t_eval_abs=((t_fault_abs_plot if 't_fault_abs_plot' in locals() else t_falla) + 
             st.session_state[f'file_sim_E{n_evento}.1'] = file_sim1
             _display_sim_section(df_sim1, f"E{n_evento}.1", _b3_t_falla, _b3_dt,
                             _sel_file_b3, ev_path, n_evento, show_hhmmss,
-                            # Pass ranges for display
-                            xaxis_range=None if auto_scale_s1 else [_to_plotly_time(xaxis_min, show_hhmmss), _to_plotly_time(xaxis_max, show_hhmmss)],
+                            xaxis_range=None if auto_scale_s1 else [xaxis_min - _b3_t_falla, xaxis_max - _b3_t_falla],
                             yaxis1_range=None if auto_scale_s1 else [yaxis1_min, yaxis1_max], yaxis2_range=None if auto_scale_s1 else [yaxis2_min, yaxis2_max])
     
     # Pestaña 3: Comparativa de Simulaciones
@@ -4629,54 +4632,55 @@ t_eval_abs=((t_fault_abs_plot if 't_fault_abs_plot' in locals() else t_falla) + 
                 if not _pc0 or not _pc1 or not _fc0 or not _fc1:
                     st.warning("No se pudieron identificar columnas de frecuencia/potencia para la comparativa.")
                 else:
-                    # Ranges para estandarización: si auto-escala, pasamos None
-                    _x_range = None if auto_scale_scmp else [_to_plotly_time(xaxis_min, show_hhmmss), _to_plotly_time(xaxis_max, show_hhmmss)]
                     _y1_range = None if auto_scale_scmp else [yaxis1_min, yaxis1_max]
                     _y2_range = None if auto_scale_scmp else [yaxis2_min, yaxis2_max]
 
-                    fig_cmp = create_dual_axis_timeseries(
+                    # Alinear ambas simulaciones a t=0 en el instante de falla
+                    _t_falla = float(st.session_state.get("b3_t_falla", 0.0))
+                    _dt = float(st.session_state.get("b3_dt", 35))
+                    _tc0_al = pd.to_numeric(df0[tc0], errors='coerce').values - _t_falla
+                    _tc1_al = pd.to_numeric(df1[tc1], errors='coerce').values - _t_falla
 
-                        t_data=df0[tc0],
+                    fig_cmp = create_dual_axis_timeseries(
+                        t_data=_tc0_al,
                         freq_data=df0[_fc0[0]],
                         pot_data=df0[_pc0[0]],
                         title=f"Comparativa de Simulaciones — {os.path.splitext(sel_page)[0]}",
                         freq_label=f"Frec. E{n_evento}.0",
                         pot_label=f"Pot. E{n_evento}.0",
-                        show_hhmmss=show_hhmmss,
+                        show_hhmmss=False,
                         freq_color=_gcfg["freq_color_sim0"],
                         pot_color=_gcfg["pot_color_sim0"],
                         line_width=_gcfg["line_width"],
                         template=_gcfg["template"],
                         height=_gcfg["plot_height"],
-                        x_range=_x_range,
+                        x_range=None if auto_scale_scmp else [xaxis_min - _t_falla, xaxis_max - _t_falla],
                         y1_range=_y1_range,
                         y2_range=_y2_range,
                     )
 
-                    # Capa E1 (dash)
+                    # Capa E1 también en tiempo alineado
                     fig_cmp.add_trace(go.Scatter(
-                        x=_to_plotly_time(df1[tc1], show_hhmmss),
+                        x=_tc1_al,
                         y=df1[_fc1[0]],
                         name=f"Frec. E{n_evento}.1",
                         line=dict(color=_gcfg["freq_color_sim1"], width=_gcfg["line_width"], dash="dash"),
                         yaxis="y",
                     ))
                     fig_cmp.add_trace(go.Scatter(
-                        x=_to_plotly_time(df1[tc1], show_hhmmss),
+                        x=_tc1_al,
                         y=df1[_pc1[0]],
                         name=f"Pot. E{n_evento}.1",
                         line=dict(color=_gcfg["pot_color_sim1"], width=_gcfg["line_width"], dash="dash"),
                         yaxis="y2",
                     ))
 
-                    # Referencias CNDC (mismos marcadores que Bloque 3)
-                    _t_falla = st.session_state.b3_t_falla
-                    _dt = st.session_state.b3_dt
+                    # Referencias con t=0 en falla (eje ya alineado)
                     fig_cmp = add_reference_lines(
                         fig_cmp,
-                        t_fault_abs=_t_falla,
-                        t_eval_abs=_t_falla + _dt,
-                        show_hhmmss=show_hhmmss,
+                        t_fault_abs=0.0,
+                        t_eval_abs=_dt,
+                        show_hhmmss=False,
                         show_deadband=_gcfg["show_deadband"],
                         show_fault_line=_gcfg.get("show_fault_line", True),
                         show_eval_line=_gcfg.get("show_eval_line", True),
@@ -4891,9 +4895,9 @@ t_eval_abs=((t_fault_abs_plot if 't_fault_abs_plot' in locals() else t_falla) + 
                             
                             # Generar figura usando la función existente (forzando segundos para el PNG) # type: ignore
                             _fig_data = _create_sim_figure(
-                                _df_s, _sim_lbl, _b3_t_falla, _b3_dt, _uname, ev_path, n_evento, 
+                                _df_s, _sim_lbl, _b3_t_falla, _b3_dt, _uname, ev_path, n_evento,
                                 show_hhmmss=False,
-                                xaxis_range=[_xmin, _xmax] if _xmin is not None else None,
+                                xaxis_range=[_xmin - _b3_t_falla, _xmax - _b3_t_falla] if _xmin is not None else None,
                                 yaxis1_range=None if _y_auto else [_y1min, _y1max],
                                 yaxis2_range=None if _y_auto else [_y2min, _y2max]
                             )
@@ -5344,3 +5348,4 @@ if bloque_trabajo == "reporte_tecnico":
             os.startfile(ev_path)
         else:
             st.error("La ruta del evento no es válida.")
+
