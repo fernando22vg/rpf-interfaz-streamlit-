@@ -3165,21 +3165,7 @@ elif bloque_trabajo == "analisis_datos":
     n_evento = st.session_state.n_evento_global
     _sel_unit = st.session_state.global_selected_unit
 
-    # ── 1. DEFINICIÓN DEL CALLBACK (Global para bloques 3, 4, 5) ──
-    def _sync_rpf_y_axis(key_to_update, widget_key):
-        if not st.session_state.global_selected_unit: return
-        val = st.session_state.get(widget_key)
-        st.session_state[f"b3_sync_{key_to_update}"] = val
-
-        # Sincronizar las llaves de los widgets en las otras pestañas de forma inmediata
-        for pfx in ["b2_sc", "b2_emf", "b3_comp"]:
-            target_key = f"{pfx}_{key_to_update}"
-            if target_key in st.session_state:
-                st.session_state[target_key] = val
-
-        _save_unit_cfg(st.session_state.ev_path_global, st.session_state.global_selected_unit, key_to_update, val)
-
-    # ── 2. LÓGICA DE CARGA Y SINCRONIZACIÓN POR UNIDAD ──
+    # ── 1. LÓGICA DE CARGA Y SINCRONIZACIÓN POR UNIDAD ──
     if _sel_unit:
         _pmax_map_b3 = _load_pmax_cargado(ev_path, n_evento)
         _tmap_b3 = _load_tech_map(LOC_NAMES_GEN_PATH)
@@ -4422,35 +4408,261 @@ elif bloque_trabajo == "analisis_simulacion":
             st.dataframe(df_sim, use_container_width=True)
         return df_sim, sel_file
 
+    def _load_sim_tab_data(sim_dir, sel_file):
+        """Carga y normaliza un archivo de simulación. Devuelve (ts_aligned, fs_hz, ps_mw, df) o None."""
+        if not sel_file or not os.path.isdir(sim_dir):
+            return None
+        fpath = os.path.join(sim_dir, sel_file)
+        if not os.path.isfile(fpath):
+            return None
+        df = pd.read_excel(fpath, engine="calamine").dropna()
+        tc, fc, pc = _robust_col_detect(df)
+        ts_raw = pd.to_numeric(df[tc], errors='coerce').values
+        fs_raw = pd.to_numeric(df[fc], errors='coerce').ffill().values
+        fs_hz  = fs_raw * 50.0 if np.nanmax(fs_raw) < 2.0 else fs_raw
+        ps_mw  = pd.to_numeric(df[pc], errors='coerce').ffill().values
+        ts_aligned = ts_raw - _b3_t_falla
+        return ts_aligned, fs_hz, ps_mw, df
+
+    def _sim_kpis_and_pmax(sel_unit, ev_path, n_evento, rp_fallback=0.05, pmax_fallback=200.0):
+        """Recupera Pmax y Rp para el análisis CNDC de simulaciones."""
+        _pm = _load_pmax_cargado(ev_path, n_evento)
+        _tm = _load_tech_map(LOC_NAMES_GEN_PATH)
+        if sel_unit:
+            pm_v, tk, _ = _get_pmax_from_cargado(sel_unit, _pm, _tm)
+            rp = float(_get_rp_default(tk, LOC_NAMES_GEN_PATH)) / 100.0
+        else:
+            pm_v, rp = pmax_fallback, rp_fallback
+        return float(pm_v), rp
+
+    def _render_sim_tab(sim_ver, sim_dir, sim_color_f, sim_color_p, pfx):
+        """Renderiza una pestaña de simulación completa (gráfico + escalado + KPI + descarga)."""
+        _gcfg = st.session_state.graph_config
+        if not os.path.isdir(sim_dir):
+            st.info(f"ℹ️ La carpeta `{sim_dir}` no existe. Ejecute `DatosCurvas_v3.py` en PowerFactory.")
+            return None
+
+        xlsx_files = sorted([f for f in os.listdir(sim_dir) if f.endswith('.xlsx') and not f.startswith('~$')])
+        if not xlsx_files:
+            st.warning(f"No se encontraron archivos Excel en `{sim_ver}/Datos Curvas`.")
+            return None
+
+        st.success(f"✅ {len(xlsx_files)} archivos disponibles.")
+        if not _sel_file_b3:
+            st.info("ℹ️ Seleccione una unidad en la barra lateral.")
+            return None
+        if _sel_file_b3 not in xlsx_files:
+            st.warning(f"El archivo **{_sel_file_b3}** no está en `{sim_ver}`. Ejecute `DatosCurvas_v3.py`.")
+            return None
+
+        result = _load_sim_tab_data(sim_dir, _sel_file_b3)
+        if result is None:
+            st.error(f"No se pudo cargar `{_sel_file_b3}` desde `{sim_ver}`.")
+            return None
+        ts_aligned, fs_hz, ps_mw, df_raw = result
+
+        pm_v, rp_v = _sim_kpis_and_pmax(_sel_unit, ev_path, n_evento)
+        _kpi = _cndc_kpis(ts_aligned, fs_hz, ps_mw, pm_v, rp_v, _b3_dt)
+        _rocof = _calcular_rocof(ts_aligned, fs_hz, 3.0)
+
+        _xdef_min = float(ts_aligned.min()) if len(ts_aligned) else 0.0
+        _xdef_max = float(ts_aligned.max()) if len(ts_aligned) else 100.0
+        _xmin_cfg = f"{pfx}_xmin"
+        _xmax_cfg = f"{pfx}_xmax"
+
+        auto_s = st.toggle(
+            "Auto-escala (Plotly)", value=st.session_state.b3_sync_y_auto,
+            key=f"{pfx}_auto_toggle", on_change=_sync_rpf_y_axis, args=("y_auto", f"{pfx}_auto_toggle"),
+        )
+
+        with st.expander("Opciones de Ejes"):
+            _cx1, _cx2, _cx3, _cx4 = st.columns([1, 1, 1, 0.5])
+            _xmin_w = _cx1.number_input("X Min (s)", value=_get_unit_cfg(ev_path, _sel_unit or "", _xmin_cfg, _xdef_min), key=f"{pfx}_xmin")
+            _xmax_w = _cx1.number_input("X Max (s)", value=_get_unit_cfg(ev_path, _sel_unit or "", _xmax_cfg, _xdef_max), key=f"{pfx}_xmax")
+            _y1min_w = _cx2.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key=f"{pfx}_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", f"{pfx}_y_f_min"))
+            _y1max_w = _cx2.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key=f"{pfx}_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", f"{pfx}_y_f_max"))
+            _y2min_w = _cx3.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key=f"{pfx}_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", f"{pfx}_y_p_min"))
+            _y2max_w = _cx3.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key=f"{pfx}_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", f"{pfx}_y_p_max"))
+            _rb1, _rb2 = _cx4.columns(2)
+            if _rb1.button("🔄", key=f"reset_{pfx}", help="Resetear límites"):
+                _save_unit_cfg(ev_path, _sel_unit or "", _xmin_cfg, _xdef_min)
+                _save_unit_cfg(ev_path, _sel_unit or "", _xmax_cfg, _xdef_max)
+                _sync_session_scale_config(ev_path, _sel_unit or "")
+                st.rerun()
+            if _rb2.button("💾", key=f"save_{pfx}", help="Guardar escalado"):
+                _save_unit_cfg(ev_path, _sel_unit or "", _xmin_cfg, _xmin_w)
+                _save_unit_cfg(ev_path, _sel_unit or "", _xmax_cfg, _xmax_w)
+                st.toast(f"Escalado {sim_ver} guardado")
+
+        fig_s = create_dual_axis_timeseries(
+            t_data=ts_aligned, freq_data=fs_hz, pot_data=ps_mw,
+            title=f"Simulación {sim_ver} — {_sel_file_b3}",
+            freq_label=f"Frecuencia {sim_ver} (Hz)",
+            pot_label=f"Potencia {sim_ver} (MW)",
+            freq_color=sim_color_f, pot_color=sim_color_p,
+            line_width=_gcfg["line_width"], template=_gcfg["template"],
+            height=_gcfg["plot_height"], legend_position="bottom_center",
+            x_range=None if auto_s else [_xmin_w, _xmax_w],
+            y1_range=None if auto_s else [_y1min_w, _y1max_w],
+            y2_range=None if auto_s else [_y2min_w, _y2max_w],
+        )
+        if _kpi:
+            fig_s = add_reference_lines(
+                fig_s, t_fault_abs=0.0, t_eval_abs=_b3_dt, show_hhmmss=False,
+                show_deadband=_gcfg["show_deadband"],
+                eval_line_label=f"t₀+Δt ({_b3_dt} s)",
+            )
+            fig_s = add_kpi_markers(
+                fig_s, t_fault_abs=0.0, kpi_dict=_kpi, show_hhmmss=False,
+                dt_seconds=_b3_dt, marker_size=_gcfg["marker_size"],
+                freq_color=sim_color_f, pot_color=sim_color_p,
+            )
+        else:
+            fig_s = add_reference_lines(fig_s, show_hhmmss=False, show_deadband=_gcfg["show_deadband"],
+                                         show_fault_line=False, show_eval_line=False)
+
+        st.plotly_chart(fig_s, use_container_width=True)
+
+        with st.expander("📄 Ver tabla de datos"):
+            st.dataframe(_df_safe(df_raw), use_container_width=True)
+            if st.button("⬇️ Descargar datos a Excel", key=f"dl_{pfx}_data"):
+                _unit_label = (_sel_unit or "unidad").replace("sym_", "")
+                st.download_button(
+                    f"Descargar {sim_ver}",
+                    _apply_excel_formatting(df_raw, sheet_name=f"{sim_ver}_{_unit_label}"),
+                    file_name=f"sim_{sim_ver.replace('.', '_')}_{_unit_label}_Ev{n_evento}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key=f"dl_{pfx}_btn",
+                )
+
+        st.markdown("---")
+        st.markdown(f"#### 📋 KPIs CNDC — {sim_ver}")
+        _mostrar_tabla_cndc(_kpi, pm_v, _b3_dt, fuente=f"Simulación {sim_ver}", rocof=_rocof)
+        return _kpi, ts_aligned, fs_hz, ps_mw, pm_v, rp_v
+
     # Pestaña 1: Simulación E{N}.0 (CNDC)
     with tab_sim_cndc: # type: ignore
-        df_sim0, _ = load_and_display_simulation_data("0", _sel_file_b3)
-        if df_sim0 is not None:
-            st.session_state[f'df_sim_E{n_evento}.0'] = df_sim0
-        st.info("🔧 Visualización en reconstrucción — se reimplementará usando la base estandarizada del Bloque 3.")
+        _gcfg = st.session_state.graph_config
+        _r0 = _render_sim_tab(
+            sim_ver=f"E{n_evento}.0",
+            sim_dir=_dir0_b3,
+            sim_color_f=_gcfg["freq_color_sim0"],
+            sim_color_p=_gcfg["pot_color_sim0"],
+            pfx="b3_sim0",
+        )
 
     # Pestaña 2: Simulación E{N}.1 (COBEE)
     with tab_sim_cobee: # type: ignore
-        df_sim1, _ = load_and_display_simulation_data("1", _sel_file_b3)
-        if df_sim1 is not None:
-            st.session_state[f'df_sim_E{n_evento}.1'] = df_sim1
-        st.info("🔧 Visualización en reconstrucción — se reimplementará usando la base estandarizada del Bloque 3.")
+        _gcfg = st.session_state.graph_config
+        _r1 = _render_sim_tab(
+            sim_ver=f"E{n_evento}.1",
+            sim_dir=_dir1_b3,
+            sim_color_f=_gcfg["freq_color_sim1"],
+            sim_color_p=_gcfg["pot_color_sim1"],
+            pfx="b3_sim1",
+        )
 
     # Pestaña 3: Comparativa de Simulaciones
     with tab_sim_comp:
         st.subheader(f"Comparativa E{n_evento}.0 vs E{n_evento}.1")
-        dir0 = _dir0_b3
-        dir1 = _dir1_b3
-        ok0, ok1 = os.path.isdir(dir0), os.path.isdir(dir1)
+        _gcfg = st.session_state.graph_config
+        ok0, ok1 = os.path.isdir(_dir0_b3), os.path.isdir(_dir1_b3)
         if not ok0 or not ok1:
             missing = []
             if not ok0: missing.append(f"`E{n_evento}.0/Datos Curvas`")
             if not ok1: missing.append(f"`E{n_evento}.1/Datos Curvas`")
-            st.warning(f"Faltan carpetas de datos: {', '.join(missing)}. Ejecute `DatosCurvas_v3.py` en PowerFactory.")
+            st.warning(f"Faltan carpetas: {', '.join(missing)}. Ejecute `DatosCurvas_v3.py` en PowerFactory.")
         elif not _sel_file_b3:
-            st.info("ℹ️ Seleccione un archivo en el selector superior para ver la comparativa.")
+            st.info("ℹ️ Seleccione una unidad en la barra lateral.")
         else:
-            st.info("🔧 Gráfico comparativo en reconstrucción — se reimplementará usando la base estandarizada del Bloque 3.")
+            _d0 = _load_sim_tab_data(_dir0_b3, _sel_file_b3)
+            _d1 = _load_sim_tab_data(_dir1_b3, _sel_file_b3)
+            _any = _d0 or _d1
+            if not _any:
+                st.warning(f"No se encontró `{_sel_file_b3}` en ninguna carpeta de simulación.")
+            else:
+                pm_vc, rp_vc = _sim_kpis_and_pmax(_sel_unit, ev_path, n_evento)
+
+                auto_sc = st.toggle(
+                    "Auto-escala (Plotly)", value=st.session_state.b3_sync_y_auto,
+                    key="b3_simc_auto_toggle", on_change=_sync_rpf_y_axis, args=("y_auto", "b3_simc_auto_toggle"),
+                )
+                with st.expander("Opciones de Ejes"):
+                    _ccx1, _ccx2, _ccx3, _ccx4 = st.columns([1, 1, 1, 0.5])
+                    _sc_xmin = _ccx1.number_input("X Min (s)", value=_get_unit_cfg(ev_path, _sel_unit or "", "simcomp_xmin", -10.0), key="b3_simc_xmin")
+                    _sc_xmax = _ccx1.number_input("X Max (s)", value=_get_unit_cfg(ev_path, _sel_unit or "", "simcomp_xmax", 100.0), key="b3_simc_xmax")
+                    _sc_y1min = _ccx2.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key="b3_simc_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", "b3_simc_y_f_min"))
+                    _sc_y1max = _ccx2.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key="b3_simc_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", "b3_simc_y_f_max"))
+                    _sc_y2min = _ccx3.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key="b3_simc_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", "b3_simc_y_p_min"))
+                    _sc_y2max = _ccx3.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key="b3_simc_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", "b3_simc_y_p_max"))
+                    _rcb1, _rcb2 = _ccx4.columns(2)
+                    if _rcb1.button("🔄", key="reset_simc", help="Resetear límites"):
+                        _save_unit_cfg(ev_path, _sel_unit or "", "simcomp_xmin", -10.0)
+                        _save_unit_cfg(ev_path, _sel_unit or "", "simcomp_xmax", 100.0)
+                        _sync_session_scale_config(ev_path, _sel_unit or "")
+                        st.rerun()
+                    if _rcb2.button("💾", key="save_simc", help="Guardar escalado"):
+                        _save_unit_cfg(ev_path, _sel_unit or "", "simcomp_xmin", _sc_xmin)
+                        _save_unit_cfg(ev_path, _sel_unit or "", "simcomp_xmax", _sc_xmax)
+                        st.toast("Escalado comparativa guardado")
+
+                # Construir gráfico base (E.0 si existe, E.1 si no)
+                _base = _d0 or _d1
+                _base_ver = f"E{n_evento}.0" if _d0 else f"E{n_evento}.1"
+                _base_cf = _gcfg["freq_color_sim0"] if _d0 else _gcfg["freq_color_sim1"]
+                _base_cp = _gcfg["pot_color_sim0"] if _d0 else _gcfg["pot_color_sim1"]
+                _ts_b, _fs_b, _ps_b, _ = _base
+
+                fig_sc = create_dual_axis_timeseries(
+                    t_data=_ts_b, freq_data=_fs_b, pot_data=_ps_b,
+                    title=f"Comparativa Simulaciones — {_sel_file_b3}",
+                    freq_label=f"Frecuencia {_base_ver} (Hz)",
+                    pot_label=f"Potencia {_base_ver} (MW)",
+                    freq_color=_base_cf, pot_color=_base_cp,
+                    line_width=_gcfg["line_width"], template=_gcfg["template"],
+                    height=_gcfg["plot_height"], legend_position="bottom_center",
+                    x_range=None if auto_sc else [_sc_xmin, _sc_xmax],
+                    y1_range=None if auto_sc else [_sc_y1min, _sc_y1max],
+                    y2_range=None if auto_sc else [_sc_y2min, _sc_y2max],
+                )
+
+                # Overlay de la otra simulación
+                _overlay = _d1 if _d0 else _d0
+                _ov_ver = f"E{n_evento}.1" if _d0 and _d1 else None
+                if _d0 and _d1:
+                    _ts_ov, _fs_ov, _ps_ov, _ = _d1
+                    fig_sc.add_trace(go.Scatter(
+                        x=_ts_ov, y=_fs_ov, name=f"Frecuencia E{n_evento}.1 (Hz)",
+                        line=dict(color=_gcfg["freq_color_sim1"], dash="dash", width=_gcfg["line_width"]), yaxis="y",
+                    ))
+                    fig_sc.add_trace(go.Scatter(
+                        x=_ts_ov, y=_ps_ov, name=f"Potencia E{n_evento}.1 (MW)",
+                        line=dict(color=_gcfg["pot_color_sim1"], dash="dash", width=_gcfg["line_width"]), yaxis="y2",
+                    ))
+
+                fig_sc = add_reference_lines(
+                    fig_sc, t_fault_abs=0.0, t_eval_abs=_b3_dt, show_hhmmss=False,
+                    show_deadband=_gcfg["show_deadband"], eval_line_label=f"t₀+Δt ({_b3_dt} s)",
+                )
+                st.plotly_chart(fig_sc, use_container_width=True)
+
+                # Tabla comparativa de KPIs
+                _kpi_rows_sc = []
+                if _d0:
+                    _ts0, _fs0, _ps0, _ = _d0
+                    _k0 = _cndc_kpis(_ts0, _fs0, _ps0, pm_vc, rp_vc, _b3_dt)
+                    if _k0: _kpi_rows_sc.append({"Fuente": f"E{n_evento}.0 (CNDC)", **_k0})
+                if _d1:
+                    _ts1, _fs1, _ps1, _ = _d1
+                    _k1 = _cndc_kpis(_ts1, _fs1, _ps1, pm_vc, rp_vc, _b3_dt)
+                    if _k1: _kpi_rows_sc.append({"Fuente": f"E{n_evento}.1 (COBEE)", **_k1})
+                if _kpi_rows_sc:
+                    st.markdown("#### 📋 Comparativa de KPIs")
+                    _df_ksc = _df_safe(pd.DataFrame(_kpi_rows_sc))
+                    for _c in _df_ksc.columns:
+                        if _df_ksc[_c].dtype == object:
+                            _df_ksc[_c] = _df_ksc[_c].astype(str)
+                    st.dataframe(_df_ksc, hide_index=True, use_container_width=True)
 
 
 elif bloque_trabajo == "comparativa_real_simu":
@@ -4557,15 +4769,24 @@ elif bloque_trabajo == "comparativa_real_simu":
             "Auto-escala",
             value=st.session_state.b3_sync_y_auto,
             key="b4_val_auto",
-            on_change=None,
+            on_change=_sync_rpf_y_axis, args=("y_auto", "b4_val_auto"),
         )
         c1, c2, c3, c4 = st.columns([1, 1, 1, 0.5])
-        _xmin_v = c1.number_input("X Min", value=-10.0, key="b4_val_xmin")
-        _xmax_v = c1.number_input("X Max", value=100.0, key="b4_val_xmax")
-        _y1min_v = c2.number_input("Y1 Min", value=st.session_state.b3_sync_y_f_min, key="b4_val_y1min", on_change=_sync_rpf_y_axis, args=("y_f_min", "b4_val_y1min"))
-        _y1max_v = c2.number_input("Y1 Max", value=st.session_state.b3_sync_y_f_max, key="b4_val_y1max", on_change=_sync_rpf_y_axis, args=("y_f_max", "b4_val_y1max"))
-        _y2min_v = c3.number_input("Y2 Min", value=st.session_state.b3_sync_y_p_min, key="b4_val_y2min", on_change=_sync_rpf_y_axis, args=("y_p_min", "b4_val_y2min"))
-        _y2max_v = c3.number_input("Y2 Max", value=st.session_state.b3_sync_y_p_max, key="b4_val_y2max", on_change=_sync_rpf_y_axis, args=("y_p_max", "b4_val_y2max"))
+        _xmin_v = c1.number_input("X Min", value=float(_event_cfg.get("b5_xmin", -10.0)), key="b4_val_xmin")
+        _xmax_v = c1.number_input("X Max", value=float(_event_cfg.get("b5_xmax", 100.0)), key="b4_val_xmax")
+        _y1min_v = c2.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key="b4_val_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", "b4_val_y_f_min"))
+        _y1max_v = c2.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key="b4_val_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", "b4_val_y_f_max"))
+        _y2min_v = c3.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key="b4_val_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", "b4_val_y_p_min"))
+        _y2max_v = c3.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key="b4_val_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", "b4_val_y_p_max"))
+        _rb1, _rb2 = c4.columns(2)
+        if _rb1.button("🔄", key="reset_b5_scale", help="Resetear límites"):
+            _save_event_cfg(ev_path, "b5_xmin", -10.0)
+            _save_event_cfg(ev_path, "b5_xmax", 100.0)
+            st.rerun()
+        if _rb2.button("💾", key="save_b5_scale", help="Guardar X"):
+            _save_event_cfg(ev_path, "b5_xmin", _xmin_v)
+            _save_event_cfg(ev_path, "b5_xmax", _xmax_v)
+            st.toast("Escalado B5 guardado")
 
     st.markdown("---")
 
@@ -4608,77 +4829,139 @@ elif bloque_trabajo == "comparativa_real_simu":
                 y2_range=None if auto_v else [_y2min_v, _y2max_v] # type: ignore
             )
             
-            # Marcadores Reales
+            # Marcadores y KPIs — Datos Reales
             _pmax_map_v = _load_pmax_cargado(ev_path, n_evento)
-            _pm_v, _tk, _ = _get_pmax_from_cargado(_sel_unit, _pmax_map_v, _load_tech_map(LOC_NAMES_GEN_PATH))
+            _pm_v, _tk, _pm_fuente = _get_pmax_from_cargado(_sel_unit, _pmax_map_v, _load_tech_map(LOC_NAMES_GEN_PATH))
             _rp_v = _get_rp_default(_tk, LOC_NAMES_GEN_PATH) / 100.0
-            _kr = _cndc_kpis(tr_aligned, _fr_arr, _pr_arr, _pm_v, _rp_v, delta_t_cndc)
-            fig = add_kpi_markers(fig, t_fault_abs=0.0, kpi_dict=_kr, show_hhmmss=False, dt_seconds=delta_t_cndc)
-            fig = add_reference_lines(fig, t_fault_abs=0.0, t_eval_abs=delta_t_cndc, show_hhmmss=False)
+            _kr    = _cndc_kpis(tr_aligned, _fr_arr, _pr_arr, _pm_v, _rp_v, delta_t_cndc)
+            _rocof_r = _calcular_rocof(tr_aligned, _fr_arr, 3.0)
 
-            # ── Carga y Alineación Simulación ──────────────────────────────────
-            _kpi_rows = [{'Fuente': 'REAL', **_kr}] if _kr else []
+            if _kr:
+                fig = add_kpi_markers(
+                    fig, t_fault_abs=0.0, kpi_dict=_kr, show_hhmmss=False,
+                    dt_seconds=delta_t_cndc,
+                    freq_color=_gcfg["freq_color_real"], pot_color=_gcfg["pot_color_real"],
+                )
+            fig = add_reference_lines(
+                fig, t_fault_abs=0.0, t_eval_abs=delta_t_cndc, show_hhmmss=False,
+                show_deadband=_gcfg["show_deadband"],
+                eval_line_label=f"t₀+Δt ({delta_t_cndc} s)",
+            )
+
+            # ── Carga y Alineación Simulaciones ────────────────────────────────
+            _kpi_rows   = [{"Fuente": f"REAL ({src_real})", **_kr}] if _kr else []
+            _rocof_rows = {f"REAL ({src_real})": _rocof_r}
             _sim_for_error = []
+            _kpi_per_src  = {}   # fuente → (kpi_dict, rocof, pm_v)
 
             for s_ver in src_sim:
                 _s_dir = os.path.join(ev_path, s_ver, CARPETA_DATOS_CURVAS)
-                if not os.path.isdir(_s_dir): continue
+                if not os.path.isdir(_s_dir):
+                    continue
                 _sf_match = _buscar_archivo_unidad(_sel_unit, os.listdir(_s_dir))
-                if _sf_match:
-                    df_s = pd.read_excel(os.path.join(_s_dir, _sf_match), engine="calamine").dropna()
-                    tc_s, fc_s, pc_s = _robust_col_detect(df_s)
-                    
-                    ts_raw = pd.to_numeric(df_s[tc_s], errors='coerce').values
-                    ts_aligned = ts_raw - t_sim_falla
-                    
-                    fs_raw = pd.to_numeric(df_s[fc_s], errors='coerce').ffill().values
-                    fs_hz = fs_raw * 50.0 if np.nanmax(fs_raw) < 2.0 else fs_raw
-                    ps_mw = pd.to_numeric(df_s[pc_s], errors='coerce').ffill().values
-                    
-                    _color_f = _gcfg["freq_color_sim0"] if "0" in s_ver else _gcfg["freq_color_sim1"]
-                    _color_p = _gcfg["pot_color_sim0"] if "0" in s_ver else _gcfg["pot_color_sim1"]
-                    
-                    fig.add_trace(go.Scatter(x=ts_aligned, y=fs_hz, name=f"Frec. {s_ver}", line=dict(color=_color_f, dash="dash", width=2), yaxis="y"))
-                    fig.add_trace(go.Scatter(x=ts_aligned, y=ps_mw, name=f"Pot. {s_ver}", line=dict(color=_color_p, dash="dash", width=2), yaxis="y2"))
-                    
-                    _ks = _cndc_kpis(ts_aligned, fs_hz, ps_mw, _pm_v, _rp_v, delta_t_cndc)
-                    if _ks: _kpi_rows.append({'Fuente': s_ver, **_ks})
-                    _sim_for_error.append({'ver': s_ver, 't': ts_aligned, 'f': fs_hz, 'color': _color_f})
+                if not _sf_match:
+                    continue
+
+                df_s = pd.read_excel(os.path.join(_s_dir, _sf_match), engine="calamine").dropna()
+                tc_s, fc_s, pc_s = _robust_col_detect(df_s)
+
+                ts_raw  = pd.to_numeric(df_s[tc_s], errors="coerce").values
+                ts_al   = ts_raw - t_sim_falla
+                fs_raw  = pd.to_numeric(df_s[fc_s], errors="coerce").ffill().values
+                fs_hz   = fs_raw * 50.0 if np.nanmax(fs_raw) < 2.0 else fs_raw
+                ps_mw   = pd.to_numeric(df_s[pc_s], errors="coerce").ffill().values
+
+                _color_f = _gcfg["freq_color_sim0"] if "0" in s_ver else _gcfg["freq_color_sim1"]
+                _color_p = _gcfg["pot_color_sim0"]  if "0" in s_ver else _gcfg["pot_color_sim1"]
+
+                fig.add_trace(go.Scatter(
+                    x=ts_al, y=fs_hz, name=f"Frec. {s_ver}",
+                    line=dict(color=_color_f, dash="dash", width=_gcfg["line_width"]), yaxis="y",
+                ))
+                fig.add_trace(go.Scatter(
+                    x=ts_al, y=ps_mw, name=f"Pot. {s_ver}",
+                    line=dict(color=_color_p, dash="dash", width=_gcfg["line_width"]), yaxis="y2",
+                ))
+
+                _ks    = _cndc_kpis(ts_al, fs_hz, ps_mw, _pm_v, _rp_v, delta_t_cndc)
+                _roc_s = _calcular_rocof(ts_al, fs_hz, 3.0)
+                if _ks:
+                    _kpi_rows.append({"Fuente": s_ver, **_ks})
+                    _kpi_per_src[s_ver] = (_ks, _roc_s, float(_pm_v))
+                _rocof_rows[s_ver] = _roc_s
+                _sim_for_error.append({"ver": s_ver, "t": ts_al, "f": fs_hz, "color": _color_f})
 
             st.plotly_chart(fig, use_container_width=True)
-            
-            # --- Tablas de Métricas (Igual a Bloque 3) ---
+
+            # ── KPIs individuales por fuente (mismo estilo que Bloque 3) ───────
+            if _pm_fuente:
+                st.caption(f"✅ P_max desde `{_pm_fuente}` → **{float(_pm_v):.2f} MW** | Rp = {_rp_v*100:.1f}%")
+            else:
+                st.warning(f"⚠️ No se encontró Pmax para **{_sel_unit}** en datos_cargados ni loc_names_gen.")
+
+            st.markdown("---")
+            st.markdown(f"#### 📋 KPIs CNDC — Fuente Real: {src_real}")
+            _mostrar_tabla_cndc(_kr, float(_pm_v), delta_t_cndc,
+                                fuente=f"Real ({src_real})", rocof=_rocof_r)
+
+            for _sv, (_ks_i, _roc_i, _pm_i) in _kpi_per_src.items():
+                st.markdown(f"#### 📋 KPIs CNDC — Simulación {_sv}")
+                _mostrar_tabla_cndc(_ks_i, _pm_i, delta_t_cndc,
+                                    fuente=f"Simulación {_sv}", rocof=_roc_i)
+
+            # ── Tabla resumen comparativa (todas las fuentes) ──────────────────
             if _kpi_rows:
-                st.markdown("#### 📋 Comparativa de Desempeño CNDC")
+                st.markdown("#### 📊 Comparativa de Desempeño CNDC (todas las fuentes)")
                 _df_kpi_v = _df_safe(pd.DataFrame(_kpi_rows))
-                # Arrow/pyarrow falla si alguna columna object mezcla tipos (ej. int/bytes/str).
-                # Forzamos columnas 'object' a string para evitar el error.
                 for _c in _df_kpi_v.columns:
                     if _df_kpi_v[_c].dtype == object:
                         _df_kpi_v[_c] = _df_kpi_v[_c].astype(str)
                 st.dataframe(_df_kpi_v, hide_index=True, use_container_width=True)
 
-
-                # --- Curva de Error y Barras KPI ---
+                # --- Curva de Error de Seguimiento y Barras KPI ---------------
                 if _sim_for_error:
                     ce_col, bar_col = st.columns([1, 1])
                     with ce_col:
                         fig_err = go.Figure()
                         for s in _sim_for_error:
-                            # Interpolar real sobre simu para calcular error instantáneo
-                            f_real_interp = np.interp(s['t'], tr_aligned, _fr_arr)
-                            err = f_real_interp - s['f']
-                            fig_err.add_trace(go.Scatter(x=s['t'], y=err, name=f"Err {s['ver']}", line=dict(color=s['color'])))
-                        fig_err.update_layout(title="Error de Seguimiento (Hz)", height=350, template=_gcfg["template"])
+                            f_real_interp = np.interp(s["t"], tr_aligned, _fr_arr)
+                            err = f_real_interp - s["f"]
+                            fig_err.add_trace(go.Scatter(
+                                x=s["t"], y=err, name=f"Err {s['ver']}",
+                                line=dict(color=s["color"]),
+                            ))
+                        fig_err.update_layout(
+                            title="Error de Seguimiento de Frecuencia (Hz)",
+                            xaxis_title="Tiempo desde t₀ (s)",
+                            yaxis_title="Error (Hz)",
+                            height=350, template=_gcfg["template"],
+                        )
                         st.plotly_chart(fig_err, use_container_width=True)
-                    
+
                     with bar_col:
                         fig_bar = go.Figure()
-                        _fuentes = [r['Fuente'] for r in _kpi_rows]
-                        _dps = [r['dp_pct'] for r in _kpi_rows]
-                        fig_bar.add_trace(go.Bar(x=_fuentes, y=_dps, marker_color='#2ca02c', text=_dps, textposition='outside'))
-                        fig_bar.add_hline(y=1.5, line_dash="dash", line_color="red", annotation_text="Mínimo 1.5%")
-                        fig_bar.update_layout(title="Aporte Porcentual ΔP (%)", height=350, template=_gcfg["template"])
+                        _fuentes_bar = [r["Fuente"] for r in _kpi_rows]
+                        _dps_bar     = [r["dp_pct"] for r in _kpi_rows]
+                        _bar_colors  = [
+                            _gcfg["pot_color_real"] if "REAL" in f
+                            else (_gcfg["pot_color_sim0"] if "0" in f else _gcfg["pot_color_sim1"])
+                            for f in _fuentes_bar
+                        ]
+                        fig_bar.add_trace(go.Bar(
+                            x=_fuentes_bar, y=_dps_bar,
+                            marker_color=_bar_colors,
+                            text=[f"{v:.2f}%" for v in _dps_bar],
+                            textposition="outside",
+                        ))
+                        fig_bar.add_hline(
+                            y=1.5, line_dash="dash", line_color="red",
+                            annotation_text="Mínimo 1.5% (CNDC)",
+                        )
+                        fig_bar.update_layout(
+                            title="Aporte Porcentual ΔP (%) por Fuente",
+                            yaxis_title="ΔP%",
+                            height=350, template=_gcfg["template"],
+                        )
                         st.plotly_chart(fig_bar, use_container_width=True)
 else:
         st.info("ℹ️ Seleccione una unidad y verifique los archivos en las carpetas correspondientes.")
