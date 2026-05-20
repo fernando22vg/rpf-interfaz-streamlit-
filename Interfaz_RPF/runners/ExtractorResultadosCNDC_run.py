@@ -36,25 +36,11 @@ if not os.path.isdir(_base_ev_rpf):
     _base_ev_rpf = os.path.join(_RAIZ, _SEM, "Analisis_todos_los_eventos")
 
 try:
-    _evs = sorted(d for d in os.listdir(_base_ev_rpf) if os.path.isdir(os.path.join(_base_ev_rpf, d)))
-except FileNotFoundError as _e:
-    print(f"[ERROR] Carpeta de eventos no encontrada: {_base_ev_rpf}: {_e}")
-    sys.exit(1)
-
-print(f"[DEBUG] Eventos disponibles en {_base_ev_rpf}: {_evs}")
-print(f"[DEBUG] Buscando evento: {repr(_EV)}")
-
-try:
+    _evs    = sorted(d for d in os.listdir(_base_ev_rpf) if os.path.isdir(os.path.join(_base_ev_rpf, d)))
     _EV_IDX = str(_evs.index(_EV) + 1)
-except ValueError:
-    _ev_norm = _EV.strip().lower()
-    _match = next((i for i, d in enumerate(_evs) if d.strip().lower() == _ev_norm), None)
-    if _match is None:
-        print(f"[ERROR] Evento '{_EV}' no encontrado en {_base_ev_rpf}. Disponibles: {_evs}")
-        sys.exit(1)
-    _EV = _evs[_match]
-    _EV_IDX = str(_match + 1)
-    print(f"[INFO] Coincidencia aproximada: '{_EV}' → índice {_EV_IDX}")
+except (FileNotFoundError, ValueError) as _e:
+    print(f"[ERROR] Evento '{_EV}' no encontrado en {_base_ev_rpf}: {_e}")
+    sys.exit(1)
 
 # ── Monkey-patch input() ──────────────────────────────────────────────────────
 _elegir_idx_count = [0]
@@ -83,7 +69,7 @@ def _auto_input(prompt=""):
 builtins.input = _auto_input
 
 # ── Leer el script original y parchear las constantes ────────────────────────
-_script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+_script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "ExtractorResultadosCNDC.py")
 
 if not os.path.isfile(_script_path):
