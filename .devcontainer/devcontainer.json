@@ -1,12 +1,11 @@
 {
-  "name": "Python 3",
-  // Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-  "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
+  "name": "Interfaz Analisis RPF",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm",
   "customizations": {
     "codespaces": {
       "openFiles": [
         "README.md",
-        "ProgramasLimpio/interfaz_analisis_RPF.py"
+        "Interfaz_RPF/interfaz_analisis_RPF.py"
       ]
     },
     "vscode": {
@@ -17,13 +16,13 @@
       ]
     }
   },
-  "updateContentCommand": "[ -f packages.txt ] && sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y <packages.txt; [ -f requirements.txt ] && pip3 install --user -r requirements.txt; pip3 install --user streamlit; echo '✅ Packages installed and Requirements met'",
+  "updateContentCommand": "[ -f Interfaz_RPF/requirements.txt ] && pip3 install --user -r Interfaz_RPF/requirements.txt; echo '✅ Dependencias instaladas'",
   "postAttachCommand": {
-    "server": "streamlit run ProgramasLimpio/interfaz_analisis_RPF.py --server.enableCORS false --server.enableXsrfProtection false"
+    "server": "streamlit run Interfaz_RPF/interfaz_analisis_RPF.py --server.enableCORS false --server.enableXsrfProtection false"
   },
   "portsAttributes": {
     "8501": {
-      "label": "Application",
+      "label": "Interfaz RPF",
       "onAutoForward": "openPreview"
     }
   },
