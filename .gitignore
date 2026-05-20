@@ -1,5 +1,6 @@
 # ============================================================
-# REPO: rpf-interfaz-streamlit  — solo interfaz Streamlit RPF
+# REPO: rpf-interfaz-streamlit
+# Carpeta de app: Interfaz_RPF/
 # ============================================================
 
 # --- Secretos y credenciales - NUNCA subir ---
@@ -12,54 +13,35 @@ claude-mem/
 demo-ai-assistant/
 obsidian-vault/
 
-# --- Carpetas NO relacionadas con la app Streamlit ---
+# --- Carpetas NO relacionadas con la app ---
 mejoras/
 Practica/
 fmi-getting-started/
+ProgramasLimpio/
 
-# --- Scripts PowerFactory (solo uso local, NO subir) ---
-ProgramasLimpio/CargaCondIniciales_PF.py
-ProgramasLimpio/CargaCondIniciales_PF_run.py
-ProgramasLimpio/CondInicialesPF.py
-ProgramasLimpio/CondInicialesPF_run.py
-ProgramasLimpio/ExtFLujos2daO.py
-ProgramasLimpio/ExtractorDSL_Reivax.py
-ProgramasLimpio/ExtractorDSLEcuaciones.py
-ProgramasLimpio/ComparativaREAL_SIMU_RMS.py
-ProgramasLimpio/Carga_p_REIVAX.py
-ProgramasLimpio/Programas_1_uso_modelo/
-ProgramasLimpio/Programas_graficas/
-ProgramasLimpio/app/
-ProgramasLimpio/core/
+# --- Scripts PowerFactory en Interfaz_RPF (solo uso local, NO subir) ---
+Interfaz_RPF/CargaCondIniciales_PF.py
+Interfaz_RPF/CargaCondIniciales_PF_run.py
+Interfaz_RPF/CondInicialesPF.py
+Interfaz_RPF/CondInicialesPF_run.py
+Interfaz_RPF/ExtFLujos2daO.py
+Interfaz_RPF/ExtFLujos2daO_run.py
+Interfaz_RPF/Programas_1_uso_modelo/
 
 # --- Runners PowerFactory (solo local) ---
-ProgramasLimpio/runners/CargaCondIniciales_PF_run.py
-ProgramasLimpio/runners/CondInicialesPF_run.py
-ProgramasLimpio/runners/ExtFLujos2daO_run.py
-ProgramasLimpio/runners/DatsoGENBUSLNE_run.py
-ProgramasLimpio/runners/loc_namesGEN_run.py
-ProgramasLimpio/runners/loc_namesLineas_run.py
-ProgramasLimpio/runners/loc_names_xfo_run.py
-ProgramasLimpio/runners/InventarioShunts_PF_run.py
-ProgramasLimpio/runners/MapeoRetirosSTI_run.py
+Interfaz_RPF/runners/CargaCondIniciales_PF_run.py
+Interfaz_RPF/runners/CondInicialesPF_run.py
+Interfaz_RPF/runners/ExtFLujos2daO_run.py
+Interfaz_RPF/runners/DatsoGENBUSLNE_run.py
+Interfaz_RPF/runners/loc_namesGEN_run.py
+Interfaz_RPF/runners/loc_namesLineas_run.py
+Interfaz_RPF/runners/loc_names_xfo_run.py
+Interfaz_RPF/runners/InventarioShunts_PF_run.py
+Interfaz_RPF/runners/MapeoRetirosSTI_run.py
 
-# --- Docs de deploy internos ---
-ProgramasLimpio/00_*.txt
-ProgramasLimpio/00_*.md
-ProgramasLimpio/COMANDOS_*.txt
-ProgramasLimpio/DEPLOYMENT_*.md
-ProgramasLimpio/DESPLIEGUE_*.md
-ProgramasLimpio/DIGSILENT_*.md
-ProgramasLimpio/FIX_*.md
-ProgramasLimpio/IMPLEMENTATION_*.txt
-ProgramasLimpio/LISTA_*.md
-ProgramasLimpio/QUICKSTART.txt
-ProgramasLimpio/README_GRAFICAS.md
-ProgramasLimpio/REQUISITOS_*.md
-ProgramasLimpio/SHAREPOINT_UPLOAD_GUIDE.md
-ProgramasLimpio/config_deployment.py
-ProgramasLimpio/deployment_checklist.py
-ProgramasLimpio/setup_deployment.py
+# --- Datos locales grandes ---
+Interfaz_RPF/Datos_Frecuencias/*.csv
+Interfaz_RPF/Datos_Frecuencias/*.xlsx
 
 # --- Archivos temporales y de compilación ---
 compile_err.txt
@@ -84,10 +66,6 @@ ENV/
 *.swp
 .DS_Store
 .python-version
-
-# --- Datos locales grandes ---
-ProgramasLimpio/Datos_Frecuencias/*.csv
-ProgramasLimpio/Datos_Frecuencias/*.xlsx
 
 # --- Archivos temporales ---
 *.tmp
