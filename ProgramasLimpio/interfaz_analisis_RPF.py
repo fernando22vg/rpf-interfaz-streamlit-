@@ -3437,6 +3437,10 @@ elif bloque_trabajo == "analisis_datos":
                         st.session_state.b2_sc_last_uid = _b2sc_uid
                         st.session_state.b2_sc_t_falla = _t_default_b2
 
+                    # Si se solicitó reset al valor auto, guardamos en clave auxiliar ANTES de crear el widget
+                    if st.session_state.pop("_b2sc_reset_auto", False):
+                        _t_default_b2 = _t_auto_b2
+
                     _cin1, _cin2, _cbt = st.columns([3, 1, 1])
                     _t_input_b2 = _cin1.number_input(
                         "t₀ inicio de falla [s]",
@@ -3450,7 +3454,8 @@ elif bloque_trabajo == "analisis_datos":
                     _idx_falla_b2 = int(np.argmin(np.abs(t_norm.values - _t_input_b2)))
                     if _cin2.button("↩ Auto", key="reset_b2sc_t0",
                                     help=f"Restaurar al tiempo auto-detectado ({_t_auto_b2:.1f} s)"):
-                        st.session_state.b2_sc_t_falla = _t_auto_b2
+                        # Usamos clave auxiliar para pasar el valor al siguiente rerun sin tocar la key del widget
+                        st.session_state["_b2sc_reset_auto"] = True
                         st.rerun()
                     if _cbt.button("💾 Guardar", key="save_idx_scada",
                                    help="Guardar t₀ para esta unidad y evento"):
