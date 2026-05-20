@@ -1,36 +1,90 @@
-# Secretos y credenciales - NUNCA subir
+# ============================================================
+# REPO: rpf-interfaz-streamlit  — solo interfaz Streamlit RPF
+# ============================================================
+
+# --- Secretos y credenciales - NUNCA subir ---
 .streamlit/secrets.toml
 secrets.toml
 
-# Claude Code
+# --- Claude Code / IA ---
 .claude/
+claude-mem/
+demo-ai-assistant/
+obsidian-vault/
 
-# Archivos temporales y de compilación
+# --- Carpetas NO relacionadas con la app Streamlit ---
+mejoras/
+Practica/
+fmi-getting-started/
+
+# --- Scripts PowerFactory (solo uso local) ---
+ProgramasLimpio/CargaCondIniciales_PF.py
+ProgramasLimpio/CargaCondIniciales_PF_run.py
+ProgramasLimpio/CondInicialesPF.py
+ProgramasLimpio/CondInicialesPF_run.py
+ProgramasLimpio/ExtFLujos2daO.py
+ProgramasLimpio/ExtFLujos2daO_run.py
+ProgramasLimpio/ExtractorDSL_Reivax.py
+ProgramasLimpio/ExtractorDSLEcuaciones.py
+ProgramasLimpio/ExtractorResultadosCNDC.py
+ProgramasLimpio/ExtractorResultadosCNDC_run.py
+ProgramasLimpio/OrdenadorDatosEvento.py
+ProgramasLimpio/OrdenadorDatosEvento_run.py
+ProgramasLimpio/ComparativaREAL_SIMU_RMS.py
+ProgramasLimpio/Carga_p_REIVAX.py
+ProgramasLimpio/Programas_1_uso_modelo/
+ProgramasLimpio/Programas_graficas/
+ProgramasLimpio/runners/
+ProgramasLimpio/app/
+ProgramasLimpio/core/
+
+# --- Docs de deploy internos ---
+ProgramasLimpio/00_*.txt
+ProgramasLimpio/00_*.md
+ProgramasLimpio/COMANDOS_*.txt
+ProgramasLimpio/DEPLOYMENT_*.md
+ProgramasLimpio/DESPLIEGUE_*.md
+ProgramasLimpio/DIGSILENT_*.md
+ProgramasLimpio/FIX_*.md
+ProgramasLimpio/IMPLEMENTATION_*.txt
+ProgramasLimpio/LISTA_*.md
+ProgramasLimpio/QUICKSTART.txt
+ProgramasLimpio/README_GRAFICAS.md
+ProgramasLimpio/REQUISITOS_*.md
+ProgramasLimpio/SHAREPOINT_UPLOAD_GUIDE.md
+ProgramasLimpio/config_deployment.py
+ProgramasLimpio/deployment_checklist.py
+ProgramasLimpio/setup_deployment.py
+
+# --- Archivos temporales y de compilación ---
 compile_err.txt
-
-# Manifiestos de sync locales
 **/.sync_manifest.json
 **/sync_config.json
 
-# Python cache
+# --- Python cache ---
 __pycache__/
 *.py[cod]
 *.so
 .Python
 
-# Entornos virtuales
+# --- Entornos virtuales ---
 venv/
 env/
 ENV/
 .venv/
 
-# IDE
+# --- IDE ---
 .vscode/
 .idea/
 *.swp
 .DS_Store
+.python-version
 
-# Archivos temporales
+# --- Datos locales grandes ---
+ProgramasLimpio/Datos_Frecuencias/*.csv
+ProgramasLimpio/Datos_Frecuencias/*.xlsx
+
+# --- Archivos temporales ---
 *.tmp
 *.bak
 *.log
