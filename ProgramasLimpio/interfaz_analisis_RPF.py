@@ -721,7 +721,11 @@ def _cndc_kpis(t_arr, freq_arr, pot_arr, p_max, rp, delta_t, f_nom=50.0):
     """
     if len(freq_arr) == 0 or p_max <= 0:
         return None
-    idx_t0 = int(np.argmin(np.abs(t_arr)))
+    # nanargmin: ignora NaN en t_arr (pueden quedar por filas no numéricas en la fuente)
+    _abs_t = np.abs(t_arr.astype(float))
+    if np.all(np.isnan(_abs_t)):
+        return None
+    idx_t0 = int(np.nanargmin(_abs_t))
     f0 = float(freq_arr[idx_t0])
     p0 = float(pot_arr[idx_t0])
     mask_post = t_arr >= 0
@@ -4333,9 +4337,13 @@ elif bloque_trabajo == "analisis_simulacion":
                 if _fc_ad:
                     _fq_ad = pd.to_numeric(_df_ad[_fc_ad[0]], errors='coerce').ffill().bfill().values
                     _fq_ad = _fq_ad * 50.0 if np.nanmax(_fq_ad) < 2.0 else _fq_ad
-                    _idx_ad = _detectar_inicio_falla(_fq_ad)
-                    if _idx_ad > 0 and _idx_ad < len(_t_ad):
-                        _t0_autodet = float(_t_ad[_idx_ad])
+                    # Filtrar filas con tiempo NaN antes de detectar inicio
+                    _valid_ad = ~np.isnan(_t_ad)
+                    _t_ad_v  = _t_ad[_valid_ad]
+                    _fq_ad_v = _fq_ad[_valid_ad]
+                    _idx_ad = _detectar_inicio_falla(_fq_ad_v)
+                    if _idx_ad > 0 and _idx_ad < len(_t_ad_v):
+                        _t0_autodet = float(_t_ad_v[_idx_ad])
             except Exception:
                 pass
     # Resetear t₀ cuando cambia el evento o la unidad para que el default se re-aplique
@@ -4421,6 +4429,13 @@ elif bloque_trabajo == "analisis_simulacion":
         fs_raw = pd.to_numeric(df[fc], errors='coerce').ffill().values
         fs_hz  = fs_raw * 50.0 if np.nanmax(fs_raw) < 2.0 else fs_raw
         ps_mw  = pd.to_numeric(df[pc], errors='coerce').ffill().values
+        # Eliminar filas donde el tiempo es NaN (filas de cabecera/unidades que
+        # pasaron dropna() pero no son numéricas → pd.to_numeric las vuelve NaN).
+        # Sin esto, argmin devuelve el índice del NaN y f₀/P₀ quedan como nan.
+        _valid_t = ~np.isnan(ts_raw)
+        ts_raw = ts_raw[_valid_t]
+        fs_hz  = fs_hz[_valid_t]
+        ps_mw  = ps_mw[_valid_t]
         ts_aligned = ts_raw - _b3_t_falla
         return ts_aligned, fs_hz, ps_mw, df
 
