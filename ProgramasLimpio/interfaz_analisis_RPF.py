@@ -29,15 +29,23 @@ import plotly.graph_objects as go
 # Detecta si la app corre en Streamlit Cloud (sin acceso a rutas Windows locales)
 IS_CLOUD = not os.path.isdir(r"C:\Datos del CNDC")
 
-if IS_CLOUD:
-    try:
-        import sharepoint_client as _sp
-        _SP_OK = True
-    except Exception as _sp_err:
-        _SP_OK = False
-        _SP_ERR_MSG = str(_sp_err)
-else:
+# SharePoint disponible tanto en cloud como en local (para sincronización bidireccional)
+try:
+    import sharepoint_client as _sp
+    _SP_OK = True
+except Exception as _sp_err:
     _SP_OK = False
+    _SP_ERR_MSG = str(_sp_err)
+
+# Watcher de sincronización local → SharePoint (solo modo local)
+if not IS_CLOUD:
+    try:
+        from sync_watcher import get_watcher as _get_watcher
+        _WATCHER_MOD_OK = True
+    except ImportError:
+        _WATCHER_MOD_OK = False
+else:
+    _WATCHER_MOD_OK = False
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MÓDULOS DE GRÁFICAS ESTÁNDARES
@@ -490,8 +498,8 @@ def _save_global_unit_cfg(unit, key, value):
             json.dump(cfg, f, ensure_ascii=False, indent=2)
     except Exception:
         return False
-    # En cloud: subir a SharePoint
-    if IS_CLOUD and _SP_OK:
+    # Subir a SharePoint siempre que esté disponible (cloud Y local)
+    if _SP_OK:
         try:
             sp_folder = _sp.sp_global_cfg_folder()
             _sp.upload_json(sp_folder, "unit_global_config.json", cfg)
@@ -538,10 +546,16 @@ def _save_event_cfg(ev_path, key, value):
     except Exception as e:
         st.error(f"Error al guardar configuración del evento: {e}")
         return False
-    # En cloud: subir a SharePoint para persistencia entre sesiones
-    if IS_CLOUD and _SP_OK:
+    # Subir a SharePoint siempre que esté disponible (cloud Y local)
+    if _SP_OK:
         try:
-            sp_folder = _sp.sp_folder_from_local(ev_path)
+            if IS_CLOUD:
+                sp_folder = _sp.sp_folder_from_local(ev_path)
+            else:
+                # Modo local: mapear ruta Windows → SP usando RAIZ_RPF
+                _raiz_local = st.session_state.get("raiz_rpf_local", "")
+                sp_folder = (_sp.local_path_to_sp_folder(ev_path, _raiz_local)
+                             if _raiz_local else _sp.sp_folder_from_local(ev_path))
             _sp.upload_json(sp_folder, "event_config.json", cfg)
         except Exception:
             pass  # no bloquear por error de upload
@@ -1292,6 +1306,7 @@ with st.sidebar:
                     n_evento = m_ev.group(1) if m_ev else st.session_state.evento_global.split()[-1]
                     st.session_state.ev_path_global = ev_path
                     st.session_state.n_evento_global = n_evento
+                    st.session_state.raiz_rpf_local  = RAIZ   # para _save_event_cfg
                     if st.session_state.get("last_n_evento_global") != n_evento:
                         st.session_state.b3_kpi_zip_bytes = None
                         st.session_state.b3_kpi_excel_bytes = None
@@ -1308,7 +1323,35 @@ with st.sidebar:
         else:
             st.info("← Seleccione semestre primero")
             st.session_state.evento_global = None
-    
+
+        # ── Sincronización automática local → SharePoint ──────────────────────
+        if _SP_OK and _WATCHER_MOD_OK and os.path.isdir(RAIZ):
+            st.markdown("---")
+            _w = _get_watcher()
+            if not _w.is_running:
+                if st.button("▶ Iniciar sync automático con SharePoint",
+                             key="btn_start_sync",
+                             help="Detecta cambios en archivos y los sube a SharePoint"):
+                    ok = _w.start(RAIZ)
+                    if ok:
+                        st.toast("✅ Sync iniciado", icon="🔄")
+                    else:
+                        st.warning("⚠️ No se pudo iniciar. Instale: `pip install watchdog`")
+                        st.caption("pip install watchdog")
+            else:
+                _ws = _w.stats
+                _pending_lbl = f" ({_ws['pending']} pendientes)" if _ws["pending"] else ""
+                st.success(f"🔄 Sync activo{_pending_lbl}")
+                if _ws["last_file"]:
+                    st.caption(f"Último: {_ws['last_file']} a las {_ws['last_ts']}")
+                st.caption(f"↑ {_ws['uploaded']} archivos  |  ⚠ {_ws['errors']} errores")
+                if st.button("⏹ Detener sync", key="btn_stop_sync"):
+                    _w.stop()
+                    st.rerun()
+        elif not _SP_OK and not IS_CLOUD:
+            st.markdown("---")
+            st.caption("☁ SharePoint no disponible — sync desactivado")
+
     # Validación de flujo: avisar si falta evento para bloques 1-5
     if bloque_trabajo != "modelo_base" and not st.session_state.evento_global:
         st.warning("⚠️ **Atención:** Para acceder a los bloques 1 al 5, primero debe seleccionar un evento arriba.")

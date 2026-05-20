@@ -235,6 +235,81 @@ def sp_folder_from_local(local_path: str) -> str:
     return f"{raiz}/{rel}"
 
 
+def local_path_to_sp_folder(local_path: str, raiz_local: str) -> str:
+    """
+    Mapea una ruta local (bajo raiz_local = RAIZ_RPF) a su carpeta SP equivalente.
+    Funciona en modo local (no IS_CLOUD).
+
+    Ejemplo:
+      local_path  = C:\\Datos del CNDC\\01_INFO CNDC_RPF\\2025 sem1\\Ev 1\\E1.0\\Datos Curvas
+      raiz_local  = C:\\Datos del CNDC\\01_INFO CNDC_RPF
+      → {sp_root}/01_INFO CNDC_RPF/2025 sem1/Ev 1/E1.0/Datos Curvas
+    """
+    p = Path(local_path)
+    raiz = Path(raiz_local)
+    # Si es un archivo, tomar el directorio padre
+    folder = p.parent if p.is_file() else p
+    try:
+        rel = folder.relative_to(raiz).as_posix()
+    except ValueError:
+        # Si no está bajo raiz_local, usar solo el nombre de la carpeta
+        rel = folder.name
+    _, _, raiz_sp = _raiz_path()
+    return f"{raiz_sp}/{rel}" if rel != "." else raiz_sp
+
+
+def upload_file(local_path: str, sp_folder: str):
+    """
+    Sube un archivo local a una carpeta SharePoint (crea o sobreescribe).
+    sp_folder: server-relative path de la carpeta destino en SP.
+    """
+    p = Path(local_path)
+    if not p.is_file():
+        raise FileNotFoundError(f"No existe: {local_path}")
+    session, site_url, _ = _get_session()
+    with open(p, "rb") as fh:
+        content = fh.read()
+    _upload_sp_file(session, site_url, sp_folder, p.name, content)
+
+
+def ensure_sp_folder(sp_folder: str):
+    """
+    Garantiza que una carpeta exista en SharePoint, creando todos los niveles
+    necesarios. Ignora si ya existe.
+    """
+    session, site_url, _ = _get_session()
+    # Verificar si existe
+    try:
+        _sp_api(session, site_url,
+                f"web/GetFolderByServerRelativeUrl('{_sp_path(sp_folder)}')")
+        return  # ya existe
+    except Exception:
+        pass
+
+    # Crear nivel a nivel
+    parts = sp_folder.strip("/").split("/")
+    for i in range(1, len(parts) + 1):
+        partial = "/" + "/".join(parts[:i])
+        try:
+            _sp_api(session, site_url,
+                    f"web/GetFolderByServerRelativeUrl('{_sp_path(partial)}')")
+        except Exception:
+            # Crear esta carpeta
+            digest = _get_request_digest(session, site_url)
+            parent = "/" + "/".join(parts[:i - 1]) if i > 1 else "/"
+            name   = parts[i - 1]
+            url    = (f"{site_url}/_api/web"
+                      f"/GetFolderByServerRelativeUrl('{_sp_path(parent)}')"
+                      f"/Folders/add(url='{name.replace(chr(39), chr(39)*2)}')")
+            try:
+                session.post(url, data=b"",
+                             headers={**_HEADERS_API, "X-RequestDigest": digest,
+                                      "Content-Type": "application/octet-stream"},
+                             timeout=20)
+            except Exception:
+                pass  # best-effort
+
+
 def sp_global_cfg_folder() -> str:
     """Ruta SP de la carpeta donde se guarda unit_global_config.json."""
     _, _, root_path = _get_session()
