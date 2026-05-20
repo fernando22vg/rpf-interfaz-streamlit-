@@ -31,6 +31,8 @@ except (FileNotFoundError, ValueError) as _e:
     sys.exit(1)
 
 _base_ev_rpf = os.path.join(_RAIZ_RPF, _SEM, "Análisis_todos_los_eventos")
+if not os.path.isdir(_base_ev_rpf):
+    _base_ev_rpf = os.path.join(_RAIZ_RPF, _SEM, "Analisis_todos_los_eventos")
 try:
     _evs = sorted(d for d in os.listdir(_base_ev_rpf) if os.path.isdir(os.path.join(_base_ev_rpf, d)))
 except FileNotFoundError as _e:

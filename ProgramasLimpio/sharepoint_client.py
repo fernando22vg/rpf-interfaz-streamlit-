@@ -158,6 +158,89 @@ def _list_files(session, site_url: str, sp_path: str) -> list:
     return data.get("value", [])
 
 
+# ── Escritura en SharePoint ───────────────────────────────────────────────────
+
+def _get_request_digest(session, site_url: str) -> str:
+    """Obtiene el FormDigest necesario para operaciones de escritura."""
+    r = session.post(
+        f"{site_url}/_api/contextinfo",
+        headers={**_HEADERS_API, "Content-Length": "0"},
+        timeout=20,
+    )
+    r.raise_for_status()
+    return r.json().get("FormDigestValue", "")
+
+
+def _upload_sp_file(session, site_url: str, sp_folder: str, filename: str, content: bytes):
+    """Sube (crea o sobreescribe) un archivo en una carpeta SharePoint."""
+    digest = _get_request_digest(session, site_url)
+    url = (
+        f"{site_url}/_api/web"
+        f"/GetFolderByServerRelativeUrl('{_sp_path(sp_folder)}')"
+        f"/Files/add(overwrite=true,url='{filename.replace(chr(39), chr(39)*2)}')"
+    )
+    r = session.post(
+        url,
+        data=content,
+        headers={
+            **_HEADERS_API,
+            "X-RequestDigest": digest,
+            "Content-Type": "application/octet-stream",
+        },
+        timeout=30,
+    )
+    r.raise_for_status()
+
+
+def upload_json(sp_folder: str, filename: str, data: dict):
+    """
+    Sube un dict como JSON a SharePoint.
+    sp_folder: ruta relativa al servidor (server-relative path)
+    """
+    import json as _json
+    session, site_url, _ = _get_session()
+    content = _json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+    _upload_sp_file(session, site_url, sp_folder, filename, content)
+
+
+def download_json(sp_file_path: str) -> dict:
+    """
+    Descarga un archivo JSON desde SharePoint y lo devuelve como dict.
+    Devuelve {} si no existe o hay error.
+    """
+    import json as _json
+    session, site_url, _ = _get_session()
+    url = (
+        f"{site_url}/_api/web"
+        f"/GetFileByServerRelativeUrl('{_sp_path(sp_file_path)}')/$value"
+    )
+    try:
+        r = session.get(url, headers=_HEADERS_API, timeout=20)
+        if r.status_code == 404:
+            return {}
+        r.raise_for_status()
+        return _json.loads(r.content.decode("utf-8"))
+    except Exception:
+        return {}
+
+
+def sp_folder_from_local(local_path: str) -> str:
+    """
+    Convierte una ruta local bajo TMP_RAIZ a su equivalente en SharePoint.
+    Ejemplo: /tmp/rpf_sharepoint/2025 sem1/Análisis.../Evento 1
+           → {sp_root}/01_INFO CNDC_RPF/2025 sem1/Análisis.../Evento 1
+    """
+    rel = Path(local_path).relative_to(_TMP_ROOT).as_posix()
+    _, _, raiz = _raiz_path()   # raiz = {sp_root}/01_INFO CNDC_RPF
+    return f"{raiz}/{rel}"
+
+
+def sp_global_cfg_folder() -> str:
+    """Ruta SP de la carpeta donde se guarda unit_global_config.json."""
+    _, _, root_path = _get_session()
+    return f"{root_path}/{_LOC_FOLDER}"
+
+
 # ── API pública ───────────────────────────────────────────────────────────────
 
 def _raiz_path() -> tuple:
@@ -244,17 +327,28 @@ def descargar_evento(semestre: str, evento: str, progress_cb=None) -> Path:
 
 
 _PAT_FALLA = re.compile(
-    r'FALLA\s+(\d{2})\.(\d{2})\.(\d{2,4})\s+HRS\s*(\d{2})\.(\d{2})',
+    r'FALLA\s+(\d{2})[.\-](\d{2})[.\-](\d{2,4})\s+HRS\s*(\d{2})\.(\d{2})',
+    re.IGNORECASE,
+)
+
+# Formato alternativo: Datos_DDMMYY_HHMM_*.xlsx  (p.ej. Datos_190325_0506_CCERI50.xlsx)
+_PAT_DATOS = re.compile(
+    r'Datos_(\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})_.*\.xlsx',
     re.IGNORECASE,
 )
 
 
 def descargar_scada_falla(fecha_evento) -> Path:
     """
-    Busca y descarga desde SharePoint la carpeta FALLA que corresponde a
-    fecha_evento: 02_DATOS CNDC_RPF/{año}/FALLA DD.MM.YYYY HRS HH.MM/
+    Busca y descarga desde SharePoint la carpeta/archivo SCADA para fecha_evento.
+    Soporta dos estructuras en 02_DATOS CNDC_RPF/{año}/:
+      A) Carpeta  FALLA DD.MM.YYYY HRS HH.MM/  (contiene archivo '1 seg.*')
+      B) Archivo  Datos_DDMMYY_HHMM_*.xlsx     (mismo contenido que '1 seg', nombre distinto)
 
-    Devuelve la ruta local bajo TMP_DATOS (misma estructura que RAIZ_DATOS local).
+    En el caso B crea una carpeta FALLA temporal y guarda el archivo con
+    nombre '1 seg.*.xlsx' para que OrdenadorDatosEvento lo encuentre.
+
+    Devuelve la ruta local de la carpeta FALLA (real o simulada).
     """
     session, site_url, root_path = _get_session()
     yr4 = fecha_evento.year
@@ -264,9 +358,10 @@ def descargar_scada_falla(fecha_evento) -> Path:
 
     datos_base = f"{root_path}/{_DATOS_FOLDER}"
 
-    def _buscar_en_year(year_sp_path):
+    # ── Buscar carpeta FALLA en un nivel dado ─────────────────────────────────
+    def _buscar_falla_en(sp_path):
         try:
-            folders = _list_folders(session, site_url, year_sp_path)
+            folders = _list_folders(session, site_url, sp_path)
         except Exception:
             return None
         candidatos = []
@@ -285,37 +380,79 @@ def descargar_scada_falla(fecha_evento) -> Path:
         candidatos.sort()
         return candidatos[0][1]
 
-    # Intentar con el año exacto primero
-    falla_name = _buscar_en_year(f"{datos_base}/{yr4}")
-    used_yr4 = yr4
-
-    # Fallback: recorrer todos los años disponibles
-    if falla_name is None:
+    # ── Buscar archivo Datos_DDMMYY_HHMM_*.xlsx en un nivel dado ─────────────
+    def _buscar_datos_en(sp_path):
         try:
-            top = _list_folders(session, site_url, datos_base)
-        except Exception as exc:
-            raise FileNotFoundError(
-                f"No se pudo acceder a '{_DATOS_FOLDER}' en SharePoint: {exc}"
-            ) from exc
-        for tf in sorted(top, key=lambda f: f["Name"]):
-            if tf["Name"].isdigit() and int(tf["Name"]) != yr4:
-                candidate = _buscar_en_year(f"{datos_base}/{tf['Name']}")
-                if candidate:
-                    falla_name = candidate
-                    used_yr4 = int(tf["Name"])
-                    break
+            files = _list_files(session, site_url, sp_path)
+        except Exception:
+            return None
+        candidatos = []
+        for f in files:
+            m = _PAT_DATOS.match(f["Name"])
+            if not m:
+                continue
+            fd_s, fm_s, fy_s, fh_s, fmi_s = m.groups()
+            fd, fm, fh, fmi = int(fd_s), int(fm_s), int(fh_s), int(fmi_s)
+            fy = int(fy_s) % 100
+            if fd == dd and fm == mm and fy == yr2:
+                diff = abs(fh * 60 + fmi - hh * 60 - mi)
+                candidatos.append((diff, fh, fmi, f["Name"], f["ServerRelativeUrl"]))
+        if not candidatos:
+            return None
+        candidatos.sort()
+        return candidatos[0]  # (diff, fh, fmi, name, srv_url)
 
-    if falla_name is None:
+    # ── Listar años disponibles en datos_base ─────────────────────────────────
+    try:
+        top_folders = _list_folders(session, site_url, datos_base)
+    except Exception as exc:
         raise FileNotFoundError(
-            f"No se encontró carpeta FALLA para {fecha_evento.strftime('%d.%m.%Y')} "
-            f"bajo SharePoint/{_DATOS_FOLDER}"
-        )
+            f"No se pudo acceder a '{_DATOS_FOLDER}' en SharePoint: {exc}"
+        ) from exc
+    year_names = sorted(
+        (f["Name"] for f in top_folders if f["Name"].isdigit()),
+        key=lambda n: abs(int(n) - yr4),   # ordenar por cercanía al año del evento
+    )
 
-    falla_sp_path = f"{datos_base}/{used_yr4}/{falla_name}"
-    local_path = TMP_DATOS / str(used_yr4) / falla_name
-    if not local_path.exists():
-        _download_tree(session, site_url, falla_sp_path, local_path)
-    return local_path
+    # ── Intentar año exacto primero, luego otros años ─────────────────────────
+    search_years = [str(yr4)] + [y for y in year_names if y != str(yr4)]
+
+    for year_str in search_years:
+        sp_year = f"{datos_base}/{year_str}"
+
+        # Estrategia A: carpeta FALLA
+        falla_name = _buscar_falla_en(sp_year)
+        if falla_name:
+            falla_sp_path = f"{sp_year}/{falla_name}"
+            local_path    = TMP_DATOS / year_str / falla_name
+            if not local_path.exists():
+                _download_tree(session, site_url, falla_sp_path, local_path)
+            return local_path
+
+        # Estrategia B: archivo Datos_DDMMYY_HHMM_*.xlsx
+        datos_hit = _buscar_datos_en(sp_year)
+        if datos_hit:
+            _, fh, fmi, datos_name, srv_url = datos_hit
+            # Crear carpeta FALLA sintética en local
+            falla_nombre = f"FALLA {dd:02d}.{mm:02d}.{yr4} HRS {fh:02d}.{fmi:02d}"
+            seg_nombre   = f"1 seg.{dd:02d}.{mm:02d}.{yr2:02d}_hrs.{fh:02d}.{fmi:02d}.xlsx"
+            local_falla  = TMP_DATOS / year_str / falla_nombre
+            local_seg    = local_falla / seg_nombre
+            if not local_seg.exists():
+                local_falla.mkdir(parents=True, exist_ok=True)
+                dl_url = (
+                    f"{site_url}/_api/web"
+                    f"/GetFileByServerRelativeUrl('{_sp_path(srv_url)}')/$value"
+                )
+                _download_file(session, dl_url, local_seg)
+            return local_falla
+
+    raise FileNotFoundError(
+        f"No se encontró carpeta FALLA ni archivo Datos_*.xlsx para "
+        f"{fecha_evento.strftime('%d.%m.%Y %H:%M')} "
+        f"en SharePoint/{_DATOS_FOLDER}. "
+        f"Años revisados: {search_years}"
+    )
 
 
 def limpiar_cache_evento(semestre: str, evento: str):

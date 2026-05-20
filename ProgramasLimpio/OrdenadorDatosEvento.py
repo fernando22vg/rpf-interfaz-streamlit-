@@ -84,6 +84,8 @@ def seleccionar_semestre_evento():
 
     base_ev = os.path.join(RAIZ_RPF, semestre, "Análisis_todos_los_eventos")
     if not os.path.isdir(base_ev):
+        base_ev = os.path.join(RAIZ_RPF, semestre, "Analisis_todos_los_eventos")
+    if not os.path.isdir(base_ev):
         raise RuntimeError(f"No existe: {base_ev}")
     eventos = sorted(d for d in os.listdir(base_ev)
                      if os.path.isdir(os.path.join(base_ev, d)))
@@ -160,11 +162,12 @@ def leer_fecha_evento(semestre, n_evento):
 # ─────────────────────────────────────────────────────────────
 # Buscar carpeta FALLA en 02_DATOS CNDC_RPF
 # ─────────────────────────────────────────────────────────────
-# Soporta año de 2 o 4 dígitos y espacio opcional entre HRS y la hora:
+# Soporta año de 2 o 4 dígitos, separador de fecha punto o guión, y espacio opcional entre HRS y la hora:
 #   FALLA 04.02.2025 HRS21.05
 #   FALLA 02.03.24 HRS 00.56
+#   FALLA 29-06-2025 HRS 14.46
 _PAT_FALLA = re.compile(
-    r'FALLA\s+(\d{2})\.(\d{2})\.(\d{2,4})\s+HRS\s*(\d{2})\.(\d{2})',
+    r'FALLA\s+(\d{2})[.\-](\d{2})[.\-](\d{2,4})\s+HRS\s*(\d{2})\.(\d{2})',
     re.IGNORECASE,
 )
 
@@ -245,6 +248,98 @@ def buscar_archivo_1seg(carpeta_falla):
     except OSError:
         pass
     return None
+
+
+# ─────────────────────────────────────────────────────────────
+# Buscar y leer archivos "Datos_DDMMYY_HHMM_*.xlsx" (formato CNDC directo)
+# ─────────────────────────────────────────────────────────────
+def buscar_archivo_datos_cndc(carpeta_falla):
+    """
+    Busca archivos con el patrón Datos_*.xlsx en la carpeta de falla.
+    Ignora archivos temporales (~$) y archivos de análisis (ANALISIS_*, ANÁLISIS_*).
+    Devuelve la ruta completa del primer archivo válido o None.
+    """
+    for fname in sorted(os.listdir(carpeta_falla)):
+        lower = fname.lower()
+        if (
+            lower.startswith('datos_')
+            and lower.endswith(('.xlsx', '.xls'))
+            and not fname.startswith('~$')
+        ):
+            return os.path.join(carpeta_falla, fname)
+    return None
+
+
+def leer_datos_formato_cndc_directo(excel_path):
+    """
+    Lee un archivo Datos_DDMMYY_HHMM_*.xlsx del CNDC.
+
+    Estructura del archivo:
+      Fila 0: Nombres largos de canal (encabezado)
+      Fila 1: Vacía
+      Fila 2: Códigos cortos de unidad (col 0-1 sin dato, col 2 = SAAC (freq), col 3+ = generadores)
+      Fila 3: Unidades: Hz, MW, MW, ...
+      Fila 4+: Datos
+                col 0 = fecha (solo en primera fila)
+                col 1 = tiempo HH:MM:SS  (datetime.time o str)
+                col 2 = frecuencia [Hz]
+                col 3+ = potencia [MW]
+
+    Devuelve: (tiempo_series, frecuencia_series, {nombre_unidad: potencia_series})
+    Compatible con exportar_csvs().
+    """
+    ext = os.path.splitext(excel_path)[1].lower()
+    engine = 'xlrd' if ext == '.xls' else 'openpyxl'
+
+    raw = pd.read_excel(excel_path, header=None, engine=engine)
+
+    if raw.shape[0] < 5:
+        raise ValueError(
+            f"El archivo '{os.path.basename(excel_path)}' tiene menos de 5 filas; "
+            "no parece estar en formato Datos_*."
+        )
+
+    # ── Fila 2: códigos cortos ────────────────────────────────────────────────
+    short_codes = raw.iloc[2]
+
+    # ── Fila 3: unidades (Hz / MW) ────────────────────────────────────────────
+    units_row = raw.iloc[3]
+
+    # ── Datos desde fila 4 ────────────────────────────────────────────────────
+    data = raw.iloc[4:].reset_index(drop=True)
+
+    # Detectar columna de frecuencia: la primera con unidad 'Hz'
+    freq_col_idx = None
+    for i in range(len(units_row)):
+        if str(units_row.iloc[i]).strip().lower() == 'hz':
+            freq_col_idx = i
+            break
+    if freq_col_idx is None:
+        freq_col_idx = 2   # fallback: columna C
+
+    # ── Tiempo: col 1 (HH:MM:SS como datetime.time o string) ─────────────────
+    tiempo = data.iloc[:, 1]
+
+    # ── Frecuencia ────────────────────────────────────────────────────────────
+    frecuencia = data.iloc[:, freq_col_idx]
+
+    # ── Potencias: todas las columnas con unidad 'MW' ─────────────────────────
+    unidades = {}
+    for i in range(2, len(short_codes)):
+        code = str(short_codes.iloc[i]).strip()
+        unit = str(units_row.iloc[i]).strip().upper()
+        if code.lower() in ('nan', 'none', '') or unit != 'MW':
+            continue
+        unidades[code] = data.iloc[:, i]
+
+    if not unidades:
+        raise ValueError(
+            "No se encontraron columnas de potencia [MW] en el archivo. "
+            "Verifique que la fila 3 contenga 'MW' para las columnas de generadores."
+        )
+
+    print(f"  Unidades detectadas ({len(unidades)}): {', '.join(unidades.keys())}")
+    return tiempo, frecuencia, unidades
 
 
 def leer_datos_1seg(excel_path):
@@ -343,23 +438,39 @@ def main():
         print(f"          Verificar en: {os.path.join(RAIZ_DATOS, str(fecha_evento.year))}")
         sys.exit(1)
 
-    # [4] Buscar y leer archivo "1 seg"
+    # [4] Buscar y leer archivo de datos (primero "1 seg", luego "Datos_*")
     separador("LEYENDO ARCHIVO DE DATOS")
     archivo_1seg = buscar_archivo_1seg(carpeta_falla)
-    if archivo_1seg is None:
-        print(f"  [ERROR] No se encontro archivo '1 seg.*' en:")
-        print(f"          {carpeta_falla}")
-        try:
-            archivos = os.listdir(carpeta_falla)
-            print(f"  Archivos en la carpeta ({len(archivos)}):")
-            for _f in sorted(archivos):
-                print(f"    - {_f}")
-        except OSError:
-            pass
-        sys.exit(1)
 
-    print(f"  Archivo : {os.path.basename(archivo_1seg)}")
-    tiempo, frecuencia, unidades = leer_datos_1seg(archivo_1seg)
+    if archivo_1seg is not None:
+        # ── Formato clásico "1 seg" ───────────────────────────────────────────
+        print(f"  Formato  : 1 seg (COBEE/CNDC clasico)")
+        print(f"  Archivo  : {os.path.basename(archivo_1seg)}")
+        tiempo, frecuencia, unidades = leer_datos_1seg(archivo_1seg)
+    else:
+        # ── Fallback: formato Datos_DDMMYY_HHMM_*.xlsx ───────────────────────
+        print(f"  No se encontro archivo '1 seg.*' — buscando formato Datos_*...")
+        archivo_datos = buscar_archivo_datos_cndc(carpeta_falla)
+        if archivo_datos is None:
+            print(f"  [ERROR] No se encontro ningun archivo de datos en:")
+            print(f"          {carpeta_falla}")
+            print(f"  Formatos buscados: '1 seg.*.xls(x)'  y  'Datos_*.xlsx'")
+            try:
+                archivos = os.listdir(carpeta_falla)
+                print(f"  Archivos presentes ({len(archivos)}):")
+                for _f in sorted(archivos):
+                    print(f"    - {_f}")
+            except OSError:
+                pass
+            sys.exit(1)
+
+        print(f"  Formato  : Datos_* (CNDC directo)")
+        print(f"  Archivo  : {os.path.basename(archivo_datos)}")
+        try:
+            tiempo, frecuencia, unidades = leer_datos_formato_cndc_directo(archivo_datos)
+        except Exception as _ex:
+            print(f"  [ERROR] No se pudo leer el archivo Datos_*: {_ex}")
+            sys.exit(1)
 
     n_registros = int(tiempo.notna().sum())
     print(f"  Registros        : {n_registros}")
@@ -367,10 +478,12 @@ def main():
     for u in unidades:
         print(f"    - {u}")
 
-    # [5] Exportar CSVs
+    # [5] Exportar CSVs — respetar nombre real de carpeta (con o sin tilde)
+    _base_ev_sal = os.path.join(RAIZ_RPF, semestre, "Análisis_todos_los_eventos")
+    if not os.path.isdir(_base_ev_sal):
+        _base_ev_sal = os.path.join(RAIZ_RPF, semestre, "Analisis_todos_los_eventos")
     carpeta_sal = os.path.join(
-        RAIZ_RPF, semestre,
-        "Análisis_todos_los_eventos", evento,
+        _base_ev_sal, evento,
         "Graficas Registro 1SEG COBEE",
     )
     separador("EXPORTANDO EXCEL")
