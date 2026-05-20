@@ -3437,9 +3437,14 @@ elif bloque_trabajo == "analisis_datos":
                         st.session_state.b2_sc_last_uid = _b2sc_uid
                         st.session_state.b2_sc_t_falla = _t_default_b2
 
-                    # Si se solicitó reset al valor auto, guardamos en clave auxiliar ANTES de crear el widget
+                    # Aux keys: reset auto o clic en gráfico — ambos ANTES de crear el widget
                     if st.session_state.pop("_b2sc_reset_auto", False):
                         _t_default_b2 = _t_auto_b2
+                    if "_b2sc_click_t" in st.session_state:
+                        _t_default_b2 = float(np.clip(
+                            st.session_state.pop("_b2sc_click_t"),
+                            t_norm.min(), t_norm.max()
+                        ))
 
                     _cin1, _cin2, _cbt = st.columns([3, 1, 1])
                     _t_input_b2 = _cin1.number_input(
@@ -3482,22 +3487,24 @@ elif bloque_trabajo == "analisis_datos":
                     xaxis_min_sc = _get_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmin", float(t_norm.min()))
                     xaxis_max_sc = _get_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", float(t_norm.max()))
 
-                    auto_scale_sc = st.toggle("Auto-escala (Plotly)", value=st.session_state.b3_sync_y_auto, 
-                                              key="b2_sc_y_auto", on_change=_sync_rpf_y_axis, args=("y_auto", "b2_sc_y_auto"))
-
-                    # Opciones de ejes
-                    with st.expander("Opciones de Ejes"):
-                        col_ax1, col_ax2, col_ax3, col_ax4 = st.columns([1,1,1,0.5])
-                        xaxis_min = col_ax1.number_input("X Min (s)", value=xaxis_min_sc, key="b2_sc_xaxis_min")
-                        xaxis_max = col_ax1.number_input("X Max (s)", value=xaxis_max_sc, key="b2_sc_xaxis_max")
-                        
-                        yaxis1_min = col_ax2.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key="b2_sc_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", "b2_sc_y_f_min"))
-                        yaxis1_max = col_ax2.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key="b2_sc_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", "b2_sc_y_f_max"))
-                        yaxis2_min = col_ax3.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key="b2_sc_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", "b2_sc_y_p_min"))
-                        yaxis2_max = col_ax3.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key="b2_sc_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", "b2_sc_y_p_max"))
-                        
-                        c_btn1, c_btn2 = col_ax4.columns(2)
-                        if c_btn1.button("🔄", key="reset_scada", help="Resetear límites"):
+                    # ── Barra de control compacta ─────────────────────────────────────────
+                    _sc_c1, _sc_c2, _sc_c3, _sc_c4 = st.columns([2, 1, 1, 2])
+                    auto_scale_sc = _sc_c1.toggle(
+                        "📐 Auto-escala", value=st.session_state.b3_sync_y_auto,
+                        key="b2_sc_y_auto", on_change=_sync_rpf_y_axis, args=("y_auto", "b2_sc_y_auto"),
+                    )
+                    with _sc_c2.popover("⚙️ Ejes"):
+                        st.caption("**Eje X (tiempo)**")
+                        xaxis_min = st.number_input("X Min (s)", value=xaxis_min_sc, key="b2_sc_xaxis_min")
+                        xaxis_max = st.number_input("X Max (s)", value=xaxis_max_sc, key="b2_sc_xaxis_max")
+                        st.caption("**Eje Y1 (frecuencia)**")
+                        yaxis1_min = st.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key="b2_sc_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", "b2_sc_y_f_min"))
+                        yaxis1_max = st.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key="b2_sc_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", "b2_sc_y_f_max"))
+                        st.caption("**Eje Y2 (potencia)**")
+                        yaxis2_min = st.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key="b2_sc_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", "b2_sc_y_p_min"))
+                        yaxis2_max = st.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key="b2_sc_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", "b2_sc_y_p_max"))
+                        _pb1, _pb2 = st.columns(2)
+                        if _pb1.button("🔄 Reset", key="reset_scada"):
                             _save_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmin", float(t_norm.min()))
                             _save_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", float(t_norm.max()))
                             _save_unit_cfg(ev_path, _sel_unit, "y_f_min", 49.0)
@@ -3507,11 +3514,14 @@ elif bloque_trabajo == "analisis_datos":
                             _save_unit_cfg(ev_path, _sel_unit, "y_auto", True)
                             _sync_session_scale_config(ev_path, _sel_unit)
                             st.rerun()
-
-                        if c_btn2.button("💾", key="save_scale_scada", help="Guardar escalado"):
-                                _save_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmin", xaxis_min)
-                                _save_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", xaxis_max)
-                                st.toast("Escalado guardado para la unidad")
+                        if _pb2.button("💾 Guardar", key="save_scale_scada"):
+                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmin", xaxis_min)
+                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", xaxis_max)
+                            st.toast("Escalado guardado")
+                    _b2sc_click_mode = _sc_c3.toggle(
+                        "📍 Clic→t₀", key="b2sc_click_mode",
+                        help="Activa y haz clic en el gráfico para mover el marcador t₀",
+                    )
 
                     # ── Gráfico con marcadores CNDC (usando funciones estándares) ─────── # type: ignore
                     _gcfg = st.session_state.graph_config
@@ -3585,7 +3595,20 @@ elif bloque_trabajo == "analisis_datos":
                             show_eval_line=False,
                         )
                     
-                    st.plotly_chart(fig, use_container_width=True)
+                    if _b2sc_click_mode:
+                        st.caption("📍 Modo activo — haz clic sobre el gráfico para mover t₀")
+                    _sc_sel = st.plotly_chart(
+                        fig, use_container_width=True,
+                        on_select="rerun" if _b2sc_click_mode else "ignore",
+                        selection_mode=["points"],
+                        key="b2sc_plotly_chart",
+                    )
+                    if _b2sc_click_mode and _sc_sel and _sc_sel.selection and _sc_sel.selection.points:
+                        _px = float(_sc_sel.selection.points[0]["x"])
+                        _ct = (float(t_norm.iloc[int(np.argmin(np.abs(t_raw.values - _px / 1000)))])
+                               if show_hhmmss else _px)
+                        st.session_state["_b2sc_click_t"] = _ct
+                        st.rerun()
 
                     with st.expander("📄 Ver tabla de datos"):
                         st.dataframe(_df_safe(df_scada), use_container_width=True)
@@ -3859,6 +3882,15 @@ elif bloque_trabajo == "analisis_datos":
                         st.session_state.b2_emf_last_uid = _b2emf_uid
                         st.session_state.b2_emf_t_falla = _t_default_emf
 
+                    # Aux keys: reset auto o clic en gráfico — ambos ANTES del widget
+                    if st.session_state.pop("_b2emf_reset_auto", False):
+                        _t_default_emf = _t_auto_emf
+                    if "_b2emf_click_t" in st.session_state:
+                        _t_default_emf = float(np.clip(
+                            st.session_state.pop("_b2emf_click_t"),
+                            t_norm.min(), t_norm.max()
+                        ))
+
                     _cemf1, _cemf2, _cemf_btn = st.columns([3, 1, 1])
                     _t_input_emf = _cemf1.number_input(
                         "t₀ inicio de falla [s]",
@@ -3872,39 +3904,44 @@ elif bloque_trabajo == "analisis_datos":
                     _idx_falla_emf = int(np.argmin(np.abs(t_norm.values - _t_input_emf)))
                     if _cemf2.button("↩ Auto", key="reset_b2emf_t0",
                                      help=f"Restaurar al tiempo auto-detectado ({_t_auto_emf:.1f} s)"):
-                        st.session_state.b2_emf_t_falla = _t_auto_emf
+                        st.session_state["_b2emf_reset_auto"] = True
                         st.rerun()
                     if _cemf_btn.button("💾 Guardar t₀ EMF", key="save_idx_emf",
                                         help="Guardar t₀ para esta unidad y evento"):
                         if _save_unit_cfg(ev_path, _sel_unit, "emf_idx_falla", _idx_falla_emf): # type: ignore
-                            # Actualizar t0 compartido para que tab SCADA lo use como fallback
                             _save_unit_cfg(ev_path, _sel_unit, "t0_falla_s", float(t_norm.iloc[_idx_falla_emf]))
                             st.toast(f"t₀ = {_t_input_emf:.1f} s guardado", icon="✅") # type: ignore
-                    
-                    # Opciones de ejes
-                    with st.expander("Opciones de Ejes"):
-                        auto_scale_emf = st.toggle("Auto-escala (Plotly)", value=st.session_state.b3_sync_y_auto, 
-                                                   key="b2_emf_y_auto", on_change=_sync_rpf_y_axis, args=("y_auto", "b2_emf_y_auto"))
 
-                        col_ax1, col_ax2, col_ax3, col_ax4 = st.columns([1,1,1,0.5])
-                        xaxis_min = col_ax1.number_input("X Min (s)", value=_get_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmin", float(t_norm.min())), key="b2_emf_xaxis_min")
-                        xaxis_max = col_ax1.number_input("X Max (s)", value=_get_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmax", float(t_norm.max())), key="b2_emf_xaxis_max")
-                        
-                        yaxis1_min = col_ax2.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key="b2_emf_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", "b2_emf_y_f_min"))
-                        yaxis1_max = col_ax2.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key="b2_emf_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", "b2_emf_y_f_max"))
-                        yaxis2_min = col_ax3.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key="b2_emf_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", "b2_emf_y_p_min"))
-                        yaxis2_max = col_ax3.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key="b2_emf_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", "b2_emf_y_p_max"))
-                        
-                        c_btn1, c_btn2 = col_ax4.columns(2)
-                        if c_btn1.button("Reset", key="reset_emf", help="Auto-detectar límites de datos y guardar"):
+                    # ── Barra de control compacta EMF ──────────────────────────────────────
+                    _emf_c1, _emf_c2, _emf_c3, _emf_c4 = st.columns([2, 1, 1, 2])
+                    auto_scale_emf = _emf_c1.toggle(
+                        "📐 Auto-escala", value=st.session_state.b3_sync_y_auto,
+                        key="b2_emf_y_auto", on_change=_sync_rpf_y_axis, args=("y_auto", "b2_emf_y_auto"),
+                    )
+                    with _emf_c2.popover("⚙️ Ejes"):
+                        st.caption("**Eje X (tiempo)**")
+                        xaxis_min = st.number_input("X Min (s)", value=_get_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmin", float(t_norm.min())), key="b2_emf_xaxis_min")
+                        xaxis_max = st.number_input("X Max (s)", value=_get_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmax", float(t_norm.max())), key="b2_emf_xaxis_max")
+                        st.caption("**Eje Y1 (frecuencia)**")
+                        yaxis1_min = st.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key="b2_emf_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", "b2_emf_y_f_min"))
+                        yaxis1_max = st.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key="b2_emf_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", "b2_emf_y_f_max"))
+                        st.caption("**Eje Y2 (potencia)**")
+                        yaxis2_min = st.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key="b2_emf_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", "b2_emf_y_p_min"))
+                        yaxis2_max = st.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key="b2_emf_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", "b2_emf_y_p_max"))
+                        _eb1, _eb2 = st.columns(2)
+                        if _eb1.button("🔄 Reset", key="reset_emf"):
                             _save_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmin", float(t_norm.min()))
                             _save_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmax", float(t_norm.max()))
                             _sync_session_scale_config(ev_path, _sel_unit)
-                            st.rerun() # type: ignore
-                            
-                        if c_btn2.button("Guardar", key="save_scale_emf", help="Guardar escala manual"):
-                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmin", xaxis_min); _save_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmax", xaxis_max)
+                            st.rerun()
+                        if _eb2.button("💾 Guardar", key="save_scale_emf"):
+                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmin", xaxis_min)
+                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmax", xaxis_max)
                             st.toast("Escalado EMF guardado")
+                    _b2emf_click_mode = _emf_c3.toggle(
+                        "📍 Clic→t₀", key="b2emf_click_mode",
+                        help="Activa y haz clic en el gráfico para mover el marcador t₀",
+                    )
 
                     _t_falla_emf = float(t_norm.iloc[_idx_falla_emf])
                     _t_al_emf = (t_norm - _t_falla_emf).values
@@ -3974,7 +4011,20 @@ elif bloque_trabajo == "analisis_datos":
                             show_eval_line=False,
                         )
                     
-                    st.plotly_chart(fig_emf, use_container_width=True)
+                    if _b2emf_click_mode:
+                        st.caption("📍 Modo activo — haz clic sobre el gráfico para mover t₀")
+                    _emf_sel = st.plotly_chart(
+                        fig_emf, use_container_width=True,
+                        on_select="rerun" if _b2emf_click_mode else "ignore",
+                        selection_mode=["points"],
+                        key="b2emf_plotly_chart",
+                    )
+                    if _b2emf_click_mode and _emf_sel and _emf_sel.selection and _emf_sel.selection.points:
+                        _epx = float(_emf_sel.selection.points[0]["x"])
+                        _ect = (float(t_norm.iloc[int(np.argmin(np.abs(t_raw.values - _epx / 1000)))])
+                                if show_hhmmss else _epx)
+                        st.session_state["_b2emf_click_t"] = _ect
+                        st.rerun()
 
                     st.markdown("#### 📋 KPIs CNDC — Criterio RPF (Registro EMF)")
                     if st.button("Descargar datos EMF a Excel", key=f"dl_emf_data_{_sel_unit}"): # type: ignore
