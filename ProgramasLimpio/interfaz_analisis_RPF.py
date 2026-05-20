@@ -782,6 +782,47 @@ def _calcular_rocof(t_arr, f_arr, ventana_s=3.0):
         return float('nan')
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PIPELINES CACHEADOS — Evitan re-leer el mismo Excel en B3, B4 y B5
+# @st.cache_data hashea los argumentos: mismo fichero + mismos params → hit de caché
+# ─────────────────────────────────────────────────────────────────────────────
+
+@st.cache_data(show_spinner=False)
+def _cached_sim_arrays(file_path: str, t_falla: float):
+    """Lee, parsea y alinea un archivo de simulación (PowerFactory xlsx).
+    Devuelve (ts_aligned, fs_hz, ps_mw, df_raw).
+    Cacheado por (ruta, t_falla): B3, B4 y B5 comparten el resultado si los
+    argumentos son iguales → evita re-leer el disco y re-parsear."""
+    df = pd.read_excel(file_path, engine="calamine").dropna()
+    tc, fc, pc = _robust_col_detect(df)
+    ts_raw = pd.to_numeric(df[tc], errors="coerce").values
+    fs_raw = pd.to_numeric(df[fc], errors="coerce").ffill().values
+    fs_hz  = fs_raw * 50.0 if np.nanmax(fs_raw) < 2.0 else fs_raw
+    ps_mw  = pd.to_numeric(df[pc], errors="coerce").ffill().values
+    _v     = ~np.isnan(ts_raw)
+    ts_raw, fs_hz, ps_mw = ts_raw[_v], fs_hz[_v], ps_mw[_v]
+    return ts_raw - t_falla, fs_hz, ps_mw, df
+
+
+@st.cache_data(show_spinner=False)
+def _cached_real_arrays(file_path: str, umbral_dfdt: float, ventana: int):
+    """Lee, parsea y detecta la falla en datos reales (SCADA 1SEG o EMF).
+    Devuelve (tr_aligned, fr_arr, pr_arr, idx_falla).
+    Cacheado por (ruta, umbral, ventana): cualquier bloque que use el mismo fichero
+    con los mismos parámetros de detección obtiene el resultado sin releer el disco."""
+    df = pd.read_excel(file_path, engine="calamine").dropna()
+    tr_raw  = _parse_to_seconds(df.iloc[:, 0])
+    tr_norm = tr_raw - tr_raw.min()
+    _fr_c   = [c for c in df.columns if any(kw in c.lower() for kw in ["frec", "hz", "freq"])]
+    _fr_col = _fr_c[0] if _fr_c else df.columns[1]
+    _pr_col = df.columns[2] if len(df.columns) > 2 else df.columns[1]
+    fr_arr  = pd.to_numeric(df[_fr_col], errors="coerce").ffill().values
+    pr_arr  = pd.to_numeric(df[_pr_col], errors="coerce").ffill().values
+    idx_f   = _detectar_inicio_falla(fr_arr, umbral_dfdt, ventana)
+    t_f     = float(tr_norm.iloc[idx_f])
+    return (tr_norm - t_f).values, fr_arr, pr_arr, idx_f
+
+
 def _add_marker(fig, t, y, label, symbol, color, yaxis='y', size=12):
     fig.add_trace(go.Scatter(
         x=[t], y=[y],
@@ -4417,27 +4458,14 @@ elif bloque_trabajo == "analisis_simulacion":
         return df_sim, sel_file
 
     def _load_sim_tab_data(sim_dir, sel_file):
-        """Carga y normaliza un archivo de simulación. Devuelve (ts_aligned, fs_hz, ps_mw, df) o None."""
+        """Carga y normaliza un archivo de simulación. Devuelve (ts_aligned, fs_hz, ps_mw, df) o None.
+        Delega a _cached_sim_arrays para evitar re-leer el mismo fichero en B4/B5."""
         if not sel_file or not os.path.isdir(sim_dir):
             return None
         fpath = os.path.join(sim_dir, sel_file)
         if not os.path.isfile(fpath):
             return None
-        df = pd.read_excel(fpath, engine="calamine").dropna()
-        tc, fc, pc = _robust_col_detect(df)
-        ts_raw = pd.to_numeric(df[tc], errors='coerce').values
-        fs_raw = pd.to_numeric(df[fc], errors='coerce').ffill().values
-        fs_hz  = fs_raw * 50.0 if np.nanmax(fs_raw) < 2.0 else fs_raw
-        ps_mw  = pd.to_numeric(df[pc], errors='coerce').ffill().values
-        # Eliminar filas donde el tiempo es NaN (filas de cabecera/unidades que
-        # pasaron dropna() pero no son numéricas → pd.to_numeric las vuelve NaN).
-        # Sin esto, argmin devuelve el índice del NaN y f₀/P₀ quedan como nan.
-        _valid_t = ~np.isnan(ts_raw)
-        ts_raw = ts_raw[_valid_t]
-        fs_hz  = fs_hz[_valid_t]
-        ps_mw  = ps_mw[_valid_t]
-        ts_aligned = ts_raw - _b3_t_falla
-        return ts_aligned, fs_hz, ps_mw, df
+        return _cached_sim_arrays(fpath, _b3_t_falla)  # (ts_aligned, fs_hz, ps_mw, df)
 
     def _sim_kpis_and_pmax(sel_unit, ev_path, n_evento, rp_fallback=0.05, pmax_fallback=200.0):
         """Recupera Pmax y Rp para el análisis CNDC de simulaciones."""
@@ -4813,23 +4841,11 @@ elif bloque_trabajo == "comparativa_real_simu":
     if _sel_unit and os.path.isdir(_r_dir):
         _rf_match = _buscar_archivo_unidad(_sel_unit, os.listdir(_r_dir))
         if _rf_match:
-            df_r = pd.read_excel(os.path.join(_r_dir, _rf_match), engine="calamine").dropna()
-            tc_r = df_r.columns[0]
-            tr_raw = _parse_to_seconds(df_r[tc_r])
-            tr_norm = tr_raw - tr_raw.min()
-            
-            # Identificar frecuencia real dinámicamente
-            _fr_c = [c for c in df_r.columns if any(kw in c.lower() for kw in ['frec', 'hz'])]
-            _fr_col = _fr_c[0] if _fr_c else df_r.columns[1]
-            _pr_col = df_r.columns[2]
-            
-            _fr_arr = pd.to_numeric(df_r[_fr_col], errors='coerce').ffill().values
-            _pr_arr = pd.to_numeric(df_r[_pr_col], errors='coerce').ffill().values
-            
-            # Detección Falla Real
-            idx_f_r = _detectar_inicio_falla(_fr_arr, umbral_dfdt, int(ventana_suavizado))
-            t_f_r = float(tr_norm.iloc[idx_f_r])
-            tr_aligned = (tr_norm - t_f_r).values
+            # _cached_real_arrays: caché compartido con B2/B3 → hit si ya fue leído
+            _r_fpath = os.path.join(_r_dir, _rf_match)
+            tr_aligned, _fr_arr, _pr_arr, idx_f_r = _cached_real_arrays(
+                _r_fpath, umbral_dfdt, int(ventana_suavizado)
+            )
 
             # --- Construcción del Gráfico de Validación ---
             _gcfg = st.session_state.graph_config
@@ -4877,17 +4893,9 @@ elif bloque_trabajo == "comparativa_real_simu":
                 if not _sf_match:
                     continue
 
-                df_s = pd.read_excel(os.path.join(_s_dir, _sf_match), engine="calamine").dropna()
-                tc_s, fc_s, pc_s = _robust_col_detect(df_s)
-
-                ts_raw  = pd.to_numeric(df_s[tc_s], errors="coerce").values
-                fs_raw  = pd.to_numeric(df_s[fc_s], errors="coerce").ffill().values
-                fs_hz   = fs_raw * 50.0 if np.nanmax(fs_raw) < 2.0 else fs_raw
-                ps_mw   = pd.to_numeric(df_s[pc_s], errors="coerce").ffill().values
-                # Filtrar filas con tiempo NaN (mismo fix que _load_sim_tab_data)
-                _v5 = ~np.isnan(ts_raw)
-                ts_raw = ts_raw[_v5]; fs_hz = fs_hz[_v5]; ps_mw = ps_mw[_v5]
-                ts_al   = ts_raw - t_sim_falla
+                # _cached_sim_arrays: mismo caché que B3/B4 → hit si ya fue leído
+                _s_cached = _cached_sim_arrays(os.path.join(_s_dir, _sf_match), t_sim_falla)
+                ts_al, fs_hz, ps_mw, _ = _s_cached
 
                 _color_f = _gcfg["freq_color_sim0"] if "0" in s_ver else _gcfg["freq_color_sim1"]
                 _color_p = _gcfg["pot_color_sim0"]  if "0" in s_ver else _gcfg["pot_color_sim1"]
