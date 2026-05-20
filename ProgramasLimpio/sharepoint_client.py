@@ -401,6 +401,61 @@ def ensure_sp_folder(sp_folder: str):
                 pass  # best-effort
 
 
+def recycle_sp_file(sp_file_path: str) -> bool:
+    """
+    Mueve un archivo de SharePoint a la papelera de reciclaje (no es borrado permanente).
+    sp_file_path: server-relative path del archivo (ej. /personal/.../carpeta/archivo.xlsx)
+    Devuelve True si tuvo éxito, False si no existía o hubo error.
+    """
+    session, site_url, _ = _get_session()
+    digest = _get_request_digest(session, site_url)
+    url = (
+        f"{site_url}/_api/web"
+        f"/GetFileByServerRelativeUrl('{_sp_path(sp_file_path)}')/recycle()"
+    )
+    try:
+        r = session.post(
+            url,
+            data=b"",
+            headers={**_HEADERS_API, "X-RequestDigest": digest,
+                     "Content-Type": "application/octet-stream"},
+            timeout=20,
+        )
+        if r.status_code == 404:
+            return False   # ya no existe
+        r.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
+def recycle_sp_folder(sp_folder_path: str) -> bool:
+    """
+    Mueve una carpeta de SharePoint a la papelera de reciclaje.
+    sp_folder_path: server-relative path de la carpeta.
+    """
+    session, site_url, _ = _get_session()
+    digest = _get_request_digest(session, site_url)
+    url = (
+        f"{site_url}/_api/web"
+        f"/GetFolderByServerRelativeUrl('{_sp_path(sp_folder_path)}')/recycle()"
+    )
+    try:
+        r = session.post(
+            url,
+            data=b"",
+            headers={**_HEADERS_API, "X-RequestDigest": digest,
+                     "Content-Type": "application/octet-stream"},
+            timeout=20,
+        )
+        if r.status_code == 404:
+            return False
+        r.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
 def sp_global_cfg_folder() -> str:
     """Ruta SP de la carpeta donde se guarda unit_global_config.json."""
     _, _, root_path = _get_session()

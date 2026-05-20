@@ -132,15 +132,50 @@ def _sp_folder_for(local_file: Path, local_root: Path, sp_root_path: str) -> str
     return f"{sp_root_path}/{rel}" if rel != "." else sp_root_path
 
 
+def _sp_file_path_for(local_file: Path, local_root: Path, sp_root_path: str) -> str:
+    """Ruta SP completa del archivo (carpeta + nombre)."""
+    folder = _sp_folder_for(local_file, local_root, sp_root_path)
+    return f"{folder}/{local_file.name}"
+
+
+def detectar_eliminados(carpeta: dict, sp_raiz_path: str,
+                        ext_filter: list[str], manifest: dict) -> list[tuple[str, str]]:
+    """
+    Compara el manifest con el disco actual para encontrar archivos que
+    existían antes (están en el manifest) pero ya no están en el disco local.
+    Devuelve lista de (local_path_str, sp_file_path).
+    """
+    local_root     = Path(carpeta["local"])
+    sp_sub         = carpeta["sp_subcarpeta"].strip("/")
+    sp_folder_raiz = f"{sp_raiz_path}/{sp_sub}"
+
+    # Archivos actuales en disco bajo esta carpeta raíz
+    claves_raiz = {
+        clave for clave in manifest
+        if Path(clave).is_relative_to(local_root)
+    }
+
+    eliminados = []
+    for clave in claves_raiz:
+        local_path = Path(clave)
+        if not local_path.exists():
+            sp_path = _sp_file_path_for(local_path, local_root, sp_folder_raiz)
+            eliminados.append((clave, sp_path))
+
+    return eliminados
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # LÓGICA DE SINCRONIZACIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 
 def sync_carpeta(carpeta: dict, sp_raiz_path: str, ext_filter: list[str],
-                 manifest: dict, dry_run: bool, forzar: bool) -> dict:
+                 manifest: dict, dry_run: bool, forzar: bool,
+                 borrar: bool = False) -> dict:
     """
     Sincroniza una carpeta local con su equivalente en SharePoint.
-    Devuelve estadísticas: {subidos, omitidos, errores}.
+    Si borrar=True, mueve a la papelera de SP los archivos eliminados localmente.
+    Devuelve estadísticas: {subidos, omitidos, borrados, errores}.
     """
     import sharepoint_client as _sp  # importación tardía
 
@@ -150,18 +185,17 @@ def sync_carpeta(carpeta: dict, sp_raiz_path: str, ext_filter: list[str],
 
     if not local_root.exists():
         print(f"  ⚠  Carpeta no encontrada, omitida: {local_root}")
-        return {"subidos": 0, "omitidos": 0, "errores": 1}
+        return {"subidos": 0, "omitidos": 0, "borrados": 0, "errores": 1}
 
-    # Ruta SP completa para esta carpeta raíz
     sp_folder_raiz = f"{sp_raiz_path}/{sp_sub}"
-
-    stats = {"subidos": 0, "omitidos": 0, "errores": 0}
+    stats = {"subidos": 0, "omitidos": 0, "borrados": 0, "errores": 0}
     archivos = [p for p in local_root.rglob("*") if p.is_file() and _should_sync(p, ext_filter)]
 
-    print(f"\n  📁 {nombre}  ({len(archivos)} archivos candidatos)")
+    print(f"\n  📁 {nombre}  ({len(archivos)} archivos en disco)")
     print(f"     Local : {local_root}")
     print(f"     SP    : {sp_folder_raiz}")
 
+    # ── 1. Subir archivos nuevos o modificados ────────────────────────────────
     for archivo in sorted(archivos):
         clave  = str(archivo)
         mtime  = _mtime(archivo)
@@ -175,7 +209,7 @@ def sync_carpeta(carpeta: dict, sp_raiz_path: str, ext_filter: list[str],
         rel_str   = archivo.relative_to(local_root)
 
         if dry_run:
-            print(f"     [DRY]  → {rel_str}")
+            print(f"     [SUBIR]  {rel_str}")
             stats["subidos"] += 1
             continue
 
@@ -184,23 +218,56 @@ def sync_carpeta(carpeta: dict, sp_raiz_path: str, ext_filter: list[str],
             _sp.upload_file(str(archivo), sp_folder)
             manifest[clave] = mtime
             stats["subidos"] += 1
-            print(f"     ✔  {rel_str}")
+            print(f"     ↑  {rel_str}")
         except Exception as exc:
             stats["errores"] += 1
             print(f"     ✘  {rel_str}  —  {exc}")
 
+    # ── 2. Detectar y borrar archivos eliminados localmente ───────────────────
+    eliminados = detectar_eliminados(carpeta, sp_raiz_path, ext_filter, manifest)
+
+    if eliminados:
+        print(f"\n     🗑  {len(eliminados)} archivo(s) eliminados localmente:")
+        for local_clave, sp_path in eliminados:
+            rel_str = Path(local_clave).relative_to(local_root)
+            if dry_run:
+                print(f"     [BORRAR] {rel_str}")
+                stats["borrados"] += 1
+                continue
+
+            if not borrar:
+                # Sin --borrar: avisar pero NO actuar
+                print(f"     ⚠  {rel_str}  (use --borrar para eliminarlo de SP)")
+                continue
+
+            ok = _sp.recycle_sp_file(sp_path)
+            if ok:
+                del manifest[local_clave]
+                stats["borrados"] += 1
+                print(f"     🗑  {rel_str}  → papelera SP")
+            else:
+                # El archivo ya no estaba en SP, limpiar el manifest igualmente
+                manifest.pop(local_clave, None)
+                stats["borrados"] += 1
+                print(f"     ✔  {rel_str}  (ya no existía en SP)")
+
     return stats
 
 
-def run(filtro_nombre: str | None = None, dry_run: bool = False, forzar: bool = False):
+def run(filtro_nombre: str | None = None, dry_run: bool = False,
+        forzar: bool = False, borrar: bool = False):
     """Punto de entrada principal."""
     print("=" * 62)
     print("  SYNC LOCAL → SHAREPOINT")
     print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     if dry_run:
-        print("  [MODO DRY-RUN — no se sube nada]")
+        print("  [DRY-RUN — no se sube ni borra nada]")
     if forzar:
-        print("  [MODO FORZAR — re-sube todos los archivos]")
+        print("  [FORZAR — re-sube todos los archivos]")
+    if borrar:
+        print("  [BORRAR — archivos eliminados localmente → papelera SP]")
+    else:
+        print("  [Sin --borrar: se avisa de eliminados pero NO se borran de SP]")
     print("=" * 62)
 
     # ── Cargar configuración ──────────────────────────────────────────────────
@@ -235,13 +302,13 @@ def run(filtro_nombre: str | None = None, dry_run: bool = False, forzar: bool = 
 
     # ── Sincronizar cada carpeta ──────────────────────────────────────────────
     manifest   = _load_manifest()
-    totales    = {"subidos": 0, "omitidos": 0, "errores": 0}
+    totales    = {"subidos": 0, "omitidos": 0, "borrados": 0, "errores": 0}
     t_inicio   = time.time()
 
     for carpeta in carpetas:
-        s = sync_carpeta(carpeta, sp_raiz, ext_list, manifest, dry_run, forzar)
+        s = sync_carpeta(carpeta, sp_raiz, ext_list, manifest, dry_run, forzar, borrar)
         for k in totales:
-            totales[k] += s[k]
+            totales[k] += s.get(k, 0)
 
     if not dry_run:
         _save_manifest(manifest)
@@ -250,8 +317,9 @@ def run(filtro_nombre: str | None = None, dry_run: bool = False, forzar: bool = 
     elapsed = time.time() - t_inicio
     print("\n" + "=" * 62)
     print(f"  RESUMEN — {elapsed:.1f} s")
-    print(f"  ✔ Subidos  : {totales['subidos']}")
-    print(f"  ⏭ Omitidos : {totales['omitidos']}  (sin cambios desde último sync)")
+    print(f"  ↑ Subidos  : {totales['subidos']}")
+    print(f"  ⏭ Omitidos : {totales['omitidos']}  (sin cambios)")
+    print(f"  🗑 Borrados : {totales['borrados']}  (→ papelera SP)")
     print(f"  ✘ Errores  : {totales['errores']}")
     print("=" * 62)
 
@@ -321,21 +389,30 @@ if __name__ == "__main__":
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 Ejemplos:
-  python sync_to_sharepoint.py                    # sincroniza todas las carpetas activas
-  python sync_to_sharepoint.py --dry-run          # solo muestra qué se subiría
-  python sync_to_sharepoint.py --carpeta RPF      # solo carpetas cuyo nombre contenga 'RPF'
-  python sync_to_sharepoint.py --forzar           # re-sube aunque no haya cambios
+  python sync_to_sharepoint.py                          # sync normal (sube cambios, avisa eliminados)
+  python sync_to_sharepoint.py --borrar                 # sync + mueve eliminados a papelera SP
+  python sync_to_sharepoint.py --dry-run                # preview: muestra todo sin hacer nada
+  python sync_to_sharepoint.py --dry-run --borrar       # preview incluyendo eliminados
+  python sync_to_sharepoint.py --carpeta RPF            # solo carpetas con 'RPF' en el nombre
+  python sync_to_sharepoint.py --forzar                 # re-sube todo aunque no haya cambios
 
-Para agregar carpetas: edite sync_config.json
+Flujo recomendado:
+  1. python sync_to_sharepoint.py --dry-run --borrar    # revisar qué se haría
+  2. python sync_to_sharepoint.py --borrar              # ejecutar si todo se ve bien
+
+Para agregar carpetas: edite sync_config.json  (activa: true/false)
 Para cambiar la contraseña: edite .streamlit/secrets.toml
         """
     )
     parser.add_argument("--dry-run",  action="store_true",
-                        help="Muestra qué se subiría sin subir nada")
+                        help="Muestra qué se subiría/borraría sin hacer nada")
     parser.add_argument("--forzar",   action="store_true",
                         help="Re-sube todos los archivos aunque no hayan cambiado")
+    parser.add_argument("--borrar",   action="store_true",
+                        help="Mueve a la papelera de SP los archivos eliminados localmente")
     parser.add_argument("--carpeta",  metavar="NOMBRE",
                         help="Filtra por nombre de carpeta en sync_config.json")
     args = parser.parse_args()
 
-    run(filtro_nombre=args.carpeta, dry_run=args.dry_run, forzar=args.forzar)
+    run(filtro_nombre=args.carpeta, dry_run=args.dry_run,
+        forzar=args.forzar, borrar=args.borrar)
