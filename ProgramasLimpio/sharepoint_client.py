@@ -20,8 +20,17 @@ import streamlit as st
 
 SHARE_URL = (
     "https://cobee1-my.sharepoint.com/:f:/g/personal/angel_mariscal_cobee_com"
-    "/IgDQ0-3WNNN1SYksWDQKnGTeAdQNzcw0KrsBYeBuI7_NAf0?e=SBurQb"
+    "/IgDxSTKUmkgHSqWE7ujrvUlUASIptnjxSa00s0iqJMYCcCk?e=59xxDd"
 )
+
+# Contraseña del link protegido — se lee de Streamlit Secrets (nunca hardcodeada).
+# Local:  .streamlit/secrets.toml  →  SP_PASSWORD = "..."
+# Cloud:  Streamlit Cloud dashboard → Secrets → SP_PASSWORD = "..."
+def _sp_password() -> str:
+    try:
+        return st.secrets.get("SP_PASSWORD", "")
+    except Exception:
+        return ""
 
 # Subcarpeta dentro de la raíz compartida donde están los semestres
 # Equivalente al RAIZ local: C:\Datos del CNDC\01_INFO CNDC_RPF
@@ -49,10 +58,81 @@ _HEADERS_API = {"Accept": "application/json;odata=nometadata"}
 
 # ── Inicialización de sesión ──────────────────────────────────────────────────
 
+def _submit_password(session: requests.Session, r: requests.Response) -> requests.Response:
+    """
+    Envía la contraseña al formulario de verificación de SharePoint.
+    Extrae el token CSRF y el action del HTML y hace POST.
+    Devuelve la respuesta post-autenticación.
+    """
+    import html as _html
+    from html.parser import HTMLParser as _HP
+
+    class _FormParser(_HP):
+        def __init__(self):
+            super().__init__()
+            self.action  = ""
+            self.fields  = {}
+            self._in_form = False
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            if tag == "form":
+                self._in_form = True
+                self.action = a.get("action", "")
+            if tag == "input" and self._in_form:
+                n = a.get("name", "")
+                v = a.get("value", "")
+                t = a.get("type", "text")
+                if n and t != "submit":
+                    self.fields[n] = _html.unescape(v)
+
+    parser = _FormParser()
+    parser.feed(r.text)
+
+    # Rellenar campo de contraseña (SharePoint usa varios nombres posibles)
+    pwd = _sp_password()
+    for key in list(parser.fields.keys()):
+        if "password" in key.lower() or "pwd" in key.lower():
+            parser.fields[key] = pwd
+            break
+    else:
+        # Campo no encontrado → intentar nombre estándar
+        parser.fields["txtPassword"] = pwd
+        parser.fields["ctl00$PlaceHolderMain$ctl00$txtPassword"] = pwd
+
+    action = parser.action or r.url
+    # Si el action es relativo, construir URL absoluta
+    if action.startswith("/"):
+        p = urlparse(r.url)
+        action = f"{p.scheme}://{p.netloc}{action}"
+    elif not action.startswith("http"):
+        action = r.url
+
+    r2 = session.post(
+        action,
+        data=parser.fields,
+        headers={**_HEADERS_BROWSE, "Content-Type": "application/x-www-form-urlencoded",
+                 "Referer": r.url},
+        timeout=30,
+        allow_redirects=True,
+    )
+    r2.raise_for_status()
+    return r2
+
+
+def _needs_password(r: requests.Response) -> bool:
+    """Detecta si SharePoint está pidiendo contraseña para el link."""
+    txt = r.text.lower()
+    return (
+        "password" in txt
+        and ("enter" in txt or "contraseña" in txt or "ingrese" in txt
+             or 'type="password"' in r.text.lower())
+    )
+
+
 def _get_session() -> tuple:
     """
     Retorna (session, site_url, root_folder_server_relative_path).
-    Accede al sharing link para obtener cookies de sesión y la ruta raíz.
+    Maneja links con contraseña leyendo SP_PASSWORD de Streamlit Secrets.
     """
     with _session_lock:
         if _session_cache.get("expires_at", 0) > time.time():
@@ -68,6 +148,10 @@ def _get_session() -> tuple:
         r = session.get(SHARE_URL, timeout=30)
         r.raise_for_status()
 
+        # Si el link está protegido con contraseña, autenticar primero
+        if _needs_password(r):
+            r = _submit_password(session, r)
+
         final_url = r.url
         parsed = urlparse(final_url)
         qs = parse_qs(parsed.query)
@@ -79,12 +163,19 @@ def _get_session() -> tuple:
         if not folder_path:
             folder_path = unquote(qs.get("RootFolder", [""])[0])
 
+        # Estrategia 3: buscar en el HTML la ruta de la carpeta
+        if not folder_path:
+            import re as _re
+            m = _re.search(r'"ServerRelativeUrl"\s*:\s*"([^"]+)"', r.text)
+            if m:
+                folder_path = unquote(m.group(1))
+
         if not folder_path:
             raise RuntimeError(
-                "SharePoint no devolvió la ruta de la carpeta en el redirect.\n"
+                "SharePoint no devolvió la ruta de la carpeta.\n"
                 f"URL final: {final_url}\n"
-                f"Parámetros detectados: {list(qs.keys())}\n"
-                "Verifica que el enlace esté activo y sea 'Cualquiera con el enlace'."
+                f"Parámetros: {list(qs.keys())}\n"
+                "Verifica que el link esté activo y la contraseña sea correcta."
             )
 
         scheme_host = f"{parsed.scheme}://{parsed.netloc}"
