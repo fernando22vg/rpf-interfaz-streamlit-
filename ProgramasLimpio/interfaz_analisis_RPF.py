@@ -4881,10 +4881,13 @@ elif bloque_trabajo == "comparativa_real_simu":
                 tc_s, fc_s, pc_s = _robust_col_detect(df_s)
 
                 ts_raw  = pd.to_numeric(df_s[tc_s], errors="coerce").values
-                ts_al   = ts_raw - t_sim_falla
                 fs_raw  = pd.to_numeric(df_s[fc_s], errors="coerce").ffill().values
                 fs_hz   = fs_raw * 50.0 if np.nanmax(fs_raw) < 2.0 else fs_raw
                 ps_mw   = pd.to_numeric(df_s[pc_s], errors="coerce").ffill().values
+                # Filtrar filas con tiempo NaN (mismo fix que _load_sim_tab_data)
+                _v5 = ~np.isnan(ts_raw)
+                ts_raw = ts_raw[_v5]; fs_hz = fs_hz[_v5]; ps_mw = ps_mw[_v5]
+                ts_al   = ts_raw - t_sim_falla
 
                 _color_f = _gcfg["freq_color_sim0"] if "0" in s_ver else _gcfg["freq_color_sim1"]
                 _color_p = _gcfg["pot_color_sim0"]  if "0" in s_ver else _gcfg["pot_color_sim1"]
@@ -4908,30 +4911,95 @@ elif bloque_trabajo == "comparativa_real_simu":
 
             st.plotly_chart(fig, use_container_width=True)
 
-            # ── KPIs individuales por fuente (mismo estilo que Bloque 3) ───────
+            # ── Tabla comparativa KPIs (todas las fuentes en una sola vista) ──
             if _pm_fuente:
                 st.caption(f"✅ P_max desde `{_pm_fuente}` → **{float(_pm_v):.2f} MW** | Rp = {_rp_v*100:.1f}%")
             else:
                 st.warning(f"⚠️ No se encontró Pmax para **{_sel_unit}** en datos_cargados ni loc_names_gen.")
 
             st.markdown("---")
-            st.markdown(f"#### 📋 KPIs CNDC — Fuente Real: {src_real}")
-            _mostrar_tabla_cndc(_kr, float(_pm_v), delta_t_cndc,
-                                fuente=f"Real ({src_real})", rocof=_rocof_r)
+            st.markdown("#### 📋 KPIs CNDC — Comparativa Real vs. Simulación")
 
+            # Definición de filas: (etiqueta, función(kpi, p_max, rocof) → str)
+            _dt = delta_t_cndc  # captura local para lambdas
+            _KPI_FILAS_B5 = [
+                ("P_max [MW]",                   lambda k, pm, roc: f"{pm:.2f}"),
+                ("f₀ — Inicio evento [Hz]",      lambda k, pm, roc: f"{k['f0']:.4f}"),
+                ("P₀ — Inicio evento [MW]",      lambda k, pm, roc: f"{k['p0']:.3f}"),
+                ("f_min — Nadir [Hz]",           lambda k, pm, roc: f"{k['f_min']:.4f}"),
+                ("t_min — Nadir [s]",            lambda k, pm, roc: f"{k['t_min']:.1f}"),
+                ("Δf = f₀ − f_min [Hz]",        lambda k, pm, roc: f"{k['delta_f']:.4f}"),
+                (f"f_Δt ({_dt}s) [Hz]",         lambda k, pm, roc: f"{k['f_dt']:.4f}"),
+                (f"P_Δt ({_dt}s) [MW]",         lambda k, pm, roc: f"{k['p_dt']:.3f}"),
+                ("R_inic [MW]",                  lambda k, pm, roc: f"{k['r_inic']:.3f}"),
+                ("R_inic [%]",                   lambda k, pm, roc: f"{k['r_inic_pct']:.2f}"),
+                ("ΔP entregada [MW]",            lambda k, pm, roc: f"{k['dp']:.3f}"),
+                ("ΔP% aporte [%]",               lambda k, pm, roc: f"{k['dp_pct']:.2f}"),
+                ("¿Aporta RPF? (ΔP% ≥ 1.5%)",   lambda k, pm, roc: "✅ Sí" if k['aporta'] else "❌ No"),
+                ("Droop Nominal [%]",            lambda k, pm, roc: f"{k['droop_nom']:.1f}"),
+                ("Droop Calculado [%]",          lambda k, pm, roc: str(k['droop_calc'])),
+                ("ROCOF [Hz/s]",                 lambda k, pm, roc: f"{roc:.4f}" if (roc is not None and roc == roc) else "—"),
+            ]
+
+            # Construir dict ordenado: nombre fuente → (kpi, p_max, rocof)
+            _comp_srcs = {}
+            if _kr:
+                _comp_srcs[f"Real ({src_real})"] = (_kr, float(_pm_v), _rocof_r)
             for _sv, (_ks_i, _roc_i, _pm_i) in _kpi_per_src.items():
-                st.markdown(f"#### 📋 KPIs CNDC — Simulación {_sv}")
-                _mostrar_tabla_cndc(_ks_i, _pm_i, delta_t_cndc,
-                                    fuente=f"Simulación {_sv}", rocof=_roc_i)
+                _comp_srcs[f"Sim {_sv}"] = (_ks_i, float(_pm_i), _roc_i)
 
-            # ── Tabla resumen comparativa (todas las fuentes) ──────────────────
-            if _kpi_rows:
-                st.markdown("#### 📊 Comparativa de Desempeño CNDC (todas las fuentes)")
-                _df_kpi_v = _df_safe(pd.DataFrame(_kpi_rows))
-                for _c in _df_kpi_v.columns:
-                    if _df_kpi_v[_c].dtype == object:
-                        _df_kpi_v[_c] = _df_kpi_v[_c].astype(str)
-                st.dataframe(_df_kpi_v, hide_index=True, use_container_width=True)
+            if _comp_srcs:
+                _tabla_b5 = []
+                for _lbl, _fn in _KPI_FILAS_B5:
+                    _row = {"KPI": _lbl}
+                    for _sname, (_kpi_s, _pm_s, _roc_s) in _comp_srcs.items():
+                        try:
+                            _row[_sname] = _fn(_kpi_s, _pm_s, _roc_s)
+                        except Exception:
+                            _row[_sname] = "—"
+                    _tabla_b5.append(_row)
+
+                _df_comp_b5 = pd.DataFrame(_tabla_b5)
+
+                def _style_comp_b5(row):
+                    """Verde/rojo en la fila ¿Aporta?, gris en P_max."""
+                    base = [""] * len(row)
+                    if "Aporta" in str(row["KPI"]):
+                        return [
+                            ("background-color:#d4edda;color:#155724" if "✅" in str(v)
+                             else "background-color:#f8d7da;color:#721c24" if "❌" in str(v)
+                             else "")
+                            for v in row
+                        ]
+                    if "P_max" in str(row["KPI"]):
+                        return ["background-color:#f2f2f2"] * len(row)
+                    return base
+
+                st.dataframe(
+                    _df_comp_b5.style.apply(_style_comp_b5, axis=1),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                # Exportar tabla comparativa
+                if st.button("⬇️ Exportar comparativa a Excel", key="dl_b5_comp"):
+                    try:
+                        _excel_comp = _apply_excel_formatting(
+                            _df_comp_b5,
+                            sheet_name="Comparativa_KPIs",
+                            kpi_col="¿Aporta RPF? (ΔP% ≥ 1.5%)",
+                            kpi_ok_val="✅ Sí",
+                            kpi_error_val="❌ No",
+                        )
+                        st.download_button(
+                            "📥 Descargar",
+                            _excel_comp,
+                            file_name=f"kpis_comparativa_Ev{n_evento}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="dl_b5_comp_file",
+                        )
+                    except Exception as _ex:
+                        st.error(f"Error exportando: {_ex}")
 
                 # --- Curva de Error de Seguimiento y Barras KPI ---------------
                 if _sim_for_error:
