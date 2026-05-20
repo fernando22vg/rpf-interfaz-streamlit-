@@ -17,26 +17,31 @@ mejoras/
 Practica/
 fmi-getting-started/
 
-# --- Scripts PowerFactory (solo uso local) ---
+# --- Scripts PowerFactory (solo uso local, NO subir) ---
 ProgramasLimpio/CargaCondIniciales_PF.py
 ProgramasLimpio/CargaCondIniciales_PF_run.py
 ProgramasLimpio/CondInicialesPF.py
 ProgramasLimpio/CondInicialesPF_run.py
 ProgramasLimpio/ExtFLujos2daO.py
-ProgramasLimpio/ExtFLujos2daO_run.py
 ProgramasLimpio/ExtractorDSL_Reivax.py
 ProgramasLimpio/ExtractorDSLEcuaciones.py
-ProgramasLimpio/ExtractorResultadosCNDC.py
-ProgramasLimpio/ExtractorResultadosCNDC_run.py
-ProgramasLimpio/OrdenadorDatosEvento.py
-ProgramasLimpio/OrdenadorDatosEvento_run.py
 ProgramasLimpio/ComparativaREAL_SIMU_RMS.py
 ProgramasLimpio/Carga_p_REIVAX.py
 ProgramasLimpio/Programas_1_uso_modelo/
 ProgramasLimpio/Programas_graficas/
-ProgramasLimpio/runners/
 ProgramasLimpio/app/
 ProgramasLimpio/core/
+
+# --- Runners PowerFactory (solo local) ---
+ProgramasLimpio/runners/CargaCondIniciales_PF_run.py
+ProgramasLimpio/runners/CondInicialesPF_run.py
+ProgramasLimpio/runners/ExtFLujos2daO_run.py
+ProgramasLimpio/runners/DatsoGENBUSLNE_run.py
+ProgramasLimpio/runners/loc_namesGEN_run.py
+ProgramasLimpio/runners/loc_namesLineas_run.py
+ProgramasLimpio/runners/loc_names_xfo_run.py
+ProgramasLimpio/runners/InventarioShunts_PF_run.py
+ProgramasLimpio/runners/MapeoRetirosSTI_run.py
 
 # --- Docs de deploy internos ---
 ProgramasLimpio/00_*.txt
