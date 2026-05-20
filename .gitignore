@@ -1,0 +1,36 @@
+# Secretos y credenciales - NUNCA subir
+.streamlit/secrets.toml
+secrets.toml
+
+# Claude Code
+.claude/
+
+# Archivos temporales y de compilación
+compile_err.txt
+
+# Manifiestos de sync locales
+**/.sync_manifest.json
+**/sync_config.json
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.so
+.Python
+
+# Entornos virtuales
+venv/
+env/
+ENV/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Archivos temporales
+*.tmp
+*.bak
+*.log
