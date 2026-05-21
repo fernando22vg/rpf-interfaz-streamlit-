@@ -3415,15 +3415,10 @@ elif bloque_trabajo == "analisis_datos":
 
                     _b2_pmax = float(_b2_pm_val)
                     _b2_rp_pct = float(_get_rp_default(_tk_b2, LOC_NAMES_GEN_PATH))
-                    _cx_opt = st.columns([1])[0]
-                    with _cx_opt:
-                        _b2_dt       = st.number_input("Δt CNDC [s]", value=35,
-                                                        min_value=20, max_value=60, step=1, key="b2_sc_dt")
-                        _b2_umbral_k = st.number_input("Umbral df/dt [Hz/s]", value=-0.04,
-                                                        min_value=-2.0, max_value=-0.001, step=0.005,
-                                                        format="%.3f", key="b2_sc_umbral")
-                        _b2_vent_suav = st.number_input("Ventana suavizado", value=5,
-                                                         min_value=2, max_value=20, step=1, key="b2_sc_vsuav")
+                    _pp1, _pp2, _pp3 = st.columns(3)
+                    _b2_dt        = _pp1.number_input("Δt CNDC [s]", value=35, min_value=20, max_value=60, step=1, key="b2_sc_dt")
+                    _b2_umbral_k  = _pp2.number_input("Umbral df/dt [Hz/s]", value=-0.04, min_value=-2.0, max_value=-0.001, step=0.005, format="%.3f", key="b2_sc_umbral")
+                    _b2_vent_suav = _pp3.number_input("Ventana suavizado", value=5, min_value=2, max_value=20, step=1, key="b2_sc_vsuav")
 
                     _idx_auto_b2 = _detectar_inicio_falla(_freq_b2_arr, float(_b2_umbral_k), int(_b2_vent_suav))
                     _t_auto_b2   = float(t_norm.iloc[_idx_auto_b2])
@@ -3438,14 +3433,9 @@ elif bloque_trabajo == "analisis_datos":
                         st.session_state.b2_sc_last_uid = _b2sc_uid
                         st.session_state.b2_sc_t_falla = _t_default_b2
 
-                    # Aux keys: reset auto o clic en gráfico — ambos ANTES de crear el widget
+                    # Aux key: reset al tiempo auto-detectado
                     if st.session_state.pop("_b2sc_reset_auto", False):
                         _t_default_b2 = _t_auto_b2
-                    if "_b2sc_click_t" in st.session_state:
-                        _t_default_b2 = float(np.clip(
-                            st.session_state.pop("_b2sc_click_t"),
-                            t_norm.min(), t_norm.max()
-                        ))
 
                     _cin1, _cin2, _cbt = st.columns([3, 1, 1])
                     _t_input_b2 = _cin1.number_input(
@@ -3489,7 +3479,7 @@ elif bloque_trabajo == "analisis_datos":
                     xaxis_max_sc = _get_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", float(t_norm.max()))
 
                     # ── Barra de control compacta ─────────────────────────────────────────
-                    _sc_c1, _sc_c2, _sc_c3, _sc_c4 = st.columns([2, 1, 1, 2])
+                    _sc_c1, _sc_c2 = st.columns([3, 1])
                     auto_scale_sc = _sc_c1.toggle(
                         "📐 Auto-escala", value=st.session_state.b3_sync_y_auto,
                         key="b2_sc_y_auto", on_change=_sync_rpf_y_axis, args=("y_auto", "b2_sc_y_auto"),
@@ -3519,10 +3509,6 @@ elif bloque_trabajo == "analisis_datos":
                             _save_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmin", xaxis_min)
                             _save_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", xaxis_max)
                             st.toast("Escalado guardado")
-                    _b2sc_click_mode = _sc_c3.toggle(
-                        "📍 Clic→t₀", key="b2sc_click_mode",
-                        help="Activa y haz clic en el gráfico para mover el marcador t₀",
-                    )
 
                     # ── Gráfico con marcadores CNDC (usando funciones estándares) ─────── # type: ignore
                     _gcfg = st.session_state.graph_config
@@ -3596,20 +3582,7 @@ elif bloque_trabajo == "analisis_datos":
                             show_eval_line=False,
                         )
                     
-                    if _b2sc_click_mode:
-                        st.caption("📍 Modo activo — haz clic sobre el gráfico para mover t₀")
-                    _sc_sel = st.plotly_chart(
-                        fig, use_container_width=True,
-                        on_select="rerun" if _b2sc_click_mode else "ignore",
-                        selection_mode=["points"],
-                        key="b2sc_plotly_chart",
-                    )
-                    if _b2sc_click_mode and _sc_sel and _sc_sel.selection and _sc_sel.selection.points:
-                        _px = float(_sc_sel.selection.points[0]["x"])
-                        _ct = (float(t_norm.iloc[int(np.argmin(np.abs(t_raw.values - _px / 1000)))])
-                               if show_hhmmss else _px)
-                        st.session_state["_b2sc_click_t"] = _ct
-                        st.rerun()
+                    st.plotly_chart(fig, use_container_width=True, key="b2sc_plotly_chart")
 
                     with st.expander("📄 Ver tabla de datos"):
                         st.dataframe(_df_safe(df_scada), use_container_width=True)
@@ -3858,9 +3831,9 @@ elif bloque_trabajo == "analisis_datos":
                     _emf_pmax = float(_emf_pm_val)
                     _emf_rp_pct = float(_get_rp_default(_tk_emf, LOC_NAMES_GEN_PATH))
 
-                    _ecx_opt = st.columns([1])[0]
-                    _emf_dt = _ecx_opt.number_input("Δt CNDC [s]", value=35, min_value=20, max_value=60, key="b2_emf_dt")
-                    _emf_umbral_k = _ecx_opt.number_input("Umbral df/dt [Hz/s]", value=-0.04, format="%.3f", key="b2_emf_um")
+                    _ep1, _ep2 = st.columns(2)
+                    _emf_dt       = _ep1.number_input("Δt CNDC [s]", value=35, min_value=20, max_value=60, key="b2_emf_dt")
+                    _emf_umbral_k = _ep2.number_input("Umbral df/dt [Hz/s]", value=-0.04, format="%.3f", key="b2_emf_um")
 
                     # Detección y Análisis
                     _freq_emf_arr = pd.to_numeric(df_emf[col_freq], errors='coerce').ffill().values
@@ -3883,14 +3856,9 @@ elif bloque_trabajo == "analisis_datos":
                         st.session_state.b2_emf_last_uid = _b2emf_uid
                         st.session_state.b2_emf_t_falla = _t_default_emf
 
-                    # Aux keys: reset auto o clic en gráfico — ambos ANTES del widget
+                    # Aux key: reset al tiempo auto-detectado
                     if st.session_state.pop("_b2emf_reset_auto", False):
                         _t_default_emf = _t_auto_emf
-                    if "_b2emf_click_t" in st.session_state:
-                        _t_default_emf = float(np.clip(
-                            st.session_state.pop("_b2emf_click_t"),
-                            t_norm.min(), t_norm.max()
-                        ))
 
                     _cemf1, _cemf2, _cemf_btn = st.columns([3, 1, 1])
                     _t_input_emf = _cemf1.number_input(
@@ -3914,7 +3882,7 @@ elif bloque_trabajo == "analisis_datos":
                             st.toast(f"t₀ = {_t_input_emf:.1f} s guardado", icon="✅") # type: ignore
 
                     # ── Barra de control compacta EMF ──────────────────────────────────────
-                    _emf_c1, _emf_c2, _emf_c3, _emf_c4 = st.columns([2, 1, 1, 2])
+                    _emf_c1, _emf_c2 = st.columns([3, 1])
                     auto_scale_emf = _emf_c1.toggle(
                         "📐 Auto-escala", value=st.session_state.b3_sync_y_auto,
                         key="b2_emf_y_auto", on_change=_sync_rpf_y_axis, args=("y_auto", "b2_emf_y_auto"),
@@ -3939,10 +3907,6 @@ elif bloque_trabajo == "analisis_datos":
                             _save_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmin", xaxis_min)
                             _save_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmax", xaxis_max)
                             st.toast("Escalado EMF guardado")
-                    _b2emf_click_mode = _emf_c3.toggle(
-                        "📍 Clic→t₀", key="b2emf_click_mode",
-                        help="Activa y haz clic en el gráfico para mover el marcador t₀",
-                    )
 
                     _t_falla_emf = float(t_norm.iloc[_idx_falla_emf])
                     _t_al_emf = (t_norm - _t_falla_emf).values
@@ -4012,20 +3976,7 @@ elif bloque_trabajo == "analisis_datos":
                             show_eval_line=False,
                         )
                     
-                    if _b2emf_click_mode:
-                        st.caption("📍 Modo activo — haz clic sobre el gráfico para mover t₀")
-                    _emf_sel = st.plotly_chart(
-                        fig_emf, use_container_width=True,
-                        on_select="rerun" if _b2emf_click_mode else "ignore",
-                        selection_mode=["points"],
-                        key="b2emf_plotly_chart",
-                    )
-                    if _b2emf_click_mode and _emf_sel and _emf_sel.selection and _emf_sel.selection.points:
-                        _epx = float(_emf_sel.selection.points[0]["x"])
-                        _ect = (float(t_norm.iloc[int(np.argmin(np.abs(t_raw.values - _epx / 1000)))])
-                                if show_hhmmss else _epx)
-                        st.session_state["_b2emf_click_t"] = _ect
-                        st.rerun()
+                    st.plotly_chart(fig_emf, use_container_width=True, key="b2emf_plotly_chart")
 
                     st.markdown("#### 📋 KPIs CNDC — Criterio RPF (Registro EMF)")
                     if st.button("Descargar datos EMF a Excel", key=f"dl_emf_data_{_sel_unit}"): # type: ignore
