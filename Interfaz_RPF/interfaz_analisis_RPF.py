@@ -1527,7 +1527,7 @@ if bloque_trabajo == "modelo_base":
     _mod_params_path = os.path.join(_datos_extraidos_dir, "_mod_params.json")
 
     _can_mod = os.path.isfile(_mod_runner_path)
-    if not _can_mod:
+    if not _can_mod and not IS_CLOUD:
         st.error(f"No se encontró el runner: `{_mod_runner_path}`")
 
     if st.button(
@@ -1695,7 +1695,7 @@ if bloque_trabajo == "modelo_base":
         _pf  = os.path.join(_datos_extraidos_dir, f"_{pfx}_params.json")
 
         _can = os.path.isfile(_runner)
-        if not _can:
+        if not _can and not IS_CLOUD:
             st.error(f"Runner no encontrado: `{runner_name}`")
 
         _is_running = st.session_state.get(f"{pfx}_running", False)
@@ -2168,7 +2168,7 @@ elif bloque_trabajo == "carga_datos":
                     "runners", "ExtFLujos2daO_run.py",
                 )
                 _can_ext = os.path.isfile(_ext_runner)
-                if not _can_ext:
+                if not _can_ext and not IS_CLOUD:
                     st.error(f"No se encontró el runner: `{_ext_runner}`")
 
                 col_ext_btn, _ = st.columns([1, 3])
@@ -2418,7 +2418,7 @@ elif bloque_trabajo == "carga_datos":
                     "CondInicialesPF_run.py",
                 )
                 _can_ci = os.path.isfile(_ci_runner)
-                if not _can_ci:
+                if not _can_ci and not IS_CLOUD:
                     st.error(f"No se encontró el runner: `{_ci_runner}`")
 
                 col_ci_btn, _ = st.columns([1, 3])
@@ -2908,7 +2908,8 @@ elif bloque_trabajo == "carga_datos":
                     "runners", "CargaCondIniciales_PF_run.py",
                 )
                 if not os.path.isfile(_runner_path):
-                    st.error(f"No se encontró el runner: `{_runner_path}`")
+                    if not IS_CLOUD:
+                        st.error(f"No se encontró el runner: `{_runner_path}`")
                     st.stop()
 
                 # Limpiar flags residuales de ejecuciones anteriores
@@ -3290,7 +3291,7 @@ elif bloque_trabajo == "analisis_datos":
             "runners", "OrdenadorDatosEvento_run.py",
         )
         _can_scada = os.path.isfile(_scada_runner)
-        if not _can_scada:
+        if not _can_scada and not IS_CLOUD:
             st.error(f"No se encontró el runner: `{_scada_runner}`")
 
         with col1:
@@ -3719,7 +3720,7 @@ elif bloque_trabajo == "analisis_datos":
             "runners", "ExtractorResultadosCNDC_run.py",
         )
         _can_emf = os.path.isfile(_emf_runner)
-        if not _can_emf:
+        if not _can_emf and not IS_CLOUD:
             st.error(f"No se encontró el runner: `{_emf_runner}`")
 
         with col1:
