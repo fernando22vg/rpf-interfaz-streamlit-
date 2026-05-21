@@ -1474,6 +1474,22 @@ if bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_real
                 st.session_state.b3_last_unit = st.session_state.global_selected_unit
                 st.session_state.b3_last_event_path = st.session_state.ev_path_global
 
+        # ── Badge de unidad activa ─────────────────────────────────────────────
+        _active_unit = st.session_state.global_selected_unit
+        if _active_unit:
+            _u_clean = _active_unit.replace("sym_", "")
+            st.markdown(
+                f'<div style="background:linear-gradient(90deg,#0f172a,#1a2744);'
+                f'border-left:5px solid #38bdf8;border-radius:8px;padding:10px 18px;margin:6px 0 2px 0;">'
+                f'<span style="color:#64748b;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase">▶ Unidad activa</span>'
+                f'<div style="color:#38bdf8;font-size:26px;font-weight:800;font-family:monospace;line-height:1.2;margin-top:2px">'
+                f'{_u_clean}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("⬆️ Seleccione una unidad en el selector para comenzar el análisis.")
+
         st.divider()
 
 def _df_safe(df):
@@ -3267,6 +3283,25 @@ elif bloque_trabajo == "analisis_datos":
     evento = st.session_state.evento_global
     _sel_unit = st.session_state.global_selected_unit
 
+    if not _sel_unit:
+        st.warning("⬆️ Seleccione una unidad en el selector superior para ver el análisis.")
+        st.stop()
+
+    # ── Indicador de contexto compacto ────────────────────────────────────────
+    _ev_label = st.session_state.evento_global or ""
+    _u_clean_b3 = _sel_unit.replace("sym_", "")
+    st.markdown(
+        f'<div style="display:flex;align-items:center;gap:12px;background:#0f172a;'
+        f'border:1px solid #1e3a5f;border-radius:6px;padding:6px 14px;margin-bottom:6px;">'
+        f'<span style="color:#38bdf8;font-size:18px;font-weight:800;font-family:monospace">{_u_clean_b3}</span>'
+        f'<span style="color:#475569;font-size:13px">|</span>'
+        f'<span style="color:#94a3b8;font-size:13px">Evento <b style="color:#cbd5e1">{_ev_label}</b></span>'
+        f'<span style="color:#475569;font-size:13px">|</span>'
+        f'<span style="color:#94a3b8;font-size:13px">Pmax <b style="color:#cbd5e1">{_pmax_ref:.1f} MW</b></span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
     tab_scada, tab_emf, tab_comp = st.tabs([
         "Registro SCADA COBEE (1SEG)", # type: ignore
         "Extracción Gráficos EMF CNDC", # type: ignore
@@ -4442,6 +4477,27 @@ elif bloque_trabajo == "analisis_simulacion":
         st.session_state.b3_last_event_id = _b3_event_id
         st.session_state.b3_t_falla = _t0_autodet
 
+    # ── Indicador de contexto compacto ────────────────────────────────────────
+    if _sel_unit:
+        _u_clean_b4 = _sel_unit.replace("sym_", "")
+        _pm_b4 = _load_pmax_cargado(ev_path, n_evento)
+        _tm_b4 = _load_tech_map(LOC_NAMES_GEN_PATH)
+        _pmax_b4, _, _ = _get_pmax_from_cargado(_sel_unit, _pm_b4, _tm_b4)
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:12px;background:#0f172a;'
+            f'border:1px solid #1e3a5f;border-radius:6px;padding:6px 14px;margin-bottom:6px;">'
+            f'<span style="color:#38bdf8;font-size:18px;font-weight:800;font-family:monospace">{_u_clean_b4}</span>'
+            f'<span style="color:#475569;font-size:13px">|</span>'
+            f'<span style="color:#94a3b8;font-size:13px">Evento <b style="color:#cbd5e1">{st.session_state.evento_global}</b></span>'
+            f'<span style="color:#475569;font-size:13px">|</span>'
+            f'<span style="color:#94a3b8;font-size:13px">Pmax <b style="color:#cbd5e1">{float(_pmax_b4):.1f} MW</b></span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.warning("⬆️ Seleccione una unidad en el selector superior para ver el análisis.")
+        st.stop()
+
     # ── Parámetros de análisis CNDC (compartidos entre pestañas) ────────────────
     st.markdown("---") # type: ignore
     st.markdown("### ⚙️ Parámetros de Análisis CNDC")
@@ -4773,6 +4829,28 @@ elif bloque_trabajo == "comparativa_real_simu":
     n_evento = st.session_state.n_evento_global
 
     _event_cfg = _load_event_cfg(ev_path)
+
+    # ── Indicador de contexto compacto ────────────────────────────────────────
+    _sel_unit_b5 = st.session_state.global_selected_unit
+    if _sel_unit_b5:
+        _u_clean_b5 = _sel_unit_b5.replace("sym_", "")
+        _pm_b5 = _load_pmax_cargado(ev_path, n_evento)
+        _tm_b5 = _load_tech_map(LOC_NAMES_GEN_PATH)
+        _pmax_b5, _, _ = _get_pmax_from_cargado(_sel_unit_b5, _pm_b5, _tm_b5)
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:12px;background:#0f172a;'
+            f'border:1px solid #1e3a5f;border-radius:6px;padding:6px 14px;margin-bottom:6px;">'
+            f'<span style="color:#38bdf8;font-size:18px;font-weight:800;font-family:monospace">{_u_clean_b5}</span>'
+            f'<span style="color:#475569;font-size:13px">|</span>'
+            f'<span style="color:#94a3b8;font-size:13px">Evento <b style="color:#cbd5e1">{st.session_state.evento_global}</b></span>'
+            f'<span style="color:#475569;font-size:13px">|</span>'
+            f'<span style="color:#94a3b8;font-size:13px">Pmax <b style="color:#cbd5e1">{float(_pmax_b5):.1f} MW</b></span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.warning("⬆️ Seleccione una unidad en el selector superior para ver el análisis.")
+        st.stop()
 
     # ── Funciones auxiliares ────────────────────────────────────────────────────
     def _local_parse_sec(series):
