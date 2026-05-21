@@ -4451,8 +4451,11 @@ elif bloque_trabajo == "analisis_simulacion":
                 if _sel_file_b3: break
 
     # ── Auto-detección de t₀ desde el archivo de simulación ─────────────────────
-    _b3_event_id = f"{st.session_state.semestre_global}|{st.session_state.evento_global}|{_sel_file_b3}"
-    _t0_autodet = float(_event_cfg.get("t_sim_falla", 5.0))
+    # El event_id NO incluye el archivo de simulación para que cambiar de unidad
+    # no resetee t₀ si ya fue guardado para este evento.
+    _b3_event_id = f"{st.session_state.semestre_global}|{st.session_state.evento_global}"
+    _t0_saved = _event_cfg.get("t_sim_falla")   # None si nunca se guardó
+    _t0_autodet = float(_t0_saved) if _t0_saved is not None else 5.0
     if _sel_file_b3 and os.path.isdir(_dir0_b3):
         _autodet_path = os.path.join(_dir0_b3, _sel_file_b3)
         if os.path.isfile(_autodet_path):
@@ -4469,10 +4472,13 @@ elif bloque_trabajo == "analisis_simulacion":
                     _fq_ad_v = _fq_ad[_valid_ad]
                     _idx_ad = _detectar_inicio_falla(_fq_ad_v)
                     if _idx_ad > 0 and _idx_ad < len(_t_ad_v):
-                        _t0_autodet = float(_t_ad_v[_idx_ad])
+                        # Solo sobreescribir el auto-detectado si NO hay valor guardado
+                        if _t0_saved is None:
+                            _t0_autodet = float(_t_ad_v[_idx_ad])
             except Exception:
                 pass
-    # Resetear t₀ cuando cambia el evento o la unidad para que el default se re-aplique
+    # Resetear t₀ solo cuando CAMBIA EL EVENTO (no al cambiar de unidad).
+    # Si hay un valor guardado en la config del evento, se usa ese; si no, el auto-detectado.
     if st.session_state.get("b3_last_event_id") != _b3_event_id:
         st.session_state.b3_last_event_id = _b3_event_id
         st.session_state.b3_t_falla = _t0_autodet
