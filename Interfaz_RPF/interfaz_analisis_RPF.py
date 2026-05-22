@@ -357,18 +357,24 @@ _V4_CSS_TEMPLATE = (
     " .stTabs [data-baseweb='tab'] {{ color: {textMuted} !important; }}"
     " .stTabs [aria-selected='true'] {{"
     " color: {primary} !important; border-bottom-color: {primary} !important; }}"
-    " .v4-stepper-clickable {{ position: relative; }}"
-    " .v4-stepper-btn-overlay + div[data-testid='stHorizontalBlock'] {{"
-    " position: absolute; top: -52px; left: 20px; right: 20px;"
-    " height: 52px; opacity: 0; pointer-events: auto; z-index: 101; display: flex;"
+    " section[data-testid='stSidebar'] {{"
+    " top: 56px !important; height: calc(100vh - 56px) !important;"
     " }}"
-    " .v4-stepper-btn-overlay + div[data-testid='stHorizontalBlock'] button {{"
-    " height: 52px; cursor: pointer;"
-    " }}"
+    " section[data-testid='stSidebar'] > div:first-child {{ padding-top: 52px !important; }}"
     " section[data-testid='stSidebar'] .stToggle label {{"
     " color: {textMuted} !important; font-size: 12px !important;"
     " }}"
     " section[data-testid='stSidebar'] hr {{ border-color: {border} !important; opacity: 1; }}"
+    " .v4-topbar-disc-label {{"
+    " font-size: 9px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;"
+    " color: {danger}; white-space: nowrap; flex-shrink: 0;"
+    " }}"
+    " .v4-disc-chip {{"
+    " display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; height: 30px;"
+    " background: {dangerBg}; border: 1px solid {danger}; border-radius: 6px;"
+    " font-size: 11.5px; font-weight: 700; color: {danger}; white-space: nowrap; flex-shrink: 0;"
+    " }}"
+    " .v4-disc-chip-mw {{ font-weight: 400; opacity: 0.8; margin-left: 3px; }}"
     "</style>"
 )
 
@@ -390,37 +396,78 @@ _V4_BLOQUES = [
 
 @st.cache_data(ttl=120, show_spinner=False)
 def _load_event_header_info(ev_path: str, n_evento: str, raiz: str, semestre: str):
-    """Lee fecha del evento, unidad disparada y potencia desconectada para la topbar.
-    Fuentes: condiciones_iniciales_*.xlsx (fecha+disparo), Tabla_Eventos_*.xlsx (p_desc).
-    Retorna (fecha_str, disparo_str, p_desc_mw).
+    """Lee fecha del evento, unidades disparadas y potencia desconectada para la topbar.
+    Fuentes: condiciones_iniciales_*.xlsx (Resumen → fecha, pgini_GEN → unidades+MW),
+             Tabla_Eventos_*.xlsx (p_desc total).
+    Retorna (fecha_str, disparo_units, p_desc_mw) donde
+        disparo_units = [("ZON02", 92.0), ("TIQ01", 78.0), ...]  — unidades con pgini<0
     """
     import glob as _glob
-    fecha_str, disparo_str, p_desc_mw = "", "", 0.0
-    # 1. condiciones_iniciales → fecha y hora + disparo
+    fecha_str    = ""
+    disparo_units: list = []
+    p_desc_mw    = 0.0
+
+    # 1. condiciones_iniciales_*.xlsx
     if ev_path and os.path.isdir(ev_path):
         ci_files = sorted(
             _glob.glob(os.path.join(ev_path, "condiciones_iniciales_*.xlsx")),
             key=os.path.getmtime, reverse=True,
         )
         if ci_files:
+            ci_path = ci_files[0]
+            # 1a. Hoja Resumen → fecha
             try:
-                import openpyxl as _opx
-                _wb = _opx.load_workbook(ci_files[0], read_only=True, data_only=True)
-                if "resumen" in _wb.sheetnames:
-                    _ws = _wb["resumen"]
-                    for _row in _ws.iter_rows(values_only=True):
-                        if not _row or not _row[0]:
-                            continue
-                        _k = str(_row[0]).strip()
-                        _v = str(_row[1]).strip() if len(_row) > 1 and _row[1] is not None else ""
-                        if _k == "Fecha y hora":
-                            fecha_str = _v
-                        elif _k == "Disparo":
-                            disparo_str = _v
-                _wb.close()
+                _ef = pd.ExcelFile(ci_path, engine="calamine")
+                _sheet_names_lower = [s.lower() for s in _ef.sheet_names]
+                # buscar "Resumen" case-insensitive
+                for _sn in _ef.sheet_names:
+                    if _sn.lower() == "resumen":
+                        _df_res = _ef.parse(_sn, header=None)
+                        for _, _row in _df_res.iterrows():
+                            if len(_row) < 2:
+                                continue
+                            _k = str(_row.iloc[0]).strip() if _row.iloc[0] is not None else ""
+                            _v = str(_row.iloc[1]).strip() if _row.iloc[1] is not None else ""
+                            if _k == "Fecha y hora":
+                                fecha_str = _v
+                                break
+                        break
             except Exception:
                 pass
-    # 2. Tabla_Eventos → p_desc (potencia desconectada del disparo)
+            # 1b. Hoja pgini_GEN → unidades con pgini negativo (desconectadas)
+            try:
+                _ef2 = pd.ExcelFile(ci_path, engine="calamine")
+                for _sn2 in _ef2.sheet_names:
+                    if _sn2.lower() == "pgini_gen":
+                        _df_pg = _ef2.parse(_sn2)
+                        # Columnas esperadas: loc_name PF, pgini_MW (u otras similares)
+                        _col_name = None
+                        _col_mw   = None
+                        for _c in _df_pg.columns:
+                            _cl = str(_c).lower()
+                            if "loc_name" in _cl or "nombre" in _cl or "name" in _cl:
+                                _col_name = _c
+                            if "pgini" in _cl or "_mw" in _cl or "potencia" in _cl:
+                                _col_mw = _c
+                        if _col_name and _col_mw:
+                            for _, _pr in _df_pg.iterrows():
+                                try:
+                                    _mw = float(_pr[_col_mw])
+                                except (ValueError, TypeError):
+                                    continue
+                                if _mw < 0:
+                                    _raw_name = str(_pr[_col_name]).strip()
+                                    # normalizar: quitar sym_, WT_, trailing digits
+                                    _n = _raw_name
+                                    for _pfx in ("sym_", "WT_", "wt_"):
+                                        _n = _n.replace(_pfx, "")
+                                    _n = _n.rstrip("0123456789_").strip() or _n
+                                    disparo_units.append((_n, abs(_mw)))
+                        break
+            except Exception:
+                pass
+
+    # 2. Tabla_Eventos → p_desc total (fila del evento)
     if raiz and semestre and n_evento:
         tabla_files = sorted(
             _glob.glob(os.path.join(raiz, semestre, "Tabla_Eventos_*.xlsx")),
@@ -428,22 +475,18 @@ def _load_event_header_info(ev_path: str, n_evento: str, raiz: str, semestre: st
         )
         if tabla_files:
             try:
-                import openpyxl as _opx2
-                _wb2 = _opx2.load_workbook(tabla_files[0], read_only=True, data_only=True)
-                _ws2 = _wb2.active
-                for _row2 in _ws2.iter_rows(min_row=2, values_only=True):
-                    if not _row2 or _row2[0] is None:
-                        continue
+                _df_tev = pd.read_excel(tabla_files[0], header=0, engine="calamine")
+                for _, _tr in _df_tev.iterrows():
                     try:
-                        if int(_row2[0]) == int(n_evento):
-                            p_desc_mw = float(_row2[3]) if _row2[3] else 0.0
+                        if int(_tr.iloc[0]) == int(n_evento):
+                            p_desc_mw = float(_tr.iloc[3]) if _tr.iloc[3] else 0.0
                             break
                     except (ValueError, TypeError):
                         pass
-                _wb2.close()
             except Exception:
                 pass
-    return fecha_str, disparo_str, p_desc_mw
+
+    return fecha_str, disparo_units, p_desc_mw
 
 
 def _render_topbar():
@@ -459,47 +502,63 @@ def _render_topbar():
     mode_icon  = _v4_icon("server", 13) if not IS_CLOUD else _v4_icon("cloud", 13)
 
     # Cargar info del evento (cached — no bloquea el render)
-    fecha_str, disparo_str, p_desc_mw = "", "", 0.0
+    fecha_str    = ""
+    disparo_units: list = []
+    p_desc_mw    = 0.0
     if ev_path and n_ev:
         try:
-            fecha_str, disparo_str, p_desc_mw = _load_event_header_info(
+            fecha_str, disparo_units, p_desc_mw = _load_event_header_info(
                 ev_path, n_ev, raiz, sem
             )
         except Exception:
             pass
 
-    # Formatear fecha: solo dd/mm/aaaa
+    # Formatear fecha: solo dd/mm/aaaa hh:mm
     fecha_disp = ""
-    if fecha_str and fecha_str != "—":
-        fecha_disp = fecha_str.split(" ")[0] if " " in fecha_str else fecha_str[:10]
+    if fecha_str and fecha_str not in ("—", "nan", ""):
+        # "2024-05-15 14:23:00" → "15/05/2024 14:23"
+        try:
+            _parts = fecha_str.strip().split(" ")
+            _d = _parts[0].replace("-", "/")
+            # invertir si viene yyyy/mm/dd
+            _dp = _d.split("/")
+            if len(_dp) == 3 and len(_dp[0]) == 4:
+                _d = f"{_dp[2]}/{_dp[1]}/{_dp[0]}"
+            if len(_parts) > 1:
+                _t = ":".join(_parts[1].split(":")[:2])
+                fecha_disp = f"{_d} {_t}"
+            else:
+                fecha_disp = _d
+        except Exception:
+            fecha_disp = fecha_str[:10]
 
-    # Limpiar nombre del disparo: quitar prefijo sym_, truncar
-    disparo_disp = ""
-    if disparo_str and disparo_str not in ("—", "nan", ""):
-        disparo_disp = disparo_str.replace("sym_", "").strip()
+    # Construir pill central con semestre + evento + fecha inline
+    fecha_suffix = f'<div class="v4-sep"></div><span class="v4-event-val" style="opacity:0.65;font-weight:400">{fecha_disp}</span>' if fecha_disp else ""
 
-    # Construir pills extra
-    extra_pills = ""
-    if fecha_disp:
-        extra_pills += (
+    # Construir chips de unidades desconectadas
+    disc_chips_html = ""
+    if disparo_units:
+        chips = ""
+        for _unit_name, _unit_mw in disparo_units:
+            chips += (
+                f'<span class="v4-disc-chip">'
+                f'{_unit_name}'
+                f'<span class="v4-disc-chip-mw">{_unit_mw:.0f}&nbsp;MW</span>'
+                f'</span>'
+            )
+        disc_chips_html = (
             f'<div class="v4-sep"></div>'
-            f'<div class="v4-event-pill">'
-            f'{_v4_icon("info", 13, t["textMuted"])}'
-            f'<span class="v4-event-label">Fecha</span>'
-            f'<span class="v4-event-val">{fecha_disp}</span>'
-            f'</div>'
+            f'<span class="v4-topbar-disc-label">DESCONECTADAS</span>'
+            f'{chips}'
         )
-    if disparo_disp:
-        p_str = f"{p_desc_mw:.1f}" if p_desc_mw > 0 else "—"
-        extra_pills += (
+    elif p_desc_mw > 0:
+        # fallback: solo mostrar ΔP total si no hay desglose por unidad
+        disc_chips_html = (
             f'<div class="v4-sep"></div>'
             f'<div class="v4-event-pill danger">'
             f'{_v4_icon("bolt", 13, t["danger"])}'
-            f'<span class="v4-event-label">Disparo</span>'
-            f'<span class="v4-event-val danger">{disparo_disp}</span>'
-            f'<div class="v4-sep"></div>'
             f'<span class="v4-event-label">&#916;P</span>'
-            f'<span class="v4-event-val">{p_str}&nbsp;MW</span>'
+            f'<span class="v4-event-val danger">{p_desc_mw:.1f}&nbsp;MW</span>'
             f'</div>'
         )
 
@@ -521,8 +580,9 @@ def _render_topbar():
           {_v4_icon("bolt", 13, t["accent"])}
           <span class="v4-event-label">Evento</span>
           <span class="v4-event-val">{ev}</span>
+          {fecha_suffix}
         </div>
-        {extra_pills}
+        {disc_chips_html}
       </div>
       <div class="v4-topbar-right">
         <span class="v4-mode-badge {mode_cls}">{mode_icon}&nbsp;{mode_label}</span>
@@ -550,30 +610,13 @@ def _render_stepper(active_block: str):
         )
         if i < len(_V4_BLOQUES) - 1:
             items_html += f'<span class="v4-connector{" past" if is_past else ""}"></span>'
-    # HTML visual del stepper + div marcador para overlay
+    # Stepper visual — navegación via sidebar
     st.markdown(
-        f'<div class="v4-stepper v4-stepper-clickable">'
+        f'<div class="v4-stepper">'
         f'<div class="v4-stepper-inner">{items_html}</div>'
-        f'</div><div class="v4-stepper-btn-overlay"></div>',
+        f'</div>',
         unsafe_allow_html=True,
     )
-    # Botones invisibles superpuestos — capturan el click de cada paso
-    _any_running = (
-        st.session_state.get("pf_running") or st.session_state.get("mod_running")
-        or any(st.session_state.get(f"{_p}_running") for _p in ("gen","lne","xfo","sht","car"))
-        or st.session_state.get("ext_running") or st.session_state.get("ci_running")
-        or st.session_state.get("scada_running") or st.session_state.get("emf_running")
-    )
-    _step_cols = st.columns(len(_V4_BLOQUES))
-    for _b, _col in zip(_V4_BLOQUES, _step_cols):
-        with _col:
-            if st.button(
-                _b["short"], key=f"step_{_b['id']}",
-                disabled=bool(_any_running),
-                use_container_width=True,
-            ):
-                st.session_state.active_block = _b["id"]
-                st.rerun()
 
 def _render_block_header(num: str, title: str, subtitle: str, grupo: str, pf_required: bool = False):
     """Breadcrumb + número de bloque + título + subtítulo (opcional banner cloud)."""
