@@ -337,6 +337,34 @@ _V4_CSS_TEMPLATE = (
     " opacity: 0.45 !important; cursor: not-allowed !important;"
     " }}"
     " .v4-content {{ padding: 0 24px 24px 24px; }}"
+    " .stTextInput input, .stSelectbox > div > div, .stNumberInput input {{"
+    " background: {surfaceAlt} !important; color: {text} !important;"
+    " border-color: {border} !important;"
+    " }}"
+    " .stCheckbox label span, .stToggle label span {{ color: {text} !important; }}"
+    " .stMarkdown p, .stMarkdown li, .stMarkdown h1, .stMarkdown h2,"
+    " .stMarkdown h3, .stMarkdown h4 {{ color: {text} !important; }}"
+    " .stCaption {{ color: {textMuted} !important; }}"
+    " .stExpander {{ background: {surface} !important; border-color: {border} !important; }}"
+    " .stExpander summary {{ color: {text} !important; }}"
+    " .stAlert {{ background: {surfaceAlt} !important; border-color: {border} !important; }}"
+    " .stTabs [data-baseweb='tab-list'] {{"
+    " background: {surface} !important; border-bottom: 1px solid {border} !important; }}"
+    " .stTabs [data-baseweb='tab'] {{ color: {textMuted} !important; }}"
+    " .stTabs [aria-selected='true'] {{"
+    " color: {primary} !important; border-bottom-color: {primary} !important; }}"
+    " .v4-stepper-clickable {{ position: relative; }}"
+    " .v4-stepper-btn-overlay + div[data-testid='stHorizontalBlock'] {{"
+    " position: absolute; top: -52px; left: 20px; right: 20px;"
+    " height: 52px; opacity: 0; pointer-events: auto; z-index: 101; display: flex;"
+    " }}"
+    " .v4-stepper-btn-overlay + div[data-testid='stHorizontalBlock'] button {{"
+    " height: 52px; cursor: pointer;"
+    " }}"
+    " section[data-testid='stSidebar'] .stToggle label {{"
+    " color: {textMuted} !important; font-size: 12px !important;"
+    " }}"
+    " section[data-testid='stSidebar'] hr {{ border-color: {border} !important; opacity: 1; }}"
     "</style>"
 )
 
@@ -389,22 +417,49 @@ def _render_topbar():
     """, unsafe_allow_html=True)
 
 def _render_stepper(active_block: str):
-    """Stepper horizontal de 8 pasos; indica activo, completados y bloques solo-local."""
+    """Stepper horizontal de 8 pasos con botones invisibles overlay para click-to-navigate."""
     t          = _v4_t()
     active_idx = next((i for i, b in enumerate(_V4_BLOQUES) if b["id"] == active_block), 0)
     items_html = ""
     for i, b in enumerate(_V4_BLOQUES):
-        is_active   = b["id"] == active_block
-        is_past     = i < active_idx
-        is_disabled = False  # todos los bloques navegables (PF requiere local, pero se puede visitar)
-        cls = "v4-step" + (" active" if is_active else " past" if is_past else "")
-        num_txt   = "✓" if is_past else b["num"]
+        is_active  = b["id"] == active_block
+        is_past    = i < active_idx
+        cls        = "v4-step" + (" active" if is_active else " past" if is_past else "")
+        num_txt    = "✓" if is_past else b["num"]
         badge_html = f'<span class="v4-step-badge">local</span>' if (IS_CLOUD and b["pf"]) else ""
-        icon_col  = t["success"] if is_past else (t["accent"] if is_active else t["textMuted"])
-        items_html += f'<span class="{cls}" title="{b["label"]}"><span class="v4-step-num">{num_txt}</span>{_v4_icon(b["icon"], 13, icon_col)}<span>{b["short"]}</span>{badge_html}</span>'
+        icon_col   = t["success"] if is_past else (t["accent"] if is_active else t["textMuted"])
+        items_html += (
+            f'<span class="{cls}" title="{b["label"]}">'
+            f'<span class="v4-step-num">{num_txt}</span>'
+            f'{_v4_icon(b["icon"], 13, icon_col)}'
+            f'<span>{b["short"]}</span>{badge_html}</span>'
+        )
         if i < len(_V4_BLOQUES) - 1:
-            items_html += f'<span class="v4-connector{"  past" if is_past else ""}"></span>'
-    st.markdown(f'<div class="v4-stepper"><div class="v4-stepper-inner">{items_html}</div></div>', unsafe_allow_html=True)
+            items_html += f'<span class="v4-connector{" past" if is_past else ""}"></span>'
+    # HTML visual del stepper + div marcador para overlay
+    st.markdown(
+        f'<div class="v4-stepper v4-stepper-clickable">'
+        f'<div class="v4-stepper-inner">{items_html}</div>'
+        f'</div><div class="v4-stepper-btn-overlay"></div>',
+        unsafe_allow_html=True,
+    )
+    # Botones invisibles superpuestos — capturan el click de cada paso
+    _any_running = (
+        st.session_state.get("pf_running") or st.session_state.get("mod_running")
+        or any(st.session_state.get(f"{_p}_running") for _p in ("gen","lne","xfo","sht","car"))
+        or st.session_state.get("ext_running") or st.session_state.get("ci_running")
+        or st.session_state.get("scada_running") or st.session_state.get("emf_running")
+    )
+    _step_cols = st.columns(len(_V4_BLOQUES))
+    for _b, _col in zip(_V4_BLOQUES, _step_cols):
+        with _col:
+            if st.button(
+                _b["short"], key=f"step_{_b['id']}",
+                disabled=bool(_any_running),
+                use_container_width=True,
+            ):
+                st.session_state.active_block = _b["id"]
+                st.rerun()
 
 def _render_block_header(num: str, title: str, subtitle: str, grupo: str, pf_required: bool = False):
     """Breadcrumb + número de bloque + título + subtítulo (opcional banner cloud)."""
@@ -1468,10 +1523,19 @@ with st.sidebar:
                 st.rerun()
 
     bloque_trabajo = st.session_state.active_block
-    st.markdown("---")
 
-    # ─── SELECCIÓN DE SEMESTRE Y EVENTO (GLOBAL) ──────────────────────────
-    st.markdown('<div class="v4-nav-group-label">Evento</div>', unsafe_allow_html=True)
+    # ─── TOGGLE DE TEMA (dark / light) ────────────────────────────────────
+    st.markdown("---")
+    _dark_on = st.toggle(
+        "🌙 Modo oscuro",
+        value=(st.session_state.get("ui_theme", "light") == "dark"),
+        key="_sidebar_dark_toggle",
+        help="Alterna entre el tema claro y oscuro de la interfaz.",
+    )
+    _new_theme = "dark" if _dark_on else "light"
+    if st.session_state.get("ui_theme", "light") != _new_theme:
+        st.session_state.ui_theme = _new_theme
+        st.rerun()
 
 # Helper para identificar columnas de frecuencia
 def _is_frequency_column(col_name, series_data):
@@ -1518,6 +1582,8 @@ def _short_col_name(col):
 
 
 with st.sidebar:
+    # ─── SELECCIÓN DE SEMESTRE Y EVENTO ───────────────────────────────────
+    st.markdown('<div class="v4-nav-group-label">Evento</div>', unsafe_allow_html=True)
     RAIZ = st.text_input(
         "Ruta base CNDC",
         value=_cfg["RAIZ"],
@@ -1531,8 +1597,6 @@ with st.sidebar:
         help="Ruta donde se encuentran los archivos fuente para procesar.",
         key="cfg_RAIZ_DATOS",
     )
-
-    show_hhmmss = st.checkbox("Mostrar tiempo en HH:MM:SS", value=False, key="global_show_hhmmss")
 
     # ── Selector de semestre y evento ────────────────────────────────────────
     if IS_CLOUD:
@@ -1710,6 +1774,11 @@ with st.sidebar:
 
     # ─── CONFIGURACIÓN DE RUTAS Y PARÁMETROS (Agrupados) ────────────────── # type: ignore
     with st.expander("🛠️ Rutas y Parámetros del Proyecto"):
+        show_hhmmss = st.checkbox(
+            "Mostrar tiempo en HH:MM:SS", value=False, key="global_show_hhmmss",
+            help="Muestra el eje de tiempo en formato HH:MM:SS en todas las gráficas."
+        )
+        st.markdown("---")
         PF_BASE = st.text_input(
             "PowerFactory — directorio base",
             value=_cfg["PF_BASE"],
