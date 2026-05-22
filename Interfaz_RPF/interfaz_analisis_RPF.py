@@ -209,42 +209,54 @@ _V4_CSS_TEMPLATE = (
     " overflow: visible !important; border: none !important; }}"
     " div[data-testid='stDecoration'] {{ display: none; }}"
     " div[data-testid='stToolbar'] {{"
-    " position: fixed !important; top: 112px !important;"
-    " z-index: 99999 !important; background: transparent !important; }}"
+    " position: fixed !important; top: 120px !important; right: 0 !important;"
+    " left: auto !important; width: auto !important;"
+    " z-index: 99999 !important; background: transparent !important;"
+    " pointer-events: none !important; }}"
+    " div[data-testid='stToolbar'] > * {{ pointer-events: auto !important; }}"
     " [data-testid='stSidebarCollapsedControl'] {{"
-    " top: 112px !important; z-index: 99999 !important;"
-    " position: fixed !important; visibility: visible !important; }}"
+    " top: 120px !important; left: 0 !important;"
+    " width: auto !important; height: auto !important;"
+    " z-index: 99999 !important;"
+    " position: fixed !important; visibility: visible !important;"
+    " pointer-events: none !important; }}"
+    " [data-testid='stSidebarCollapsedControl'] > * {{ pointer-events: auto !important; }}"
     " [data-testid='stSidebarCollapseButton'] {{"
     " visibility: visible !important; opacity: 1 !important;"
     " position: relative !important; z-index: 100 !important; }}"
-    " .block-container {{ padding: 108px 16px 24px 16px !important; max-width: 100% !important; }}"
-    " section[data-testid='stMain'] {{ overflow-y: auto !important; }}"
-    " .stApp {{ background: {bg} !important;"
+    " .block-container {{ padding: 116px 12px 16px 12px !important; max-width: 100% !important; }}"
+    " html {{ overflow-y: auto !important; }}"
+    " body {{ overflow-y: auto !important; overflow-x: hidden !important; }}"
+    " .stApp {{ overflow: visible !important; min-height: 100vh;"
+    " background: {bg} !important;"
     " font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important; }}"
+    " [data-testid='stAppViewContainer'] {{ overflow: visible !important; }}"
+    " section[data-testid='stMain'] {{ overflow: visible !important; }}"
+    " section[data-testid='stSidebar'] {{ overflow-y: auto !important; }}"
     " .v4-topbar {{"
-    " position: fixed; top: 0; left: 0; right: 0; z-index: 9999; height: 56px;"
+    " position: fixed; top: 0; left: 0; right: 0; z-index: 9999; height: 64px;"
     " background: {surface}; border-bottom: 1px solid {border};"
     " display: flex; align-items: center; justify-content: space-between;"
     " padding: 0 20px; gap: 12px; box-sizing: border-box;"
     " }}"
     " .v4-brand {{ display: flex; align-items: center; gap: 10px; }}"
     " .v4-brand-mark {{"
-    " width: 30px; height: 30px; border-radius: 7px; flex-shrink: 0;"
+    " width: 38px; height: 38px; border-radius: 9px; flex-shrink: 0;"
     " background: linear-gradient(135deg, {primary}, {accent});"
     " display: flex; align-items: center; justify-content: center;"
     " }}"
-    " .v4-brand-title {{ font-size: 14px; font-weight: 700; color: {text}; line-height: 1.1; }}"
-    " .v4-brand-sub   {{ font-size: 11px; color: {textMuted}; line-height: 1.2; margin-top: 1px; }}"
+    " .v4-brand-title {{ font-size: 15px; font-weight: 700; color: {text}; line-height: 1.1; }}"
+    " .v4-brand-sub   {{ font-size: 11.5px; color: {textMuted}; line-height: 1.2; margin-top: 1px; }}"
     " .v4-topbar-center {{ display: flex; align-items: center; gap: 8px; flex: 1; overflow-x: auto; white-space: nowrap; min-width: 0; }}"
     " .v4-topbar-right {{ display: flex; align-items: center; gap: 8px; flex-shrink: 0; }}"
     " .v4-event-pill {{"
-    " display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; height: 34px;"
+    " display: inline-flex; align-items: center; gap: 7px; padding: 5px 13px; height: 40px;"
     " background: {surfaceAlt}; border: 1px solid {border}; border-radius: 8px;"
     " font-size: 12px; font-weight: 500; color: {text}; flex-shrink: 0;"
     " }}"
     " .v4-event-pill.danger {{ background: {dangerBg}; border-color: {danger}; }}"
-    " .v4-event-label {{ font-size: 10px; font-weight: 700; color: {textSubtle}; text-transform: uppercase; letter-spacing: .06em; }}"
-    " .v4-event-val   {{ font-size: 12.5px; font-weight: 600; color: {text}; }}"
+    " .v4-event-label {{ font-size: 11px; font-weight: 700; color: {textSubtle}; text-transform: uppercase; letter-spacing: .06em; }}"
+    " .v4-event-val   {{ font-size: 14px; font-weight: 600; color: {text}; }}"
     " .v4-event-val.danger {{ color: {danger}; }}"
     " .v4-sep {{ width: 1px; height: 16px; background: {border}; flex-shrink: 0; }}"
     " .v4-mode-badge {{"
@@ -255,7 +267,7 @@ _V4_CSS_TEMPLATE = (
     " .v4-mode-badge.local {{ border-color: {success}; color: {success}; background: {successBg}; }}"
     " .v4-mode-badge.cloud {{ border-color: {info};    color: {info};    background: {infoBg}; }}"
     " .v4-stepper {{"
-    " position: fixed; top: 56px; left: 0; right: 0; z-index: 9998;"
+    " position: fixed; top: 64px; left: 0; right: 0; z-index: 9998;"
     " background: {surface}; border-bottom: 1px solid {border};"
     " padding: 0 20px; overflow-x: auto; white-space: nowrap;"
     " }}"
@@ -284,6 +296,14 @@ _V4_CSS_TEMPLATE = (
     " }}"
     " .v4-connector {{ width: 20px; height: 1px; background: {border}; display: inline-block; vertical-align: middle; flex-shrink: 0; }}"
     " .v4-connector.past {{ background: {success}; }}"
+    " .v4-unit-bar {{"
+    " position: fixed !important; top: 116px !important; left: 0 !important; right: 0 !important;"
+    " height: 44px !important; z-index: 9997 !important;"
+    " background: {surface} !important; border-bottom: 1px solid {border} !important;"
+    " display: flex !important; align-items: center !important; gap: 16px !important;"
+    " padding: 0 24px 0 166px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;"
+    " pointer-events: none !important;"
+    " }}"
     " .v4-unit-ctx {{"
     " display: flex; align-items: center; gap: 16px; flex-wrap: wrap;"
     " padding: 4px 0;"
@@ -303,26 +323,26 @@ _V4_CSS_TEMPLATE = (
     " .v4-stat-value {{ font-size: 13px; font-weight: 700; color: {text}; font-variant-numeric: tabular-nums; }}"
     " .v4-stat-unit {{ font-size: 11px; color: {textMuted}; font-weight: 500; margin-left: 2px; }}"
     " .v4-stat-sep {{ width: 1px; height: 28px; background: {border}; flex-shrink: 0; }}"
-    " .v4-block-wrap {{ padding: 18px 24px 0 24px; }}"
-    " .v4-breadcrumb {{ display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: {textMuted}; margin-bottom: 12px; }}"
+    " .v4-block-wrap {{ padding: 10px 14px 0 14px; }}"
+    " .v4-breadcrumb {{ display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: {textMuted}; margin-bottom: 6px; }}"
     " .v4-bc-sep {{ color: {textSubtle}; }}"
     " .v4-bc-active {{ color: {text}; font-weight: 600; }}"
-    " .v4-block-head {{ display: flex; align-items: flex-start; gap: 14px; margin-bottom: 14px; }}"
+    " .v4-block-head {{ display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }}"
     " .v4-block-num {{"
-    " width: 48px; height: 48px; border-radius: 10px; flex-shrink: 0;"
+    " width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;"
     " background: {surface}; border: 1px solid {border};"
     " display: flex; align-items: center; justify-content: center;"
-    " font-size: 20px; font-weight: 700; color: {primary};"
+    " font-size: 14px; font-weight: 700; color: {primary};"
     " font-variant-numeric: tabular-nums;"
     " font-family: 'JetBrains Mono', ui-monospace, monospace;"
     " }}"
-    " .v4-block-title {{ font-size: 20px; font-weight: 700; color: {text}; line-height: 1.2; }}"
-    " .v4-block-sub   {{ font-size: 13px; color: {textMuted}; margin-top: 4px; max-width: 720px; line-height: 1.45; }}"
+    " .v4-block-title {{ font-size: 15px; font-weight: 700; color: {text}; line-height: 1.2; }}"
+    " .v4-block-sub   {{ font-size: 11.5px; color: {textMuted}; margin-top: 2px; max-width: 720px; line-height: 1.4; }}"
     " .v4-banner {{"
-    " display: flex; align-items: flex-start; gap: 10px;"
-    " padding: 10px 14px; border-radius: 8px;"
-    " font-size: 12.5px; color: {text}; line-height: 1.45;"
-    " margin: 0 24px 14px 24px;"
+    " display: flex; align-items: flex-start; gap: 8px;"
+    " padding: 6px 10px; border-radius: 7px;"
+    " font-size: 11.5px; color: {text}; line-height: 1.4;"
+    " margin: 0 0 8px 0;"
     " }}"
     " .v4-banner.info    {{ background: {infoBg};    border: 1px solid {info}; }}"
     " .v4-banner.warning {{ background: {warningBg}; border: 1px solid {warning}; }}"
@@ -336,9 +356,9 @@ _V4_CSS_TEMPLATE = (
     " }}"
     " section[data-testid='stSidebar'] .stButton > button {{"
     " width: 100%; background: transparent !important; border: none !important;"
-    " color: {textMuted} !important; font-size: 12.5px !important;"
+    " color: {textMuted} !important; font-size: 11.5px !important;"
     " font-weight: 500 !important; text-align: left !important;"
-    " padding: 8px 10px !important; border-radius: 7px !important;"
+    " padding: 5px 8px !important; border-radius: 6px !important;"
     " height: auto !important; line-height: 1.3 !important;"
     " justify-content: flex-start !important;"
     " }}"
@@ -351,26 +371,96 @@ _V4_CSS_TEMPLATE = (
     " section[data-testid='stSidebar'] .stButton > button:disabled {{"
     " opacity: 0.45 !important; cursor: not-allowed !important;"
     " }}"
-    " .v4-content {{ padding: 0 24px 24px 24px; }}"
+    " .v4-content {{ padding: 0 14px 14px 14px; }}"
     " .stTextInput input, .stSelectbox > div > div, .stNumberInput input {{"
     " background: {surfaceAlt} !important; color: {text} !important;"
     " border-color: {border} !important;"
+    " font-size: 12px !important; padding: 4px 8px !important; min-height: 32px !important;"
     " }}"
+    " .stSelectbox > div > div {{ min-height: 32px !important; }}"
+    " .stNumberInput > div {{ min-height: 32px !important; }}"
+    " .stTextInput > div {{ min-height: 32px !important; }}"
+    " .stTextInput label, .stSelectbox label, .stNumberInput label,"
+    " .stSlider label, .stDateInput label, .stTextArea label {{"
+    " font-size: 11.5px !important; font-weight: 600 !important;"
+    " color: {textMuted} !important; margin-bottom: 2px !important;"
+    " }}"
+    " .stButton > button {{"
+    " font-size: 12px !important; padding: 4px 12px !important;"
+    " min-height: 32px !important; height: auto !important;"
+    " border-radius: 6px !important; font-weight: 500 !important;"
+    " }}"
+    " .stButton > button[kind='primary'] {{"
+    " background: {primary} !important; border-color: {primary} !important;"
+    " color: #FFF !important; font-weight: 600 !important;"
+    " }}"
+    " .stDownloadButton > button {{"
+    " font-size: 12px !important; padding: 4px 12px !important;"
+    " min-height: 32px !important; height: auto !important;"
+    " border-radius: 6px !important;"
+    " }}"
+    " .stExpander > details > summary {{"
+    " font-size: 12px !important; padding: 6px 10px !important;"
+    " }}"
+    " .stExpander > details {{ padding: 0 !important; }}"
+    " .stSlider > div {{ padding: 0 !important; }}"
+    " .stCheckbox label, .stToggle label {{ font-size: 12px !important; }}"
     " .stCheckbox label span, .stToggle label span {{ color: {text} !important; }}"
-    " .stMarkdown p, .stMarkdown li, .stMarkdown h1, .stMarkdown h2,"
-    " .stMarkdown h3, .stMarkdown h4 {{ color: {text} !important; }}"
-    " .stCaption {{ color: {textMuted} !important; }}"
+    " .stMarkdown p, .stMarkdown li {{ font-size: 12.5px !important; color: {text} !important; }}"
+    " .stMarkdown h1 {{ font-size: 17px !important; color: {text} !important; }}"
+    " .stMarkdown h2 {{ font-size: 14px !important; color: {text} !important; }}"
+    " .stMarkdown h3 {{ font-size: 13px !important; color: {text} !important; }}"
+    " .stMarkdown h4 {{ font-size: 12px !important; color: {text} !important; }}"
+    " .stCaption {{ font-size: 11px !important; color: {textMuted} !important; }}"
     " .stExpander {{ background: {surface} !important; border-color: {border} !important; }}"
     " .stExpander summary {{ color: {text} !important; }}"
-    " .stAlert {{ background: {surfaceAlt} !important; border-color: {border} !important; }}"
+    " .stAlert {{ background: {surfaceAlt} !important; border-color: {border} !important;"
+    " font-size: 12px !important; padding: 8px 12px !important; }}"
+    " .stAlert p {{ font-size: 12px !important; }}"
     " .stTabs [data-baseweb='tab-list'] {{"
     " background: {surface} !important; border-bottom: 1px solid {border} !important; }}"
-    " .stTabs [data-baseweb='tab'] {{ color: {textMuted} !important; }}"
+    " .stTabs [data-baseweb='tab'] {{ color: {textMuted} !important; font-size: 12px !important; }}"
     " .stTabs [aria-selected='true'] {{"
     " color: {primary} !important; border-bottom-color: {primary} !important; }}"
+    " .stDataFrame {{ font-size: 11.5px !important; }}"
+    " .stMetric {{ padding: 8px 10px !important; }}"
+    " .stMetric label {{ font-size: 10.5px !important; color: {textMuted} !important; }}"
+    " .stMetric [data-testid='stMetricValue'] {{ font-size: 18px !important; }}"
+    " .stMetric [data-testid='stMetricDelta'] {{ font-size: 11px !important; }}"
+    " div[data-testid='column'] {{ gap: 8px !important; }}"
+    " .element-container {{ margin-bottom: 6px !important; }}"
+    " [data-testid='stHorizontalBlock'] {{ gap: 8px !important; }}"
+    " [data-testid='stVerticalBlockBorderWrapper'] {{ padding: 0 !important; }}"
+    " .stRadio > label {{ font-size: 11.5px !important; font-weight: 600 !important;"
+    " color: {textMuted} !important; margin-bottom: 2px !important; }}"
+    " .stRadio [data-testid='stWidgetLabel'] {{ font-size: 11.5px !important; font-weight: 600 !important; }}"
+    " .stRadio > div > label {{ font-size: 12px !important; padding: 2px 4px !important; }}"
+    " .stMultiSelect label {{ font-size: 11.5px !important; font-weight: 600 !important;"
+    " color: {textMuted} !important; margin-bottom: 2px !important; }}"
+    " .stMultiSelect [data-baseweb='select'] > div {{"
+    " min-height: 32px !important; font-size: 12px !important; }}"
+    " .stMultiSelect [data-baseweb='tag'] {{ font-size: 11px !important;"
+    " padding: 0 6px !important; height: 20px !important; }}"
+    " hr {{ margin: 6px 0 !important; border-color: {border} !important; }}"
+    " .stDivider {{ margin: 6px 0 !important; }}"
+    " .stExpander [data-testid='stExpanderDetails'] {{ padding: 8px 10px !important; }}"
+    " [data-testid='stExpanderToggleIcon'] {{ width: 14px !important; height: 14px !important; }}"
+    " .stNumberInput [data-testid='stNumberInputStepDown'],"
+    " .stNumberInput [data-testid='stNumberInputStepUp'] {{"
+    " min-height: 16px !important; padding: 0 4px !important; font-size: 10px !important; }}"
+    " .stSelectbox [data-baseweb='select'] > div {{"
+    " min-height: 32px !important; font-size: 12px !important; }}"
+    " .stSuccess, .stWarning, .stInfo, .stError {{"
+    " padding: 6px 10px !important; font-size: 12px !important; }}"
+    " [data-testid='stPopover'] button {{ font-size: 12px !important;"
+    " padding: 4px 8px !important; min-height: 28px !important; }}"
     " section[data-testid='stSidebar'] {{"
-    " top: 108px !important; height: calc(100vh - 108px) !important;"
-    " }}"
+    " position: sticky !important;"
+    " top: 116px !important;"
+    " height: calc(100vh - 116px) !important;"
+    " overflow-y: auto !important; overflow-x: hidden !important;"
+    " align-self: flex-start !important;"
+    " z-index: 900 !important; }}"
     " section[data-testid='stSidebar'] > div:first-child {{ padding-top: 12px !important; }}"
     " section[data-testid='stSidebar'] .stToggle label {{"
     " color: {textMuted} !important; font-size: 12px !important;"
@@ -387,53 +477,67 @@ _V4_CSS_TEMPLATE = (
     " }}"
     " .v4-disc-chip-mw {{ font-weight: 400; opacity: 0.8; margin-left: 3px; }}"
     " .v4-section-head {{"
-    " padding: 10px 0 8px 0; border-bottom: 1px solid {border}; margin-bottom: 14px; }}"
+    " padding: 6px 0 5px 0; border-bottom: 1px solid {border}; margin-bottom: 8px; }}"
     " .v4-section-title {{"
-    " font-size: 15px; font-weight: 700; color: {text}; display: flex; align-items: center; gap: 7px; }}"
+    " font-size: 13px; font-weight: 700; color: {text}; display: flex; align-items: center; gap: 6px; }}"
     " .v4-section-sub {{"
-    " font-size: 12px; color: {textMuted}; margin-top: 3px; }}"
+    " font-size: 11px; color: {textMuted}; margin-top: 2px; }}"
     " .v4-ctx-bar {{"
-    " display: flex; align-items: center; gap: 12px; padding: 6px 14px;"
+    " display: flex; align-items: center; gap: 10px; padding: 4px 10px;"
     " background: {surfaceHover}; border: 1px solid {border}; border-radius: 6px;"
-    " margin-bottom: 10px; }}"
-    " .v4-ctx-unit {{ font-size: 17px; font-weight: 800; font-family: 'JetBrains Mono', monospace;"
+    " margin-bottom: 7px; }}"
+    " .v4-ctx-unit {{ font-size: 13px; font-weight: 800; font-family: 'JetBrains Mono', monospace;"
     " color: {primary}; }}"
-    " .v4-ctx-sep {{ color: {border}; font-size: 14px; }}"
-    " .v4-ctx-item {{ font-size: 12.5px; color: {textMuted}; }}"
+    " .v4-ctx-sep {{ color: {border}; font-size: 12px; }}"
+    " .v4-ctx-item {{ font-size: 11px; color: {textMuted}; }}"
     " .v4-ctx-item b {{ color: {text}; }}"
-    " .v4-tab-bar {{ display: flex; gap: 0; border-bottom: 1px solid {border}; margin-bottom: 14px; }}"
+    " .v4-tab-bar {{"
+    " display: flex; gap: 0; border-bottom: 2px solid {border}; margin-bottom: 8px;"
+    " overflow-x: auto; white-space: nowrap; }}"
     " .v4-tab-btn {{"
-    " display: inline-flex; align-items: center; gap: 5px; padding: 7px 16px 9px 16px;"
-    " font-size: 13px; font-weight: 500; color: {textMuted}; background: transparent;"
-    " border: none; border-bottom: 2px solid transparent;"
-    " cursor: pointer; white-space: nowrap; transition: color .15s;"
+    " display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px 7px 12px;"
+    " font-size: 11.5px; font-weight: 500; color: {textMuted}; background: none;"
+    " border: none; border-bottom: 2px solid transparent; margin-bottom: -2px;"
+    " cursor: pointer; white-space: nowrap; transition: color .15s; flex-shrink: 0;"
     " }}"
     " .v4-tab-btn.active {{"
-    " color: {primary}; font-weight: 600; border-bottom-color: {primary}; }}"
-    " .v4-tab-btn:hover {{ color: {text}; }}"
-    " .stMarkdownContainer:has(.v4-tab-row-marker)"
-    " + div[data-testid='stHorizontalBlock'] {{"
-    " border-bottom: 2px solid {border}; margin-bottom: 14px; gap: 0 !important; }}"
-    " .stMarkdownContainer:has(.v4-tab-row-marker)"
-    " + div[data-testid='stHorizontalBlock'] button {{"
-    " border-radius: 0 !important; border: none !important;"
-    " border-bottom: 2px solid transparent !important;"
-    " background: transparent !important; box-shadow: none !important;"
-    " color: {textMuted} !important; font-size: 13px !important;"
-    " font-weight: 500 !important; padding: 8px 4px 10px 4px !important;"
-    " height: auto !important; margin-bottom: -2px !important; }}"
-    " .stMarkdownContainer:has(.v4-tab-row-marker)"
-    " + div[data-testid='stHorizontalBlock'] button[data-testid*='primary'] {{"
-    " border-bottom: 2px solid {primary} !important;"
-    " color: {primary} !important; font-weight: 600 !important; }}"
-    " .stMarkdownContainer:has(.v4-tab-row-marker)"
-    " + div[data-testid='stHorizontalBlock'] button:hover {{"
-    " background: {surfaceHover} !important; color: {text} !important; }}"
-    " .v4-step {{ cursor: pointer !important; }}"
-    " .v4-step:hover {{ background: {surfaceHover} !important; border-radius: 7px !important; }}"
-    " .stMarkdownContainer:has(.v4-hidden-nav-marker)"
-    " + div[data-testid='stHorizontalBlock'] {{"
-    " position: fixed !important; top: -9999px !important; left: -9999px !important; }}"
+    " color: {primary} !important; font-weight: 700 !important;"
+    " border-bottom: 2px solid {primary} !important; }}"
+    " .v4-tab-btn:hover {{ color: {text} !important; }}"
+    " [data-testid='stDataFrame'] {{ max-width: 100% !important; overflow-x: auto !important; }}"
+    " .stDataFrameResizable {{"
+    " width: fit-content !important; margin-left: auto !important; margin-right: auto !important; }}"
+    " [data-testid='stDataFrame'] * {{ font-size: 12px !important; }}"
+    " [data-testid='stDataFrame'] [role='row'] {{"
+    " min-height: 28px !important; max-height: 28px !important; }}"
+    " [data-testid='stDataFrame'] [role='columnheader'] {{"
+    " min-height: 30px !important; font-size: 11.5px !important;"
+    " font-weight: 700 !important; }}"
+    " [data-testid='stDataFrame'] [role='gridcell'] {{ padding: 2px 8px !important; }}"
+    " .element-container:has(.v4-unit-select-marker) {{"
+    " height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container {{"
+    " position: fixed !important; top: 118px !important; left: 12px !important;"
+    " z-index: 9999 !important; width: 148px !important; height: 40px !important;"
+    " margin: 0 !important; padding: 0 !important; overflow: visible !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container .stSelectbox {{"
+    " margin: 0 !important; padding: 0 !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container .stSelectbox label {{"
+    " display: none !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container"
+    " .stSelectbox [data-baseweb='select'] > div {{"
+    " min-height: 36px !important; height: 36px !important; padding: 0 10px !important;"
+    " border-color: {primary} !important; background: {surfaceHover} !important;"
+    " font-size: 14px !important; font-weight: 700 !important;"
+    " font-family: 'JetBrains Mono', monospace !important;"
+    " color: {primary} !important; border-radius: 7px !important;"
+    " border-width: 1.5px !important;"
+    " cursor: pointer !important; pointer-events: auto !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container"
+    " .stSelectbox [data-baseweb='select'] span {{"
+    " color: {primary} !important; font-weight: 700 !important; font-size: 14px !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container * {{"
+    " pointer-events: auto !important; }}"
     "</style>"
 )
 
@@ -454,10 +558,7 @@ def _v4_tab_bar(tab_defs: list, block_key: str) -> str:
         st.session_state[sk] = ids[0]
     active = st.session_state[sk]
 
-    # Marcador para CSS :has() — aplica estilo "tab" a los botones que siguen
-    st.markdown('<div class="v4-tab-row-marker"></div>', unsafe_allow_html=True)
-
-    # Botones funcionales — el CSS los convierte en tabs (sin borde, subrayado en activo)
+    # Renderizar barra de tabs: botones Streamlit nativos en columnas
     _tab_cols = st.columns(len(tab_defs))
     for td, _col in zip(tab_defs, _tab_cols):
         with _col:
@@ -476,14 +577,14 @@ def _v4_tab_bar(tab_defs: list, block_key: str) -> str:
 def _v4_section_head(title: str, description: str = "", icon: str = ""):
     """Header estandarizado dentro de un tab/sección."""
     t         = _v4_t()
-    icon_html = _v4_icon(icon, 16, t["primary"]) + " " if icon else ""
+    icon_html = _v4_icon(icon, 14, t["primary"]) + " " if icon else ""
     desc_html = (
-        f'<div style="font-size:12px;color:{t["textMuted"]};margin-top:3px">{description}</div>'
+        f'<div style="font-size:11px;color:{t["textMuted"]};margin-top:2px">{description}</div>'
         if description else ""
     )
     st.markdown(
-        f'<div style="padding:10px 0 8px 0;border-bottom:1px solid {t["border"]};margin-bottom:14px">'
-        f'<div style="font-size:15px;font-weight:700;color:{t["text"]}">{icon_html}{title}</div>'
+        f'<div style="padding:6px 0 5px 0;border-bottom:1px solid {t["border"]};margin-bottom:8px">'
+        f'<div style="font-size:13px;font-weight:700;color:{t["text"]};display:flex;align-items:center;gap:6px">{icon_html}{title}</div>'
         f'{desc_html}</div>',
         unsafe_allow_html=True,
     )
@@ -493,16 +594,16 @@ def _v4_inline_ctx(unit_name: str, evento: str, pmax_mw: float):
     """Barra de contexto inline respeta el tema (reemplaza las hardcoded dark)."""
     t = _v4_t()
     st.markdown(
-        f'<div style="display:flex;align-items:center;gap:12px;padding:6px 14px;'
+        f'<div style="display:flex;align-items:center;gap:10px;padding:4px 10px;'
         f'background:{t["surfaceHover"]};border:1px solid {t["border"]};'
-        f'border-radius:6px;margin-bottom:10px">'
-        f'<span style="font-size:17px;font-weight:800;font-family:JetBrains Mono,monospace;color:{t["primary"]}">'
+        f'border-radius:6px;margin-bottom:7px">'
+        f'<span style="font-size:13px;font-weight:800;font-family:JetBrains Mono,monospace;color:{t["primary"]}">'
         f'{unit_name}</span>'
-        f'<span style="color:{t["border"]};font-size:14px">|</span>'
-        f'<span style="font-size:12.5px;color:{t["textMuted"]}">Evento '
+        f'<span style="color:{t["border"]};font-size:12px">|</span>'
+        f'<span style="font-size:11px;color:{t["textMuted"]}">Evento '
         f'<b style="color:{t["text"]}">{evento}</b></span>'
-        f'<span style="color:{t["border"]};font-size:14px">|</span>'
-        f'<span style="font-size:12.5px;color:{t["textMuted"]}">Pmax '
+        f'<span style="color:{t["border"]};font-size:12px">|</span>'
+        f'<span style="font-size:11px;color:{t["textMuted"]}">Pmax '
         f'<b style="color:{t["text"]}">{pmax_mw:.1f} MW</b></span>'
         f'</div>',
         unsafe_allow_html=True,
@@ -522,101 +623,167 @@ _V4_BLOQUES = [
 
 @st.cache_data(ttl=120, show_spinner=False)
 def _load_event_header_info(ev_path: str, n_evento: str, raiz: str, semestre: str):
-    """Lee fecha del evento, unidades disparadas y potencia desconectada para la topbar.
-    Fuentes: condiciones_iniciales_*.xlsx (Resumen → fecha, pgini_GEN → unidades+MW),
-             Tabla_Eventos_*.xlsx (p_desc total).
-    Retorna (fecha_str, disparo_units, p_desc_mw) donde
-        disparo_units = [("ZON02", 92.0), ("TIQ01", 78.0), ...]  — unidades con pgini<0
+    """Lee fecha, unidades disparadas y potencia desconectada para la topbar.
+
+    Fuente primaria : datos_cargados_Ev{n}*.xlsx → Resumen_Cargado + pgini_GEN_FINAL
+      - Resumen  fila "Disparo"                → nombres de unidades disparadas
+      - Resumen  fila "p_desc registrado (MW)" → potencia total desconectada
+      - Resumen  fila "Fecha y hora"           → fecha del evento
+      - pgini_GEN_FINAL col pgini_MW           → MW individual de cada unidad disparada
+
+    Fuente fallback: condiciones_iniciales_*.xlsx (pgini < 0) + Tabla_Eventos_*.xlsx
     """
     import glob as _glob
-    fecha_str    = ""
-    disparo_units: list = []
-    p_desc_mw    = 0.0
+    import re as _re
+    fecha_str: str       = ""
+    disparo_units: list  = []
+    p_desc_mw: float     = 0.0
 
-    # 1. condiciones_iniciales_*.xlsx
+    # ── Fuente primaria: datos_cargados_Ev{n}*.xlsx ──────────────────────────
+    # Preferir el archivo SIN sufijo _ajustado (tiene Resumen_Cargado con Disparo)
+    _found_primary = False
     if ev_path and os.path.isdir(ev_path):
-        ci_files = sorted(
+        _dc_all = _glob.glob(os.path.join(ev_path, f"datos_cargados_Ev{n_evento}*.xlsx"))
+        _dc_files = sorted(
+            _dc_all,
+            key=lambda p: (1 if "ajustado" in os.path.basename(p).lower() else 0,
+                           -os.path.getmtime(p)),
+        )
+        for _dc_path in _dc_files:
+            try:
+                _xl = pd.ExcelFile(_dc_path, engine="calamine")
+                if "Resumen_Cargado" not in _xl.sheet_names:
+                    continue
+                _df_res = _xl.parse("Resumen_Cargado", header=None)
+
+                # Parsear filas clave del Resumen
+                _disparo_str = ""
+                for _, _row in _df_res.iterrows():
+                    if len(_row) < 2:
+                        continue
+                    _k = str(_row.iloc[0]).strip()
+                    _v = str(_row.iloc[1]).strip() if _row.iloc[1] is not None else ""
+                    if _k in ("Fecha y hora",):
+                        fecha_str = _v
+                    elif _k in ("Disparo",):
+                        _disparo_str = _v
+                    elif "p_desc registrado" in _k.lower():
+                        try:
+                            p_desc_mw = float(_v)
+                        except ValueError:
+                            pass
+
+                # Parsear string de disparo: "SJS01, SJS02, SJE01 y SJE02"
+                if _disparo_str and _disparo_str not in ("nan", "—", ""):
+                    _raw_names = [
+                        n.strip()
+                        for n in _re.split(r"[,;]+|\s+y\s+", _disparo_str)
+                        if n.strip()
+                    ]
+                    # Buscar MW individual en pgini_GEN_FINAL
+                    _pgini_map = {}
+                    if "pgini_GEN_FINAL" in _xl.sheet_names:
+                        _df_pg = _xl.parse("pgini_GEN_FINAL")
+                        if "loc_name PF" in _df_pg.columns and "pgini_MW" in _df_pg.columns:
+                            for _, _pr in _df_pg.iterrows():
+                                _loc = str(_pr["loc_name PF"]).strip()
+                                _bare = _loc.replace("sym_", "").replace("SYM_", "")
+                                try:
+                                    _pgini_map[_bare.upper()] = float(_pr["pgini_MW"])
+                                except (ValueError, TypeError):
+                                    pass
+
+                    for _nm in _raw_names:
+                        _mw = _pgini_map.get(_nm.upper(), 0.0)
+                        disparo_units.append((_nm, _mw))
+
+                if fecha_str or disparo_units or p_desc_mw > 0:
+                    _found_primary = True
+                    break
+            except Exception:
+                continue
+
+    # ── Fallback: condiciones_iniciales_*.xlsx + Tabla_Eventos_*.xlsx ────────
+    if not _found_primary and ev_path and os.path.isdir(ev_path):
+        _ci_files = sorted(
             _glob.glob(os.path.join(ev_path, "condiciones_iniciales_*.xlsx")),
             key=os.path.getmtime, reverse=True,
         )
-        if ci_files:
-            ci_path = ci_files[0]
-            # 1a. Hoja Resumen → fecha
+        for _ci_path in _ci_files:
             try:
-                _ef = pd.ExcelFile(ci_path, engine="calamine")
-                _sheet_names_lower = [s.lower() for s in _ef.sheet_names]
-                # buscar "Resumen" case-insensitive
+                _ef = pd.ExcelFile(_ci_path, engine="calamine")
+                # fecha
                 for _sn in _ef.sheet_names:
                     if _sn.lower() == "resumen":
-                        _df_res = _ef.parse(_sn, header=None)
-                        for _, _row in _df_res.iterrows():
+                        _df_r = _ef.parse(_sn, header=None)
+                        for _, _row in _df_r.iterrows():
                             if len(_row) < 2:
                                 continue
-                            _k = str(_row.iloc[0]).strip() if _row.iloc[0] is not None else ""
-                            _v = str(_row.iloc[1]).strip() if _row.iloc[1] is not None else ""
+                            _k = str(_row.iloc[0]).strip()
+                            _v = str(_row.iloc[1]).strip()
                             if _k == "Fecha y hora":
                                 fecha_str = _v
                                 break
                         break
+                # unidades con pgini < 0
+                _sheets_pg = [s for s in _ef.sheet_names if "pgini_gen" in s.lower()]
+                _sheets_pg.sort(key=lambda s: (0 if "final" in s.lower() else 1))
+                for _sn2 in _sheets_pg:
+                    _df_pg = _ef.parse(_sn2)
+                    _cn, _cm = None, None
+                    for _c in _df_pg.columns:
+                        _cl = str(_c).lower()
+                        if _cn is None and any(k in _cl for k in ("loc_name", "nombre", "name")):
+                            _cn = _c
+                        if _cm is None and any(k in _cl for k in ("pgini", "p_mw", "_mw")):
+                            _cm = _c
+                    if _cn and _cm:
+                        for _, _pr in _df_pg.iterrows():
+                            try:
+                                _mw = float(_pr[_cm])
+                            except (ValueError, TypeError):
+                                continue
+                            if _mw < 0:
+                                _n = str(_pr[_cn]).strip()
+                                for _pfx in ("sym_", "WT_", "wt_"):
+                                    _n = _n.replace(_pfx, "")
+                                disparo_units.append((_n, abs(_mw)))
+                        if disparo_units:
+                            break
+                break
             except Exception:
-                pass
-            # 1b. Hoja pgini_GEN → unidades con pgini negativo (desconectadas)
-            try:
-                _ef2 = pd.ExcelFile(ci_path, engine="calamine")
-                for _sn2 in _ef2.sheet_names:
-                    if _sn2.lower() == "pgini_gen":
-                        _df_pg = _ef2.parse(_sn2)
-                        # Columnas esperadas: loc_name PF, pgini_MW (u otras similares)
-                        _col_name = None
-                        _col_mw   = None
-                        for _c in _df_pg.columns:
-                            _cl = str(_c).lower()
-                            if "loc_name" in _cl or "nombre" in _cl or "name" in _cl:
-                                _col_name = _c
-                            if "pgini" in _cl or "_mw" in _cl or "potencia" in _cl:
-                                _col_mw = _c
-                        if _col_name and _col_mw:
-                            for _, _pr in _df_pg.iterrows():
-                                try:
-                                    _mw = float(_pr[_col_mw])
-                                except (ValueError, TypeError):
-                                    continue
-                                if _mw < 0:
-                                    _raw_name = str(_pr[_col_name]).strip()
-                                    # normalizar: quitar sym_, WT_, trailing digits
-                                    _n = _raw_name
-                                    for _pfx in ("sym_", "WT_", "wt_"):
-                                        _n = _n.replace(_pfx, "")
-                                    _n = _n.rstrip("0123456789_").strip() or _n
-                                    disparo_units.append((_n, abs(_mw)))
-                        break
-            except Exception:
-                pass
+                continue
 
-    # 2. Tabla_Eventos → p_desc total (fila del evento)
-    if raiz and semestre and n_evento:
-        tabla_files = sorted(
-            _glob.glob(os.path.join(raiz, semestre, "Tabla_Eventos_*.xlsx")),
-            key=os.path.getmtime, reverse=True,
-        )
-        if tabla_files:
-            try:
-                _df_tev = pd.read_excel(tabla_files[0], header=0, engine="calamine")
+    # fallback p_desc desde Tabla_Eventos
+    if p_desc_mw == 0.0 and raiz and semestre and n_evento:
+        try:
+            _tev_files = sorted(
+                _glob.glob(os.path.join(raiz, semestre, "Tabla_Eventos_*.xlsx")),
+                key=os.path.getmtime, reverse=True,
+            )
+            if _tev_files:
+                _df_tev = pd.read_excel(_tev_files[0], header=0, engine="calamine")
+                _pdesc_col = None
+                for _c in _df_tev.columns:
+                    if any(k in str(_c).lower() for k in ("desc", "desconect", "pdesc", "delta")):
+                        _pdesc_col = _c
+                        break
+                _ev_col = _df_tev.columns[0]
                 for _, _tr in _df_tev.iterrows():
                     try:
-                        if int(_tr.iloc[0]) == int(n_evento):
-                            p_desc_mw = float(_tr.iloc[3]) if _tr.iloc[3] else 0.0
+                        if int(_tr[_ev_col]) == int(n_evento):
+                            p_desc_mw = float(_tr[_pdesc_col]) if _pdesc_col else float(_tr.iloc[3])
                             break
                     except (ValueError, TypeError):
                         pass
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     return fecha_str, disparo_units, p_desc_mw
 
 
-def _render_topbar():
-    """Barra superior fija: brand + semestre/evento + fecha + disparo/ΔP + modo."""
+def _build_topbar_html() -> str:
+    """Construye HTML del topbar fijo (sin llamar a st.markdown)."""
     t          = _v4_t()
     sem        = st.session_state.get("semestre_global") or "—"
     ev         = st.session_state.get("evento_global")  or "—"
@@ -688,36 +855,35 @@ def _render_topbar():
             f'</div>'
         )
 
-    st.markdown(f"""
-    <div class="v4-topbar">
-      <div class="v4-brand">
-        <div class="v4-brand-mark">{_v4_icon("bolt", 16, "#FFF")}</div>
-        <div>
-          <div class="v4-brand-title">RPF Analysis</div>
-          <div class="v4-brand-sub">Respuesta Primaria de Frecuencia</div>
-        </div>
-      </div>
-      <div class="v4-topbar-center">
-        <div class="v4-event-pill">
-          {_v4_icon("database", 13, t["textMuted"])}
-          <span class="v4-event-label">Semestre</span>
-          <span class="v4-event-val">{sem}</span>
-          <div class="v4-sep"></div>
-          {_v4_icon("bolt", 13, t["accent"])}
-          <span class="v4-event-label">Evento</span>
-          <span class="v4-event-val">{ev}</span>
-          {fecha_suffix}
-        </div>
-        {disc_chips_html}
-      </div>
-      <div class="v4-topbar-right">
-        <span class="v4-mode-badge {mode_cls}">{mode_icon}&nbsp;{mode_label}</span>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+    return (
+        f'<div class="v4-topbar">'
+        f'<div class="v4-brand">'
+        f'<div class="v4-brand-mark">{_v4_icon("bolt", 16, "#FFF")}</div>'
+        f'<div><div class="v4-brand-title">RPF Analysis</div>'
+        f'<div class="v4-brand-sub">Respuesta Primaria de Frecuencia</div></div>'
+        f'</div>'
+        f'<div class="v4-topbar-center">'
+        f'<div class="v4-event-pill">'
+        f'{_v4_icon("database", 13, t["textMuted"])}'
+        f'<span class="v4-event-label">Semestre</span>'
+        f'<span class="v4-event-val">{sem}</span>'
+        f'<div class="v4-sep"></div>'
+        f'{_v4_icon("bolt", 13, t["accent"])}'
+        f'<span class="v4-event-label">Evento</span>'
+        f'<span class="v4-event-val">{ev}</span>'
+        f'{fecha_suffix}'
+        f'</div>'
+        f'{disc_chips_html}'
+        f'</div>'
+        f'<div class="v4-topbar-right">'
+        f'<span class="v4-mode-badge {mode_cls}">{mode_icon}&nbsp;{mode_label}</span>'
+        f'</div>'
+        f'</div>'
+    )
 
-def _render_stepper(active_block: str):
-    """Stepper horizontal de 8 pasos con botones invisibles overlay para click-to-navigate."""
+
+def _build_stepper_html(active_block: str) -> str:
+    """Construye HTML del stepper fijo (sin llamar a st.markdown)."""
     t          = _v4_t()
     active_idx = next((i for i, b in enumerate(_V4_BLOQUES) if b["id"] == active_block), 0)
     items_html = ""
@@ -728,42 +894,19 @@ def _render_stepper(active_block: str):
         num_txt    = "✓" if is_past else b["num"]
         badge_html = f'<span class="v4-step-badge">local</span>' if (IS_CLOUD and b["pf"]) else ""
         icon_col   = t["success"] if is_past else (t["accent"] if is_active else t["textMuted"])
-        # JavaScript que busca el botón oculto por su texto y lo hace clic
-        _bid = b["id"]
-        _js  = (
-            f"(function(){{"
-            f"var t='__nav_{_bid}__';"
-            f"var btns=document.querySelectorAll('button');"
-            f"for(var i=0;i<btns.length;i++){{"
-            f"if(btns[i].textContent.trim()===t){{btns[i].click();return;}}"
-            f"}}"
-            f"}})();"
-        )
         items_html += (
-            f'<span class="{cls}" title="{b["label"]}" onclick="{_js}">'
+            f'<span class="{cls}" title="{b["label"]}">'
             f'<span class="v4-step-num">{num_txt}</span>'
             f'{_v4_icon(b["icon"], 13, icon_col)}'
             f'<span>{b["short"]}</span>{badge_html}</span>'
         )
         if i < len(_V4_BLOQUES) - 1:
             items_html += f'<span class="v4-connector{" past" if is_past else ""}"></span>'
-
-    # Stepper visual con steps clickeables (onclick dispara botones ocultos debajo)
-    st.markdown(
+    return (
         f'<div class="v4-stepper">'
         f'<div class="v4-stepper-inner">{items_html}</div>'
-        f'</div>',
-        unsafe_allow_html=True,
+        f'</div>'
     )
-    # Botones de navegación ocultos fuera de pantalla (top:-9999px via CSS)
-    # El JS del stepper los encuentra por textContent y llama .click()
-    st.markdown('<div class="v4-hidden-nav-marker"></div>', unsafe_allow_html=True)
-    _nav_hid_cols = st.columns(len(_V4_BLOQUES))
-    for _b, _col in zip(_V4_BLOQUES, _nav_hid_cols):
-        with _col:
-            if st.button(f"__nav_{_b['id']}__", key=f"_nav_hid_{_b['id']}"):
-                st.session_state.active_block = _b["id"]
-                st.rerun()
 
 def _render_block_header(num: str, title: str, subtitle: str, grupo: str, pf_required: bool = False):
     """Breadcrumb + número de bloque + título + subtítulo (opcional banner cloud)."""
@@ -784,58 +927,50 @@ def _render_block_header(num: str, title: str, subtitle: str, grupo: str, pf_req
       </div>
     </div>{pf_banner}""", unsafe_allow_html=True)
 
+def _build_unit_bar_html() -> str:
+    """Construye HTML de la barra de unidad fija (sin llamar a st.markdown)."""
+    t       = _v4_t()
+    unit    = st.session_state.get("global_selected_unit") or ""
+    u_clean = unit.replace("sym_", "")
+    pmax_val = tech_val = estat_val = "—"
+    if u_clean:
+        try:
+            _pm  = _load_pmax_cargado(st.session_state.get("ev_path_global"),
+                                       st.session_state.get("n_evento_global"))
+            _tm  = _load_tech_map(LOC_NAMES_GEN_PATH)
+            _pv, _, _ = _get_pmax_from_cargado(unit, _pm, _tm)
+            pmax_val  = f"{float(_pv):.1f}" if _pv else "—"
+            _row      = (_tm or {}).get(u_clean, (_tm or {}).get(f"sym_{u_clean}", {}))
+            tech_val  = str(_row.get("Tecnología", _row.get("tecnologia", "Hidroeléctrica")))
+            if "hidro" in tech_val.lower():
+                tech_val = "Hidro"
+        except Exception:
+            pass
+        try:
+            _ep       = _get_rp_default(u_clean, LOC_NAMES_GEN_PATH)
+            estat_val = f"{_ep:.1f}"
+        except Exception:
+            pass
+    return (
+        f'<div class="v4-unit-bar">'
+        f'<div class="v4-stat"><span class="v4-stat-label">P_MAX</span>'
+        f'<span class="v4-stat-value">{pmax_val}<span class="v4-stat-unit">MW</span></span></div>'
+        f'<div class="v4-stat-sep"></div>'
+        f'<div class="v4-stat"><span class="v4-stat-label">Tecnología</span>'
+        f'<span class="v4-stat-value">{tech_val}</span></div>'
+        f'<div class="v4-stat-sep"></div>'
+        f'<div class="v4-stat"><span class="v4-stat-label">Estatismo</span>'
+        f'<span class="v4-stat-value">{estat_val}<span class="v4-stat-unit">%</span></span></div>'
+        f'</div>'
+    )
+
+
 def _render_unit_ctx_bar(available_units: list, loc_gen_path: str = ""):
-    """Barra de contexto de unidad: selectbox + stats Pmax/Tecnología/Estatismo (Bloque 2)."""
-    t = _v4_t()
+    """Asegura que global_selected_unit sea válido. La barra visual está en el topbar fijo."""
     _cur = st.session_state.global_selected_unit
     if _cur not in available_units:
         _cur = available_units[0]
         st.session_state.global_selected_unit = _cur
-    u_clean = _cur.replace("sym_", "")
-    pmax_val, tech_val, estat_val = "—", "—", "—"
-    try:
-        _pm = _load_pmax_cargado(st.session_state.get("ev_path_global"), st.session_state.get("n_evento_global"))
-        _tm = _load_tech_map(LOC_NAMES_GEN_PATH)
-        _pv, _, _ = _get_pmax_from_cargado(_cur, _pm, _tm)
-        pmax_val = f"{float(_pv):.1f}" if _pv else "—"
-        _row = (_tm or {}).get(u_clean, (_tm or {}).get(f"sym_{u_clean}", {}))
-        tech_val = str(_row.get("Tecnología", _row.get("tecnologia", "—")))
-    except Exception:
-        pass
-    # Estatismo desde estatismo_config.json (configurado en Bloque 2)
-    if loc_gen_path:
-        try:
-            _ep = _get_rp_default(u_clean, loc_gen_path)
-            estat_val = f"{_ep:.1f}"
-        except Exception:
-            pass
-    col_sel, col_stats = st.columns([2, 10])
-    with col_sel:
-        new_sel = st.selectbox(
-            "Unidad activa", available_units,
-            index=available_units.index(_cur),
-            key="_unit_ctx_sel",
-            format_func=lambda u: u.replace("sym_", ""),
-        )
-        if new_sel != st.session_state.global_selected_unit:
-            st.session_state.global_selected_unit = new_sel
-            st.rerun()
-    with col_stats:
-        st.markdown(f"""
-        <div class="v4-unit-ctx">
-          <span class="v4-unit-dot"></span>
-          <span class="v4-unit-name">{u_clean}</span>
-          <div class="v4-stat-sep"></div>
-          <div class="v4-stat"><span class="v4-stat-label">P_max</span>
-            <span class="v4-stat-value">{pmax_val}<span class="v4-stat-unit">MW</span></span></div>
-          <div class="v4-stat-sep"></div>
-          <div class="v4-stat"><span class="v4-stat-label">Tecnología</span>
-            <span class="v4-stat-value">{tech_val}</span></div>
-          <div class="v4-stat-sep"></div>
-          <div class="v4-stat"><span class="v4-stat-label">Estatismo</span>
-            <span class="v4-stat-value">{estat_val}<span class="v4-stat-unit">%</span></span></div>
-        </div>
-        """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTES GLOBALÉS
@@ -985,15 +1120,22 @@ def _parse_to_seconds(series):
 
 @st.cache_data
 def _load_tech_map(path):
-    """Carga P_max por loc_name desde Detalle_PF de loc_names_gen.xlsx."""
+    """Carga P_max y Tecnología por loc_name desde Detalle_PF de loc_names_gen.xlsx."""
     try:
         df = pd.read_excel(path, sheet_name="Detalle_PF", engine="calamine")
-        # Búsqueda flexible de la columna de potencia nominal/máxima
+        # Columna de potencia
         pot_cols = [c for c in df.columns if any(kw in c.lower() for kw in ['p_max', 'p nom', 'potencia'])]
-        col = pot_cols[0] if pot_cols else 'P nom. (MW)'
-        return df.set_index('loc_name PF')[[col]].rename(columns={col: 'P_max (MW)'}).to_dict('index')
+        col_p = pot_cols[0] if pot_cols else 'P nom. (MW)'
+        # Columna de tecnología
+        tec_cols = [c for c in df.columns if any(kw in str(c).lower() for kw in ['tecnol', 'tipo', 'technology', 'tech'])]
+        result = df.set_index('loc_name PF')[[col_p]].rename(columns={col_p: 'P_max (MW)'})
+        if tec_cols:
+            result['Tecnología'] = df.set_index('loc_name PF')[tec_cols[0]].values
+        else:
+            # Todas las unidades COBEE son hidroeléctricas — valor por defecto
+            result['Tecnología'] = 'Hidroeléctrica'
+        return result.to_dict('index')
     except Exception:
-        
         return {}
 
 
@@ -1151,7 +1293,7 @@ def _save_rp_cfg(loc_gen_path, loc_key, droop_pct):
     with open(p, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
-def _get_rp_default(loc_key, loc_gen_path, fallback=5.0):
+def _get_rp_default(loc_key, loc_gen_path, fallback=10.0):
     cfg = _load_rp_cfg(loc_gen_path)
     v = cfg.get(loc_key, cfg.get(loc_key.replace("sym_", ""), None))
     return float(v) if v is not None else fallback
@@ -1656,7 +1798,16 @@ def _mostrar_tabla_cndc(kpi, p_max, delta_t, fuente="Valor", rocof=None):
                 v = str(row.iloc[i])
                 styles[i] = 'background-color:#d4edda' if '✅' in v else 'background-color:#f8d7da'
         return styles
-    st.dataframe(_df_t.style.apply(_col_ap, axis=1), use_container_width=True, hide_index=True)
+    # Tabla KPI: ancho fijo por column_config, centrada via CSS
+    st.dataframe(
+        _df_t.style.apply(_col_ap, axis=1),
+        use_container_width=False,
+        hide_index=True,
+        column_config={
+            "Parámetro": st.column_config.TextColumn("Parámetro", width=260),
+            fuente:       st.column_config.TextColumn(fuente,      width=110),
+        },
+    )
 
     # Export button for KPI table
     if st.button(f"⬇️ Descargar KPIs a Excel ({fuente})", key=f"dl_kpis_{fuente.replace(' ', '_')}"):
@@ -1828,6 +1979,36 @@ with st.sidebar:
         st.rerun()
     st.markdown("---")
 
+    # ─── NAVEGACIÓN DE BLOQUES ────────────────────────────────────────────────
+    _any_running_nav = (
+        st.session_state.get("pf_running") or st.session_state.get("mod_running")
+        or any(st.session_state.get(f"{_p}_running") for _p in ("gen", "lne", "xfo", "sht", "car"))
+        or st.session_state.get("ext_running") or st.session_state.get("ci_running")
+        or st.session_state.get("scada_running") or st.session_state.get("emf_running")
+    )
+    if _any_running_nav:
+        st.warning("Proceso en ejecución — navegación bloqueada.")
+    for _grp_name, _grp_ids in [
+        ("Setup",    ["modelo_base", "carga_datos", "config_unidades"]),
+        ("Análisis", ["analisis_datos", "analisis_simulacion", "comparativa_real_simu"]),
+        ("Salida",   ["reporte_tecnico", "config_global"]),
+    ]:
+        st.markdown(f'<div class="v4-nav-group-label">{_grp_name}</div>', unsafe_allow_html=True)
+        for _b in _V4_BLOQUES:
+            if _b["id"] not in _grp_ids:
+                continue
+            _is_active = st.session_state.active_block == _b["id"]
+            if st.button(
+                f'{_b["num"]} · {_b["label"]}',
+                key=f"nav_{_b['id']}",
+                disabled=_any_running_nav,
+                type="primary" if _is_active else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state.active_block = _b["id"]
+                st.rerun()
+    st.markdown("---")
+
 bloque_trabajo = st.session_state.active_block
 
 # Helper para identificar columnas de frecuencia
@@ -1945,6 +2126,8 @@ with st.sidebar:
                             st.session_state.b3_kpi_excel_bytes = None
                             st.session_state.b3_plots_zip_bytes = None
                             st.session_state.b4_sim_zip_bytes = None
+                            for _k in ("b3_t_falla", "b3_dt"):
+                                st.session_state.pop(_k, None)
                             st.session_state.last_n_evento_global = n_evento
                         # Cargar configs guardados desde SharePoint (persistencia entre sesiones)
                         _sync_event_cfg_from_sp(ev_path)
@@ -2006,6 +2189,9 @@ with st.sidebar:
                         st.session_state.b3_kpi_excel_bytes = None
                         st.session_state.b3_plots_zip_bytes = None
                         st.session_state.b4_sim_zip_bytes = None
+                        # Resetear parámetros de análisis al cambiar de evento
+                        for _k in ("b3_t_falla", "b3_dt"):
+                            st.session_state.pop(_k, None)
                         st.session_state.last_n_evento_global = n_evento
                     st.success(f"Evento {n_evento} seleccionado")
                 else:
@@ -2038,26 +2224,83 @@ if IS_CLOUD and _SP_OK:
     LOC_CAR_PATH       = os.path.join(_loc_dir, "loc_name_cargas.xlsx")
     LOC_XFO_PATH       = os.path.join(_loc_dir, "loc_names_xfo.xlsx")
 
-# ─── CSS + TOP BAR + STEPPER ────────────────────────────────────────────────
-_inject_v4_css()
-_render_topbar()
-_render_stepper(bloque_trabajo)
+# ─── PRE-INICIALIZAR UNIDAD ANTES DEL TOPBAR ─────────────────────────────────
+# global_selected_unit se setea en _render_unit_ctx_bar(), que corre DESPUÉS del topbar.
+# Para que el pill de unidad aparezca desde el primer render, lo inicializamos aquí.
+if (bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_real_simu"]
+        and not st.session_state.get("global_selected_unit")):
+    try:
+        _pre_units = get_event_units(
+            st.session_state.get("ev_path_global"),
+            st.session_state.get("n_evento_global"),
+        )
+        if _pre_units:
+            st.session_state.global_selected_unit = _pre_units[0]
+    except Exception:
+        pass
 
-# ─── UNIT CONTEXT BAR (Bloques 3, 4, 5) ─────────────────────────────────────
-if bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_real_simu"]:
+# ─── CHROME: CSS + todos los elementos fijos en un solo st.markdown ──────────
+_IN_ANALYSIS = bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_real_simu"]
+
+# CSS condicional inline
+_extra_css = ""
+if _IN_ANALYSIS:
+    _extra_css = (
+        "<style>"
+        " .block-container { padding-top: 162px !important; }"
+        " section[data-testid='stSidebar'] { top: 160px !important;"
+        "   height: calc(100vh - 160px) !important; align-self: flex-start !important; }"
+        " [data-testid='stSidebarCollapsedControl'] { top: 160px !important; }"
+        " div[data-testid='stToolbar'] { top: 164px !important; }"
+        "</style>"
+    )
+
+# Unit bar (solo en bloques de análisis, si hay unidad)
+_unit_bar_html = _build_unit_bar_html() if _IN_ANALYSIS else ""
+
+# Un solo st.markdown para CSS base + topbar + stepper + unit bar
+# El wrapper height:0 colapsa el element-container en el flujo del DOM
+_inject_v4_css()           # <style> único para tema
+st.markdown(               # un solo element-container para todo el chrome visible
+    f'<div style="height:0;overflow:visible;margin:0;padding:0;line-height:0">'
+    f'{_build_topbar_html()}'
+    f'{_build_stepper_html(bloque_trabajo)}'
+    f'{_unit_bar_html}'
+    f'</div>'
+    + _extra_css,
+    unsafe_allow_html=True,
+)
+
+# ─── SINCRONIZACIÓN Y SELECTOR DE UNIDAD (Bloques 3, 4, 5) ──────────────────
+if _IN_ANALYSIS:
     _available_units = get_event_units(st.session_state.ev_path_global, st.session_state.n_evento_global)
     if _available_units:
-        # Sincronización de escala de ejes al cambiar de unidad o evento
+        # Validar unidad actual
+        _render_unit_ctx_bar(_available_units, LOC_NAMES_GEN_PATH)
+        # Sincronizar config de escala si cambió evento/unidad
         if st.session_state.global_selected_unit and st.session_state.ev_path_global:
             if (st.session_state.get("b3_last_unit") != st.session_state.global_selected_unit or
                 st.session_state.get("b3_last_event_path") != st.session_state.ev_path_global):
                 _sync_session_scale_config(st.session_state.ev_path_global, st.session_state.global_selected_unit)
                 st.session_state.b3_last_unit = st.session_state.global_selected_unit
                 st.session_state.b3_last_event_path = st.session_state.ev_path_global
-        _render_unit_ctx_bar(_available_units, LOC_NAMES_GEN_PATH)
+        # ── Selector de unidad fijo en topbar (marcador + widget nativo) ──────
+        st.markdown('<div class="v4-unit-select-marker"></div>', unsafe_allow_html=True)
+        _tb_cur = st.session_state.get("global_selected_unit")
+        _tb_idx = _available_units.index(_tb_cur) if _tb_cur in _available_units else 0
+        _tb_sel = st.selectbox(
+            "Unidad activa",
+            _available_units,
+            index=_tb_idx,
+            key="topbar_unit_sel",
+            format_func=lambda u: u.replace("sym_", ""),
+            label_visibility="collapsed",
+        )
+        if _tb_sel != st.session_state.get("global_selected_unit"):
+            st.session_state.global_selected_unit = _tb_sel
+            st.rerun()
     else:
-        st.info("⬆️ Seleccione una unidad en el selector para comenzar el análisis.")
-    st.divider()
+        st.info("⬆️ Seleccione evento en el panel izquierdo para comenzar el análisis.")
 
 def _df_safe(df):
     """Convierte columnas object con tipos mixtos a str para evitar ArrowTypeError."""
@@ -2652,7 +2895,7 @@ elif bloque_trabajo == "config_global": # type: ignore
                     "Fuente Pmax": _src,
                 })
             if _cfg_rows:
-                st.dataframe(_df_safe(pd.DataFrame(_cfg_rows)), use_container_width=True, hide_index=True)
+                st.dataframe(_df_safe(pd.DataFrame(_cfg_rows)), use_container_width=False, hide_index=True)
                 st.markdown("---")
                 _v4_section_head("Importar / Exportar Configuración", icon="download")
                 ci1, ci2 = st.columns(2)
@@ -2771,7 +3014,14 @@ elif bloque_trabajo == "carga_datos":
                     "Cantidad": len(archivos),
                 })
 
-            st.dataframe(pd.DataFrame(status_archivos), use_container_width=True, hide_index=True)
+            st.dataframe(
+                pd.DataFrame(status_archivos), hide_index=True, use_container_width=False,
+                column_config={
+                    "Archivo":   st.column_config.TextColumn("Archivo",   width=220),
+                    "Estado":    st.column_config.TextColumn("Estado",    width=70),
+                    "Cantidad":  st.column_config.NumberColumn("Cantidad", width=70),
+                },
+            )
 
             # Vista previa de Entradas: DC y DCDR
             if dc_files or dcdr_files:
@@ -2786,7 +3036,7 @@ elif bloque_trabajo == "carga_datos":
                                 tabs_dc = st.tabs(xl_dc.sheet_names)
                                 for i, sheet in enumerate(xl_dc.sheet_names):
                                     with tabs_dc[i]:
-                                        st.dataframe(_df_safe(xl_dc.parse(sheet).head(20)), use_container_width=True)
+                                        st.dataframe(_df_safe(xl_dc.parse(sheet).head(20)), use_container_width=False)
                             except Exception as e:
                                 st.error(f"Error al leer DC: {e}")
 
@@ -2798,7 +3048,7 @@ elif bloque_trabajo == "carga_datos":
                                 tabs_dcdr = st.tabs(xl_dcdr.sheet_names)
                                 for i, sheet in enumerate(xl_dcdr.sheet_names):
                                     with tabs_dcdr[i]:
-                                        st.dataframe(_df_safe(xl_dcdr.parse(sheet).head(20)), use_container_width=True)
+                                        st.dataframe(_df_safe(xl_dcdr.parse(sheet).head(20)), use_container_width=False)
                             except Exception as e:
                                 st.error(f"Error al leer DCDR: {e}")
 
@@ -2816,7 +3066,7 @@ elif bloque_trabajo == "carga_datos":
                             with tabs_out[i]:
                                 df_sheet = xl_out.parse(nombre_hoja)
                                 st.caption(f"Mostrando primeras 100 filas de '{nombre_hoja}'")
-                                st.dataframe(_df_safe(df_sheet.head(100)), use_container_width=True)
+                                st.dataframe(_df_safe(df_sheet.head(100)), use_container_width=False)
                     except Exception as e:
                         st.error(f"No se pudo leer la salida: {e}")
             else:
@@ -3015,14 +3265,21 @@ elif bloque_trabajo == "carga_datos":
                 },
             ]
 
-            st.dataframe(pd.DataFrame(archivos_requeridos), use_container_width=True, hide_index=True)
+            st.dataframe(
+                pd.DataFrame(archivos_requeridos), hide_index=True, use_container_width=False,
+                column_config={
+                    "Archivo":     st.column_config.TextColumn("Archivo",     width=230),
+                    "Estado":      st.column_config.TextColumn("Estado",      width=65),
+                    "Descripción": st.column_config.TextColumn("Descripción", width=200),
+                },
+            )
 
             # Vista previa de Entrada: Datos de simulación
             if sim_files:
                 with st.expander("📋 Vista previa: Datos de Simulación (Entrada)"):
                     try:
                         df_sim_in = pd.read_excel(sim_files[0], engine="calamine")
-                        st.dataframe(_df_safe(df_sim_in.head(20)), use_container_width=True)
+                        st.dataframe(_df_safe(df_sim_in.head(20)), use_container_width=False)
                     except Exception as e:
                         st.error(f"Error al leer entrada de simulación: {e}")
 
@@ -3039,10 +3296,10 @@ elif bloque_trabajo == "carga_datos":
                         c1, c2 = st.columns(2)
                         with c1:
                             st.caption("Generadores (pgini)")
-                            st.dataframe(df_pg.head(15), use_container_width=True)
+                            st.dataframe(df_pg.head(15), use_container_width=False)
                         with c2:
                             st.caption("Cargas (plini)")
-                            st.dataframe(df_pl.head(15), use_container_width=True)
+                            st.dataframe(df_pl.head(15), use_container_width=False)
                     except Exception as e:
                         st.info("El archivo existe pero no se pudieron leer las pestañas pgini/plini.")
                 st.markdown("---")
@@ -3296,7 +3553,7 @@ elif bloque_trabajo == "carga_datos":
                     "Carpeta": os.path.dirname(LOC_XFO_PATH),
                 },
             ])
-            st.dataframe(tabla_archivos, use_container_width=True, hide_index=True)
+            st.dataframe(tabla_archivos, use_container_width=False, hide_index=True)
 
             # ─── SECCIÓN 3 — VISTA PREVIA DE CONDICIONES INICIALES ───────────────
             if ci_files:
@@ -3334,10 +3591,10 @@ elif bloque_trabajo == "carga_datos":
                         st.info(f"**Hora cargas:** {info_ci.get('Hora Po (cargas)', '—')}")
 
                     with st.expander("📋 Generadores (pgini_GEN) — primeras 30 filas"):
-                        st.dataframe(df_pgini.head(30), use_container_width=True, hide_index=True)
+                        st.dataframe(df_pgini.head(30), use_container_width=False, hide_index=True)
 
                     with st.expander("📋 Cargas (plini_CAR) — primeras 30 filas"):
-                        st.dataframe(df_plini.head(30), use_container_width=True, hide_index=True)
+                        st.dataframe(df_plini.head(30), use_container_width=False, hide_index=True)
 
                 except Exception as _e:
                     st.error(f"Error al leer condiciones_iniciales: {_e}")
@@ -3440,7 +3697,7 @@ elif bloque_trabajo == "carga_datos":
                             _rows1 = [{"Unidad": u["loc"], "pgini asignado (MW)": round(u["pgini_actual"], 2)} for u in _disp_units]
                             _suma1 = sum(u["pgini_actual"] for u in _disp_units)
                             _rows1.append({"Unidad": "SUMA", "pgini asignado (MW)": round(_suma1, 2)})
-                            st.dataframe(pd.DataFrame(_rows1), hide_index=True, use_container_width=True)
+                            st.dataframe(pd.DataFrame(_rows1), hide_index=True, use_container_width=False)
                             if p_desc_ui > 0:
                                 _dif_badge(_suma1 - p_desc_ui)
 
@@ -3474,7 +3731,7 @@ elif bloque_trabajo == "carga_datos":
                             _rows3 = [{"Unidad": loc, "pgini asignado (MW)": val} for loc, val in _prev3.items()]
                             _suma3 = sum(_prev3.values())
                             _rows3.append({"Unidad": "SUMA", "pgini asignado (MW)": round(_suma3, 2)})
-                            st.dataframe(pd.DataFrame(_rows3), hide_index=True, use_container_width=True)
+                            st.dataframe(pd.DataFrame(_rows3), hide_index=True, use_container_width=False)
                             if p_desc_ui > 0:
                                 _dif3 = _suma3 - p_desc_ui
                                 if abs(_dif3) < 0.1:
@@ -3870,14 +4127,14 @@ elif bloque_trabajo == "carga_datos":
 
                         with _col_ta:
                             with st.expander("📋 Generadores (pgini final)"):
-                                st.dataframe(_df_safe(_df_gen_out), use_container_width=True, hide_index=True)
+                                st.dataframe(_df_safe(_df_gen_out), use_container_width=False, hide_index=True)
 
                         with _col_tb:
                             with st.expander(f"📋 Cargas ({_sheet_car})"):
-                                st.dataframe(_df_safe(_df_car_out), use_container_width=True, hide_index=True)
+                                st.dataframe(_df_safe(_df_car_out), use_container_width=False, hide_index=True)
 
                         with st.expander("📋 Resumen completo"):
-                            st.dataframe(_df_safe(_df_res_out), use_container_width=True, hide_index=True)
+                            st.dataframe(_df_safe(_df_res_out), use_container_width=False, hide_index=True)
 
                         with open(_rf, "rb") as _fdown:
                             st.download_button(
@@ -4077,6 +4334,7 @@ elif bloque_trabajo == "analisis_datos":
 
                     _b2_pmax = float(_b2_pm_val)
                     _b2_rp_pct = float(_get_rp_default(_tk_b2, LOC_NAMES_GEN_PATH))
+                    # ── Fila 1: parámetros de detección ──────────────────────────────────
                     _pp1, _pp2, _pp3 = st.columns(3)
                     _b2_dt        = _pp1.number_input("Δt CNDC [s]", value=35, min_value=20, max_value=60, step=1, key="b2_sc_dt")
                     _b2_umbral_k  = _pp2.number_input("Umbral df/dt [Hz/s]", value=-0.04, min_value=-2.0, max_value=-0.001, step=0.005, format="%.3f", key="b2_sc_umbral")
@@ -4085,51 +4343,57 @@ elif bloque_trabajo == "analisis_datos":
                     _idx_auto_b2 = _detectar_inicio_falla(_freq_b2_arr, float(_b2_umbral_k), int(_b2_vent_suav))
                     _t_auto_b2   = float(t_norm.iloc[_idx_auto_b2])
 
-                    _cin1, _cin2, _cbt = st.columns([3, 1, 1])
-                    _t_input_b2 = _cin1.number_input(
+                    # ── Fila 2: label + hint + botones en la misma línea ──────────────────
+                    _lf1, _lf2, _lf3 = st.columns([5, 1, 1])
+                    _lf1.markdown(
+                        f"**t₀ inicio de falla [s]** "
+                        f"<span style='color:#888;font-size:11px;margin-left:6px'>"
+                        f"Auto-detectado: {_t_auto_b2:.1f} s</span>",
+                        unsafe_allow_html=True,
+                    )
+                    if _lf2.button("↩ Auto", key="reset_b2sc_t0",
+                                   help=f"Restaurar al tiempo auto-detectado ({_t_auto_b2:.1f} s)"):
+                        st.session_state["b2_sc_t_falla"] = _t_auto_b2
+                        st.rerun()
+                    if _lf3.button("💾 Guardar", key="save_idx_scada",
+                                   help="Guardar t₀ para TODAS las unidades del evento (tab SCADA)"):
+                        _t0_sv = st.session_state.get("b2_sc_t_falla", _t_auto_b2)
+                        _idx_sv = int(np.argmin(np.abs(t_norm.values - _t0_sv)))
+                        _save_event_cfg(ev_path, "scada_t0_s", float(t_norm.iloc[_idx_sv]))
+                        _save_unit_cfg(ev_path, _sel_unit, "scada_wall_clock_t0", float(t_raw.iloc[_idx_sv]))
+                        st.toast(f"t₀ SCADA = {_t0_sv:.1f} s guardado para todas las unidades", icon="✅")
+
+                    # ── Fila 3: input numérico (sin label visible) ────────────────────────
+                    _t_input_b2 = st.number_input(
                         "t₀ inicio de falla [s]",
                         value=st.session_state.get("b2_sc_t_falla", _t_auto_b2),
                         min_value=float(t_norm.min()),
                         max_value=float(t_norm.max()),
                         step=1.0, format="%.1f",
                         key="b2_sc_t_falla",
-                        help=f"Escriba el tiempo exacto en segundos. Auto-detectado: {_t_auto_b2:.1f} s",
+                        label_visibility="collapsed",
                     )
                     _idx_falla_b2 = int(np.argmin(np.abs(t_norm.values - _t_input_b2)))
-                    if _cin2.button("↩ Auto", key="reset_b2sc_t0",
-                                    help=f"Restaurar al tiempo auto-detectado ({_t_auto_b2:.1f} s)"):
-                        st.session_state["b2_sc_t_falla"] = _t_auto_b2
-                        st.rerun()
-                    if _cbt.button("💾 Guardar", key="save_idx_scada",
-                                   help="Guardar t₀ para TODAS las unidades del evento (tab SCADA)"):
-                        _t_falla_rel_sc = float(t_norm.iloc[_idx_falla_b2])
-                        _save_event_cfg(ev_path, "scada_t0_s", _t_falla_rel_sc)
-                        # Guardar wall-clock por unidad como referencia auxiliar para EMF
-                        _save_unit_cfg(ev_path, _sel_unit, "scada_wall_clock_t0", float(t_raw.iloc[_idx_falla_b2]))
-                        st.toast(f"t₀ SCADA = {_t_input_b2:.1f} s guardado para todas las unidades", icon="✅")
+                    _t_falla_abs  = float(t_norm.iloc[_idx_falla_b2])
+                    _t_al_b2      = (t_norm - t_norm.iloc[_idx_falla_b2]).values
+                    _kpi_b2       = _cndc_kpis(_t_al_b2, _freq_b2_arr, _pot_b2_arr,
+                                               _b2_pmax, _b2_rp_pct / 100.0, int(_b2_dt))
+                    _rocof_b2     = _calcular_rocof(_t_al_b2, _freq_b2_arr, 3.0)
 
-                    _cm1, _cm2, _cm3 = st.columns(3)
-                    _cm1.metric("t falla", f"{float(t_norm.iloc[_idx_falla_b2]):.1f} s")
-                    _cm2.metric("f₀", f"{_freq_b2_arr[_idx_falla_b2]:.4f} Hz")
-                    _cm3.metric("P₀", f"{_pot_b2_arr[_idx_falla_b2]:.3f} MW")
-
-                    _t_falla_abs = float(t_norm.iloc[_idx_falla_b2])
-                    _t_al_b2     = (t_norm - t_norm.iloc[_idx_falla_b2]).values
-                    _kpi_b2      = _cndc_kpis(_t_al_b2, _freq_b2_arr, _pot_b2_arr,
-                                              _b2_pmax, _b2_rp_pct / 100.0, int(_b2_dt))
-                    _rocof_b2    = _calcular_rocof(_t_al_b2, _freq_b2_arr, 3.0)
-
-                    # Ejes X e Y - Inicialización de límites desde configuración
+                    # Ejes X e Y
                     xaxis_min_sc = _get_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmin", float(t_norm.min()))
                     xaxis_max_sc = _get_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", float(t_norm.max()))
 
-                    # ── Barra de control compacta ─────────────────────────────────────────
-                    _sc_c1, _sc_c2 = st.columns([3, 1])
-                    auto_scale_sc = _sc_c1.toggle(
+                    # ── Fila 4: métricas + auto-escala + ejes (todo en una fila) ──────────
+                    _cm1, _cm2, _cm3, _sc_ac, _sc_ej = st.columns([2, 2, 2, 2, 1])
+                    _cm1.metric("t falla", f"{_t_falla_abs:.1f} s")
+                    _cm2.metric("f₀",      f"{_freq_b2_arr[_idx_falla_b2]:.4f} Hz")
+                    _cm3.metric("P₀",      f"{_pot_b2_arr[_idx_falla_b2]:.3f} MW")
+                    auto_scale_sc = _sc_ac.toggle(
                         "📐 Auto-escala", value=st.session_state.b3_sync_y_auto,
                         key="b2_sc_y_auto", on_change=_sync_rpf_y_axis, args=("y_auto", "b2_sc_y_auto"),
                     )
-                    with _sc_c2.popover("⚙️ Ejes"):
+                    with _sc_ej.popover("⚙️ Ejes"):
                         st.caption("**Eje X (tiempo)**")
                         xaxis_min = st.number_input("X Min (s)", value=xaxis_min_sc, key="b2_sc_xaxis_min")
                         xaxis_max = st.number_input("X Max (s)", value=xaxis_max_sc, key="b2_sc_xaxis_max")
@@ -4230,7 +4494,7 @@ elif bloque_trabajo == "analisis_datos":
                     st.plotly_chart(fig, use_container_width=True, key="b2sc_plotly_chart")
 
                     with st.expander("📄 Ver tabla de datos"):
-                        st.dataframe(_df_safe(df_scada), use_container_width=True)
+                        st.dataframe(_df_safe(df_scada), use_container_width=False)
                         if st.button("⬇️ Descargar datos SCADA a Excel", key=f"dl_scada_data_{_sel_unit}"):
                             excel_data = _apply_excel_formatting(
                                 df_scada,
@@ -5095,16 +5359,19 @@ elif bloque_trabajo == "analisis_simulacion":
         f"t₀ auto-detectado: {_t0_autodet:.1f} s  ·  Ajuste si difiere del evento real.",
         "sliders")
     _bp1, _bp2 = st.columns(2)
+    # Inicializar session_state antes del widget para evitar conflicto value= vs key=
+    if "b3_t_falla" not in st.session_state:
+        st.session_state["b3_t_falla"] = float(_t_falla_sim_val)
+    if "b3_dt" not in st.session_state:
+        st.session_state["b3_dt"] = int(_event_cfg.get("delta_t_cndc", 35))
     _b3_t_falla = _bp1.number_input(
-        "Tiempo de falla en simulación (t₀) [s]",
-        value=float(_t_falla_sim_val),
+        "t₀ falla sim. [s]",
         min_value=0.0, max_value=300.0, step=0.5,
         help=f"Instante t₀ del evento (auto-detectado: {_t0_autodet:.1f} s). Ajuste si es necesario.",
         key="b3_t_falla",
     )
     _b3_dt = int(_bp2.number_input( # type: ignore
         "Δt CNDC [s]",
-        value=int(_event_cfg.get("delta_t_cndc", 35)),
         min_value=20, max_value=60, step=1,
         help="Tiempo desde t₀ para evaluar f_Δt y P_Δt. CNDC usa 30–50 s (típicamente 35 s).",
         key="b3_dt",
@@ -5156,7 +5423,7 @@ elif bloque_trabajo == "analisis_simulacion":
         data_cols = [col for col in df_sim.columns if col != time_col]
 
         with st.expander("📄 Ver tabla de datos"):
-            st.dataframe(df_sim, use_container_width=True)
+            st.dataframe(df_sim, use_container_width=False)
         return df_sim, sel_file
 
     def _load_sim_tab_data(sim_dir, sel_file):
@@ -5269,7 +5536,7 @@ elif bloque_trabajo == "analisis_simulacion":
         st.plotly_chart(fig_s, use_container_width=True)
 
         with st.expander("📄 Ver tabla de datos"):
-            st.dataframe(_df_safe(df_raw), use_container_width=True)
+            st.dataframe(_df_safe(df_raw), use_container_width=False)
             if st.button("⬇️ Descargar datos a Excel", key=f"dl_{pfx}_data"):
                 _unit_label = (_sel_unit or "unidad").replace("sym_", "")
                 st.download_button(
@@ -5407,7 +5674,7 @@ elif bloque_trabajo == "analisis_simulacion":
                     for _c in _df_ksc.columns:
                         if _df_ksc[_c].dtype == object:
                             _df_ksc[_c] = _df_ksc[_c].astype(str)
-                    st.dataframe(_df_ksc, hide_index=True, use_container_width=True)
+                    st.dataframe(_df_ksc, hide_index=True, use_container_width=False)
 
 
 elif bloque_trabajo == "comparativa_real_simu":
@@ -5442,77 +5709,76 @@ elif bloque_trabajo == "comparativa_real_simu":
             except: return 0.0
         return series.apply(_to_sec)
 
-    # ── Panel de configuración ─────────────────────────────────────────────────
-    _v4_section_head("Configuración de fuentes y simulaciones", icon="sliders")
-    col_src, col_sim, col_tech = st.columns([1, 1, 1])
-    with col_src:
+    # ── Panel de configuración — mismo patrón que B04 ─────────────────────────
+    # Orden: t₀ (col1) · Δt (col2) · Fuente (col3) · Simulaciones (col4) · Guardar (col5)
+    _v4_section_head("⚙️ Parámetros de Análisis CNDC", icon="sliders")
+    _event_cfg = _load_event_cfg(ev_path)
+    _pc1, _pc2, _pc3, _pc4, _pc5 = st.columns([1, 1, 1.2, 1.6, 0.9])
+    with _pc1:
+        t_sim_falla = st.number_input(
+            "t₀ falla sim. [s]",
+            value=_event_cfg.get("t_sim_falla", 5.0), min_value=0.0, max_value=300.0, step=0.5,
+            help="Instante t en la simulación RMS donde ocurre el evento (PowerFactory).",
+            key="b4_t_sim_falla",
+        )
+    with _pc2:
+        delta_t_cndc = st.number_input(
+            "Δt CNDC [s]",
+            value=35, min_value=20, max_value=60, step=1,
+            help="Tiempo desde t₀ para leer f_Δt y P_Δt. CNDC usa entre 30–50 s (típicamente 35 s).",
+            key="b4_delta_t_cndc",
+        )
+    with _pc3:
         src_real = st.radio("Fuente Real:", ["SCADA COBEE (1SEG)", "EMF CNDC"], key="b4_src_real")
-    with col_sim:
-        src_sim = st.multiselect("Simulaciones:", [f"E{n_evento}.0", f"E{n_evento}.1"], default=[f"E{n_evento}.0", f"E{n_evento}.1"])
-
-    with col_tech:
+    with _pc4:
+        src_sim = st.multiselect(
+            "Simulaciones:",
+            [f"E{n_evento}.0", f"E{n_evento}.1"],
+            default=[f"E{n_evento}.0", f"E{n_evento}.1"],
+        )
+    with _pc5:
+        st.markdown('<div style="height:20px"></div>', unsafe_allow_html=True)
+        if st.button("💾 Guardar t₀", key="save_t_sim_falla", help="Guardar tiempo de falla en config del evento"):
+            if _save_event_cfg(ev_path, "t_sim_falla", t_sim_falla):
+                st.toast("t₀ guardado.")
         try:
             df_tech = pd.read_excel(LOC_NAMES_GEN_PATH, sheet_name="Detalle_PF", engine="calamine")
             _pcol = 'P_max (MW)' if 'P_max (MW)' in df_tech.columns else 'P nom. (MW)'
             tech_map = (df_tech.set_index('loc_name PF')[[_pcol]]
                         .rename(columns={_pcol: 'P_max (MW)'})
                         .to_dict('index'))
-            st.success(f"✅ P_max cargada ({len(tech_map)} unidades desde '{_pcol}').")
+            st.caption(f"✅ P_max: {len(tech_map)} uds.")
         except Exception as _e:
             tech_map = {}
-            st.warning(f"⚠️ No se pudo cargar loc_names_gen.xlsx: {_e}")
+            st.caption(f"⚠️ Sin P_max")
 
-    st.markdown("---") # type: ignore
+    # Parámetros avanzados de detección (colapsados — opcionales)
+    with st.expander("⚙ Detección avanzada de t₀", expanded=False):
+        _da1, _da2, _da3 = st.columns(3)
+        with _da1:
+            umbral_dfdt = st.number_input(
+                "Umbral df/dt (Hz/s)",
+                value=-0.04, min_value=-2.0, max_value=-0.001, step=0.005, format="%.3f",
+                help="Caída sostenida de frecuencia (suavizada) para detectar inicio de falla.",
+                key="b4_umbral_dfdt",
+            )
+        with _da2:
+            ventana_suavizado = st.number_input(
+                "Ventana suavizado (muestras)",
+                value=5, min_value=2, max_value=20, step=1,
+                help="Número de muestras para rolling mean antes de calcular df/dt.",
+                key="b4_ventana_suav",
+            )
+        with _da3:
+            ventana_pre = st.number_input(
+                "Ventana pre-falla (s)",
+                value=10, min_value=0, max_value=120, step=5,
+                help="Segundos antes de t=0 a incluir en la gráfica.",
+                key="b4_ventana_pre",
+            )
 
-    # ── Parámetros de alineación temporal y visualización ───────────────────── # type: ignore
-    st.markdown("### Alineación Temporal y Visualización")
-    col_p1, col_p2, col_p3, col_p4, col_p5 = st.columns(5)
-    with col_p1:
-        _event_cfg = _load_event_cfg(ev_path)
-        t_sim_falla = st.number_input(
-            "Tiempo de falla en simulación (s)",
-            value=_event_cfg.get("t_sim_falla", 5.0), min_value=0.0, max_value=300.0, step=0.5,
-            help="Instante t en la simulación RMS donde ocurre el evento (PowerFactory).",
-            key="b4_t_sim_falla",
-        )
-        if st.button("Guardar", key="save_t_sim_falla", help="Guardar tiempo de falla de simulación"):
-            if _save_event_cfg(ev_path, "t_sim_falla", t_sim_falla):
-                st.toast("Tiempo de falla guardado.")
-
-    with col_p2:
-        umbral_dfdt = st.number_input(
-            "Umbral detección df/dt (Hz/s)",
-            value=-0.04, min_value=-2.0, max_value=-0.001, step=0.005, format="%.3f",
-            help="Caída sostenida de frecuencia (suavizada) para detectar inicio de falla.",
-            key="b4_umbral_dfdt",
-        )
-    with col_p3:
-        ventana_suavizado = st.number_input(
-            "Ventana suavizado detección (muestras)",
-            value=5, min_value=2, max_value=20, step=1,
-            help="Número de muestras para rolling mean antes de calcular df/dt.",
-            key="b4_ventana_suav",
-        )
-    with col_p4:
-        ventana_pre = st.number_input(
-            "Ventana pre-falla a mostrar (s)",
-            value=10, min_value=0, max_value=120, step=5,
-            help="Segundos antes de t=0 a incluir en la gráfica.",
-            key="b4_ventana_pre",
-        )
-    with col_p5:
-        delta_t_cndc = st.number_input(
-            "Δt CNDC (s)",
-            value=35, min_value=20, max_value=60, step=1,
-            help="Tiempo desde t₀ para leer f_Δt y P_Δt. CNDC usa entre 30 y 50 s (típicamente 35 s).",
-            key="b4_delta_t_cndc",
-        )
-
-    st.markdown("---") # type: ignore
-    st.markdown("### 📈 Opciones de Gráfico")
-
-    # Opciones de ejes sincronizados
-    with st.expander("🛠️ Opciones de Ejes de Validación"):
+    # Opciones de ejes (colapsadas — mismo patrón que B04)
+    with st.expander("📐 Ejes del gráfico", expanded=False):
         auto_v = st.toggle(
             "Auto-escala",
             value=st.session_state.b3_sync_y_auto,
@@ -5535,8 +5801,6 @@ elif bloque_trabajo == "comparativa_real_simu":
             _save_event_cfg(ev_path, "b5_xmin", _xmin_v)
             _save_event_cfg(ev_path, "b5_xmax", _xmax_v)
             st.toast("Escalado B5 guardado")
-
-    st.markdown("---")
 
     # ── Carga y Alineación Real ────────────────────────────────────────────────
     _sel_unit = st.session_state.global_selected_unit
@@ -5690,7 +5954,7 @@ elif bloque_trabajo == "comparativa_real_simu":
 
                 st.dataframe(
                     _df_comp_b5.style.apply(_style_comp_b5, axis=1),
-                    use_container_width=True,
+                    use_container_width=False,
                     hide_index=True,
                 )
 
