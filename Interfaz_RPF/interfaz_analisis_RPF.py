@@ -396,10 +396,10 @@ def _render_stepper(active_block: str):
     for i, b in enumerate(_V4_BLOQUES):
         is_active   = b["id"] == active_block
         is_past     = i < active_idx
-        is_disabled = IS_CLOUD and b["pf"]
-        cls = "v4-step" + (" active" if is_active else " past" if is_past else "") + (" disabled" if is_disabled else "")
+        is_disabled = False  # todos los bloques navegables (PF requiere local, pero se puede visitar)
+        cls = "v4-step" + (" active" if is_active else " past" if is_past else "")
         num_txt   = "✓" if is_past else b["num"]
-        badge_html = f'<span class="v4-step-badge">local</span>' if is_disabled else ""
+        badge_html = f'<span class="v4-step-badge">local</span>' if (IS_CLOUD and b["pf"]) else ""
         icon_col  = t["success"] if is_past else (t["accent"] if is_active else t["textMuted"])
         items_html += f'<span class="{cls}" title="{b["label"]}"><span class="v4-step-num">{num_txt}</span>{_v4_icon(b["icon"], 13, icon_col)}<span>{b["short"]}</span>{badge_html}</span>'
         if i < len(_V4_BLOQUES) - 1:
@@ -411,9 +411,10 @@ def _render_block_header(num: str, title: str, subtitle: str, grupo: str, pf_req
     t = _v4_t()
     crumb = f'<span>{grupo}</span><span class="v4-bc-sep"> › </span><span class="v4-bc-active">{title}</span>'
     pf_banner = (
-        f'<div class="v4-banner info">{_v4_icon("cloud", 15, t["info"])}'
-        f'<span>Este bloque ejecuta DIgSILENT PowerFactory localmente. '
-        f'En Streamlit Cloud los botones de ejecución están deshabilitados.</span></div>'
+        f'<div class="v4-banner warning">{_v4_icon("cloud", 15, t["warning"])}'
+        f'<span><strong>Modo presentación:</strong> Este bloque ejecuta DIgSILENT PowerFactory. '
+        f'Los botones de ejecución están deshabilitados en Streamlit Cloud — '
+        f'los resultados y gráficas precargados son de solo lectura.</span></div>'
     ) if pf_required and IS_CLOUD else ""
     st.markdown(f"""
     <div class="v4-block-wrap">
@@ -1455,7 +1456,7 @@ with st.sidebar:
             if _b["id"] not in _grp_ids:
                 continue
             _is_active   = st.session_state.active_block == _b["id"]
-            _is_disabled = (IS_CLOUD and _b["pf"]) or _any_running_nav
+            _is_disabled = _any_running_nav  # todos los bloques accesibles en cloud (PF deshabilitado solo en botones de ejecución)
             if st.button(
                 f'{_b["num"]} · {_b["label"]}',
                 key=f"nav_{_b['id']}",
