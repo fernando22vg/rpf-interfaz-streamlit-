@@ -196,156 +196,154 @@ def _v4_t() -> dict:
     """Devuelve el dict de tokens del tema activo (light / dark)."""
     return _V4_TOKENS[st.session_state.get("ui_theme", "light")]
 
+# ── CSS template (plain str, no f-string) — avoids Python 3.12 C-tokenizer bug
+# that fires when inspect.getsource() processes f-strings with subscript exprs.
+# Use .format(**_v4_t()) at call time; {{ }} = literal CSS braces.
+_V4_CSS_TEMPLATE = (
+    "<style>"
+    "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700"
+    "&family=JetBrains+Mono:wght@400;500;600&display=swap');"
+    " #MainMenu, footer {{ visibility: hidden; height: 0; }}"
+    " header[data-testid='stHeader'] {{ visibility: hidden; height: 0; }}"
+    " div[data-testid='stDecoration'], div[data-testid='stToolbar'] {{ display: none; }}"
+    " .block-container {{ padding: 0 !important; max-width: 100% !important; }}"
+    " .stApp {{ background: {bg} !important;"
+    " font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important; }}"
+    " .v4-topbar {{"
+    " position: sticky; top: 0; z-index: 100; height: 56px;"
+    " background: {surface}; border-bottom: 1px solid {border};"
+    " display: flex; align-items: center; justify-content: space-between;"
+    " padding: 0 20px; gap: 16px; box-sizing: border-box;"
+    " }}"
+    " .v4-brand {{ display: flex; align-items: center; gap: 10px; }}"
+    " .v4-brand-mark {{"
+    " width: 30px; height: 30px; border-radius: 7px; flex-shrink: 0;"
+    " background: linear-gradient(135deg, {primary}, {accent});"
+    " display: flex; align-items: center; justify-content: center;"
+    " }}"
+    " .v4-brand-title {{ font-size: 14px; font-weight: 700; color: {text}; line-height: 1.1; }}"
+    " .v4-brand-sub   {{ font-size: 11px; color: {textMuted}; line-height: 1.2; margin-top: 1px; }}"
+    " .v4-topbar-center {{ display: flex; align-items: center; gap: 12px; flex: 1; padding: 0 16px; }}"
+    " .v4-event-pill {{"
+    " display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; height: 34px;"
+    " background: {surfaceAlt}; border: 1px solid {border}; border-radius: 8px;"
+    " font-size: 12px; font-weight: 500; color: {text};"
+    " }}"
+    " .v4-event-label {{ font-size: 10px; font-weight: 700; color: {textSubtle}; text-transform: uppercase; letter-spacing: .06em; }}"
+    " .v4-event-val   {{ font-size: 12.5px; font-weight: 600; color: {text}; }}"
+    " .v4-sep {{ width: 1px; height: 16px; background: {border}; }}"
+    " .v4-mode-badge {{"
+    " display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;"
+    " border-radius: 6px; font-size: 11px; font-weight: 600;"
+    " border: 1px solid {border}; color: {textMuted};"
+    " }}"
+    " .v4-mode-badge.local {{ border-color: {success}; color: {success}; background: {successBg}; }}"
+    " .v4-mode-badge.cloud {{ border-color: {info};    color: {info};    background: {infoBg}; }}"
+    " .v4-stepper {{"
+    " position: sticky; top: 56px; z-index: 99;"
+    " background: {surface}; border-bottom: 1px solid {border};"
+    " padding: 0 20px; overflow-x: auto; white-space: nowrap;"
+    " }}"
+    " .v4-stepper-inner {{ display: inline-flex; align-items: center; height: 52px; gap: 0; }}"
+    " .v4-step {{"
+    " display: inline-flex; align-items: center; gap: 7px;"
+    " padding: 7px 11px; border-radius: 7px;"
+    " font-size: 12px; font-weight: 500; color: {textMuted};"
+    " white-space: nowrap; cursor: default;"
+    " }}"
+    " .v4-step.active {{ background: {surfaceHover}; color: {text}; font-weight: 600; }}"
+    " .v4-step.past   {{ color: {success}; }}"
+    " .v4-step.disabled {{ opacity: 0.45; }}"
+    " .v4-step-num {{"
+    " width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;"
+    " display: inline-flex; align-items: center; justify-content: center;"
+    " font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;"
+    " background: {surfaceAlt}; border: 1px solid {border}; color: {textMuted};"
+    " }}"
+    " .v4-step.active .v4-step-num {{ background: {primary}; border-color: {primary}; color: #FFF; }}"
+    " .v4-step.past   .v4-step-num {{ background: {success}; border-color: {success}; color: #FFF; font-size: 10px; }}"
+    " .v4-step-badge {{"
+    " font-size: 9px; padding: 1px 4px; border-radius: 3px; font-weight: 600;"
+    " background: {surfaceAlt}; border: 1px solid {border}; color: {textSubtle};"
+    " text-transform: uppercase; letter-spacing: 0.04em;"
+    " }}"
+    " .v4-connector {{ width: 20px; height: 1px; background: {border}; display: inline-block; vertical-align: middle; flex-shrink: 0; }}"
+    " .v4-connector.past {{ background: {success}; }}"
+    " .v4-unit-ctx {{"
+    " display: flex; align-items: center; gap: 16px; flex-wrap: wrap;"
+    " padding: 4px 0;"
+    " }}"
+    " .v4-unit-dot {{"
+    " display: inline-block; width: 8px; height: 8px; border-radius: 50%;"
+    " background: {success}; box-shadow: 0 0 0 3px {successBg};"
+    " margin-right: 2px; vertical-align: middle; flex-shrink: 0;"
+    " }}"
+    " .v4-unit-name {{"
+    " font-size: 14px; font-weight: 700; color: {text};"
+    " font-family: 'JetBrains Mono', ui-monospace, monospace;"
+    " font-variant-numeric: tabular-nums;"
+    " }}"
+    " .v4-stat {{ display: flex; flex-direction: column; line-height: 1.2; }}"
+    " .v4-stat-label {{ font-size: 10px; font-weight: 600; color: {textSubtle}; text-transform: uppercase; letter-spacing: 0.05em; }}"
+    " .v4-stat-value {{ font-size: 13px; font-weight: 700; color: {text}; font-variant-numeric: tabular-nums; }}"
+    " .v4-stat-unit {{ font-size: 11px; color: {textMuted}; font-weight: 500; margin-left: 2px; }}"
+    " .v4-stat-sep {{ width: 1px; height: 28px; background: {border}; flex-shrink: 0; }}"
+    " .v4-block-wrap {{ padding: 18px 24px 0 24px; }}"
+    " .v4-breadcrumb {{ display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: {textMuted}; margin-bottom: 12px; }}"
+    " .v4-bc-sep {{ color: {textSubtle}; }}"
+    " .v4-bc-active {{ color: {text}; font-weight: 600; }}"
+    " .v4-block-head {{ display: flex; align-items: flex-start; gap: 14px; margin-bottom: 14px; }}"
+    " .v4-block-num {{"
+    " width: 48px; height: 48px; border-radius: 10px; flex-shrink: 0;"
+    " background: {surface}; border: 1px solid {border};"
+    " display: flex; align-items: center; justify-content: center;"
+    " font-size: 20px; font-weight: 700; color: {primary};"
+    " font-variant-numeric: tabular-nums;"
+    " font-family: 'JetBrains Mono', ui-monospace, monospace;"
+    " }}"
+    " .v4-block-title {{ font-size: 20px; font-weight: 700; color: {text}; line-height: 1.2; }}"
+    " .v4-block-sub   {{ font-size: 13px; color: {textMuted}; margin-top: 4px; max-width: 720px; line-height: 1.45; }}"
+    " .v4-banner {{"
+    " display: flex; align-items: flex-start; gap: 10px;"
+    " padding: 10px 14px; border-radius: 8px;"
+    " font-size: 12.5px; color: {text}; line-height: 1.45;"
+    " margin: 0 24px 14px 24px;"
+    " }}"
+    " .v4-banner.info    {{ background: {infoBg};    border: 1px solid {info}; }}"
+    " .v4-banner.warning {{ background: {warningBg}; border: 1px solid {warning}; }}"
+    " section[data-testid='stSidebar'] > div:first-child {{"
+    " background: {surface} !important; border-right: 1px solid {border} !important;"
+    " }}"
+    " .v4-nav-group-label {{"
+    " font-size: 10px; font-weight: 700; color: {textSubtle};"
+    " text-transform: uppercase; letter-spacing: 0.08em;"
+    " padding: 10px 4px 3px 4px; display: block;"
+    " }}"
+    " section[data-testid='stSidebar'] .stButton > button {{"
+    " width: 100%; background: transparent !important; border: none !important;"
+    " color: {textMuted} !important; font-size: 12.5px !important;"
+    " font-weight: 500 !important; text-align: left !important;"
+    " padding: 8px 10px !important; border-radius: 7px !important;"
+    " height: auto !important; line-height: 1.3 !important;"
+    " justify-content: flex-start !important;"
+    " }}"
+    " section[data-testid='stSidebar'] .stButton > button:hover {{"
+    " background: {surfaceHover} !important; color: {text} !important;"
+    " }}"
+    " section[data-testid='stSidebar'] .stButton > button[kind='primary'] {{"
+    " background: {primary} !important; color: #FFF !important; font-weight: 600 !important;"
+    " }}"
+    " section[data-testid='stSidebar'] .stButton > button:disabled {{"
+    " opacity: 0.45 !important; cursor: not-allowed !important;"
+    " }}"
+    " .v4-content {{ padding: 0 24px 24px 24px; }}"
+    "</style>"
+)
+
 def _inject_v4_css():
-    t = _v4_t()
-    css = f"""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-    /* ── Reset Streamlit chrome ── */
-    #MainMenu, footer {{ visibility: hidden; height: 0; }}
-    header[data-testid="stHeader"] {{ visibility: hidden; height: 0; }}
-    div[data-testid="stDecoration"], div[data-testid="stToolbar"] {{ display: none; }}
-    .block-container {{ padding: 0 !important; max-width: 100% !important; }}
-    .stApp {{ background: {t['bg']} !important;
-              font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important; }}
-    /* ── TOP BAR ── */
-    .v4-topbar {{
-        position: sticky; top: 0; z-index: 100; height: 56px;
-        background: {t['surface']}; border-bottom: 1px solid {t['border']};
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 0 20px; gap: 16px; box-sizing: border-box;
-    }}
-    .v4-brand {{ display: flex; align-items: center; gap: 10px; }}
-    .v4-brand-mark {{
-        width: 30px; height: 30px; border-radius: 7px; flex-shrink: 0;
-        background: linear-gradient(135deg, {t['primary']}, {t['accent']});
-        display: flex; align-items: center; justify-content: center;
-    }}
-    .v4-brand-title {{ font-size: 14px; font-weight: 700; color: {t['text']}; line-height: 1.1; }}
-    .v4-brand-sub   {{ font-size: 11px; color: {t['textMuted']}; line-height: 1.2; margin-top: 1px; }}
-    .v4-topbar-center {{ display: flex; align-items: center; gap: 12px; flex: 1; padding: 0 16px; }}
-    .v4-event-pill {{
-        display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; height: 34px;
-        background: {t['surfaceAlt']}; border: 1px solid {t['border']}; border-radius: 8px;
-        font-size: 12px; font-weight: 500; color: {t['text']};
-    }}
-    .v4-event-label {{ font-size: 10px; font-weight: 700; color: {t['textSubtle']}; text-transform: uppercase; letter-spacing: .06em; }}
-    .v4-event-val   {{ font-size: 12.5px; font-weight: 600; color: {t['text']}; }}
-    .v4-sep {{ width: 1px; height: 16px; background: {t['border']}; }}
-    .v4-mode-badge {{
-        display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
-        border-radius: 6px; font-size: 11px; font-weight: 600;
-        border: 1px solid {t['border']}; color: {t['textMuted']};
-    }}
-    .v4-mode-badge.local {{ border-color: {t['success']}; color: {t['success']}; background: {t['successBg']}; }}
-    .v4-mode-badge.cloud {{ border-color: {t['info']};    color: {t['info']};    background: {t['infoBg']}; }}
-    /* ── STEPPER ── */
-    .v4-stepper {{
-        position: sticky; top: 56px; z-index: 99;
-        background: {t['surface']}; border-bottom: 1px solid {t['border']};
-        padding: 0 20px; overflow-x: auto; white-space: nowrap;
-    }}
-    .v4-stepper-inner {{ display: inline-flex; align-items: center; height: 52px; gap: 0; }}
-    .v4-step {{
-        display: inline-flex; align-items: center; gap: 7px;
-        padding: 7px 11px; border-radius: 7px;
-        font-size: 12px; font-weight: 500; color: {t['textMuted']};
-        white-space: nowrap; cursor: default;
-    }}
-    .v4-step.active {{ background: {t['surfaceHover']}; color: {t['text']}; font-weight: 600; }}
-    .v4-step.past   {{ color: {t['success']}; }}
-    .v4-step.disabled {{ opacity: 0.45; }}
-    .v4-step-num {{
-        width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
-        display: inline-flex; align-items: center; justify-content: center;
-        font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
-        background: {t['surfaceAlt']}; border: 1px solid {t['border']}; color: {t['textMuted']};
-    }}
-    .v4-step.active .v4-step-num {{ background: {t['primary']}; border-color: {t['primary']}; color: #FFF; }}
-    .v4-step.past   .v4-step-num {{ background: {t['success']}; border-color: {t['success']}; color: #FFF; font-size: 10px; }}
-    .v4-step-badge {{
-        font-size: 9px; padding: 1px 4px; border-radius: 3px; font-weight: 600;
-        background: {t['surfaceAlt']}; border: 1px solid {t['border']}; color: {t['textSubtle']};
-        text-transform: uppercase; letter-spacing: 0.04em;
-    }}
-    .v4-connector {{ width: 20px; height: 1px; background: {t['border']}; display: inline-block; vertical-align: middle; flex-shrink: 0; }}
-    .v4-connector.past {{ background: {t['success']}; }}
-    /* ── UNIT CONTEXT BAR ── */
-    .v4-unit-ctx {{
-        display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-        padding: 4px 0;
-    }}
-    .v4-unit-dot {{
-        display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-        background: {t['success']}; box-shadow: 0 0 0 3px {t['successBg']};
-        margin-right: 2px; vertical-align: middle; flex-shrink: 0;
-    }}
-    .v4-unit-name {{
-        font-size: 14px; font-weight: 700; color: {t['text']};
-        font-family: 'JetBrains Mono', ui-monospace, monospace;
-        font-variant-numeric: tabular-nums;
-    }}
-    .v4-stat {{ display: flex; flex-direction: column; line-height: 1.2; }}
-    .v4-stat-label {{ font-size: 10px; font-weight: 600; color: {t['textSubtle']}; text-transform: uppercase; letter-spacing: 0.05em; }}
-    .v4-stat-value {{ font-size: 13px; font-weight: 700; color: {t['text']}; font-variant-numeric: tabular-nums; }}
-    .v4-stat-unit {{ font-size: 11px; color: {t['textMuted']}; font-weight: 500; margin-left: 2px; }}
-    .v4-stat-sep {{ width: 1px; height: 28px; background: {t['border']}; flex-shrink: 0; }}
-    /* ── BLOCK HEADER ── */
-    .v4-block-wrap {{ padding: 18px 24px 0 24px; }}
-    .v4-breadcrumb {{ display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: {t['textMuted']}; margin-bottom: 12px; }}
-    .v4-bc-sep {{ color: {t['textSubtle']}; }}
-    .v4-bc-active {{ color: {t['text']}; font-weight: 600; }}
-    .v4-block-head {{ display: flex; align-items: flex-start; gap: 14px; margin-bottom: 14px; }}
-    .v4-block-num {{
-        width: 48px; height: 48px; border-radius: 10px; flex-shrink: 0;
-        background: {t['surface']}; border: 1px solid {t['border']};
-        display: flex; align-items: center; justify-content: center;
-        font-size: 20px; font-weight: 700; color: {t['primary']};
-        font-variant-numeric: tabular-nums;
-        font-family: 'JetBrains Mono', ui-monospace, monospace;
-    }}
-    .v4-block-title {{ font-size: 20px; font-weight: 700; color: {t['text']}; line-height: 1.2; }}
-    .v4-block-sub   {{ font-size: 13px; color: {t['textMuted']}; margin-top: 4px; max-width: 720px; line-height: 1.45; }}
-    /* ── BANNER ── */
-    .v4-banner {{
-        display: flex; align-items: flex-start; gap: 10px;
-        padding: 10px 14px; border-radius: 8px;
-        font-size: 12.5px; color: {t['text']}; line-height: 1.45;
-        margin: 0 24px 14px 24px;
-    }}
-    .v4-banner.info    {{ background: {t['infoBg']};    border: 1px solid {t['info']}; }}
-    .v4-banner.warning {{ background: {t['warningBg']}; border: 1px solid {t['warning']}; }}
-    /* ── SIDEBAR RESKIN ── */
-    section[data-testid="stSidebar"] > div:first-child {{
-        background: {t['surface']} !important; border-right: 1px solid {t['border']} !important;
-    }}
-    .v4-nav-group-label {{
-        font-size: 10px; font-weight: 700; color: {t['textSubtle']};
-        text-transform: uppercase; letter-spacing: 0.08em;
-        padding: 10px 4px 3px 4px; display: block;
-    }}
-    section[data-testid="stSidebar"] .stButton > button {{
-        width: 100%; background: transparent !important; border: none !important;
-        color: {t['textMuted']} !important; font-size: 12.5px !important;
-        font-weight: 500 !important; text-align: left !important;
-        padding: 8px 10px !important; border-radius: 7px !important;
-        height: auto !important; line-height: 1.3 !important;
-        justify-content: flex-start !important;
-    }}
-    section[data-testid="stSidebar"] .stButton > button:hover {{
-        background: {t['surfaceHover']} !important; color: {t['text']} !important;
-    }}
-    section[data-testid="stSidebar"] .stButton > button[kind="primary"] {{
-        background: {t['primary']} !important; color: #FFF !important; font-weight: 600 !important;
-    }}
-    section[data-testid="stSidebar"] .stButton > button:disabled {{
-        opacity: 0.45 !important; cursor: not-allowed !important;
-    }}
-    /* ── CONTENT AREA ── */
-    .v4-content {{ padding: 0 24px 24px 24px; }}
-    </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
+    """Inyecta el CSS del tema v4. Usa template + .format() para evitar el bug
+    del tokenizador C de Python 3.12 con f-strings y expresiones de subscript."""
+    st.markdown(_V4_CSS_TEMPLATE.format(**_v4_t()), unsafe_allow_html=True)
 
 _V4_BLOQUES = [
     {"id": "modelo_base",           "num": "00", "short": "Modelo",     "label": "Datos del Modelo",     "icon": "database", "grupo": "Setup",    "pf": True},
