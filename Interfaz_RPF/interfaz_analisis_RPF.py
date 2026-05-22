@@ -206,14 +206,15 @@ _V4_CSS_TEMPLATE = (
     " #MainMenu, footer {{ visibility: hidden; height: 0; }}"
     " header[data-testid='stHeader'] {{ visibility: hidden; height: 0; }}"
     " div[data-testid='stDecoration'], div[data-testid='stToolbar'] {{ display: none; }}"
-    " .block-container {{ padding: 0 !important; max-width: 100% !important; }}"
+    " .block-container {{ padding: 108px 0 0 0 !important; max-width: 100% !important; }}"
     " .stApp {{ background: {bg} !important;"
     " font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important; }}"
+    " section[data-testid='stSidebar'] > div:first-child {{ padding-top: 108px !important; }}"
     " .v4-topbar {{"
-    " position: sticky; top: 0; z-index: 100; height: 56px;"
+    " position: fixed; top: 0; left: 0; right: 0; z-index: 9999; height: 56px;"
     " background: {surface}; border-bottom: 1px solid {border};"
     " display: flex; align-items: center; justify-content: space-between;"
-    " padding: 0 20px; gap: 16px; box-sizing: border-box;"
+    " padding: 0 20px; gap: 12px; box-sizing: border-box;"
     " }}"
     " .v4-brand {{ display: flex; align-items: center; gap: 10px; }}"
     " .v4-brand-mark {{"
@@ -223,15 +224,18 @@ _V4_CSS_TEMPLATE = (
     " }}"
     " .v4-brand-title {{ font-size: 14px; font-weight: 700; color: {text}; line-height: 1.1; }}"
     " .v4-brand-sub   {{ font-size: 11px; color: {textMuted}; line-height: 1.2; margin-top: 1px; }}"
-    " .v4-topbar-center {{ display: flex; align-items: center; gap: 12px; flex: 1; padding: 0 16px; }}"
+    " .v4-topbar-center {{ display: flex; align-items: center; gap: 8px; flex: 1; overflow-x: auto; white-space: nowrap; min-width: 0; }}"
+    " .v4-topbar-right {{ display: flex; align-items: center; gap: 8px; flex-shrink: 0; }}"
     " .v4-event-pill {{"
-    " display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; height: 34px;"
+    " display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; height: 34px;"
     " background: {surfaceAlt}; border: 1px solid {border}; border-radius: 8px;"
-    " font-size: 12px; font-weight: 500; color: {text};"
+    " font-size: 12px; font-weight: 500; color: {text}; flex-shrink: 0;"
     " }}"
+    " .v4-event-pill.danger {{ background: {dangerBg}; border-color: {danger}; }}"
     " .v4-event-label {{ font-size: 10px; font-weight: 700; color: {textSubtle}; text-transform: uppercase; letter-spacing: .06em; }}"
     " .v4-event-val   {{ font-size: 12.5px; font-weight: 600; color: {text}; }}"
-    " .v4-sep {{ width: 1px; height: 16px; background: {border}; }}"
+    " .v4-event-val.danger {{ color: {danger}; }}"
+    " .v4-sep {{ width: 1px; height: 16px; background: {border}; flex-shrink: 0; }}"
     " .v4-mode-badge {{"
     " display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;"
     " border-radius: 6px; font-size: 11px; font-weight: 600;"
@@ -240,7 +244,7 @@ _V4_CSS_TEMPLATE = (
     " .v4-mode-badge.local {{ border-color: {success}; color: {success}; background: {successBg}; }}"
     " .v4-mode-badge.cloud {{ border-color: {info};    color: {info};    background: {infoBg}; }}"
     " .v4-stepper {{"
-    " position: sticky; top: 56px; z-index: 99;"
+    " position: fixed; top: 56px; left: 0; right: 0; z-index: 9998;"
     " background: {surface}; border-bottom: 1px solid {border};"
     " padding: 0 20px; overflow-x: auto; white-space: nowrap;"
     " }}"
@@ -384,14 +388,121 @@ _V4_BLOQUES = [
     {"id": "config_global",         "num": "07", "short": "Gráficas",   "label": "Config. Gráficas",     "icon": "palette",  "grupo": "Salida",   "pf": False},
 ]
 
+@st.cache_data(ttl=120, show_spinner=False)
+def _load_event_header_info(ev_path: str, n_evento: str, raiz: str, semestre: str):
+    """Lee fecha del evento, unidad disparada y potencia desconectada para la topbar.
+    Fuentes: condiciones_iniciales_*.xlsx (fecha+disparo), Tabla_Eventos_*.xlsx (p_desc).
+    Retorna (fecha_str, disparo_str, p_desc_mw).
+    """
+    import glob as _glob
+    fecha_str, disparo_str, p_desc_mw = "", "", 0.0
+    # 1. condiciones_iniciales → fecha y hora + disparo
+    if ev_path and os.path.isdir(ev_path):
+        ci_files = sorted(
+            _glob.glob(os.path.join(ev_path, "condiciones_iniciales_*.xlsx")),
+            key=os.path.getmtime, reverse=True,
+        )
+        if ci_files:
+            try:
+                import openpyxl as _opx
+                _wb = _opx.load_workbook(ci_files[0], read_only=True, data_only=True)
+                if "resumen" in _wb.sheetnames:
+                    _ws = _wb["resumen"]
+                    for _row in _ws.iter_rows(values_only=True):
+                        if not _row or not _row[0]:
+                            continue
+                        _k = str(_row[0]).strip()
+                        _v = str(_row[1]).strip() if len(_row) > 1 and _row[1] is not None else ""
+                        if _k == "Fecha y hora":
+                            fecha_str = _v
+                        elif _k == "Disparo":
+                            disparo_str = _v
+                _wb.close()
+            except Exception:
+                pass
+    # 2. Tabla_Eventos → p_desc (potencia desconectada del disparo)
+    if raiz and semestre and n_evento:
+        tabla_files = sorted(
+            _glob.glob(os.path.join(raiz, semestre, "Tabla_Eventos_*.xlsx")),
+            key=os.path.getmtime, reverse=True,
+        )
+        if tabla_files:
+            try:
+                import openpyxl as _opx2
+                _wb2 = _opx2.load_workbook(tabla_files[0], read_only=True, data_only=True)
+                _ws2 = _wb2.active
+                for _row2 in _ws2.iter_rows(min_row=2, values_only=True):
+                    if not _row2 or _row2[0] is None:
+                        continue
+                    try:
+                        if int(_row2[0]) == int(n_evento):
+                            p_desc_mw = float(_row2[3]) if _row2[3] else 0.0
+                            break
+                    except (ValueError, TypeError):
+                        pass
+                _wb2.close()
+            except Exception:
+                pass
+    return fecha_str, disparo_str, p_desc_mw
+
+
 def _render_topbar():
-    """Barra superior fija: brand + semestre/evento + modo local/cloud."""
-    t   = _v4_t()
-    sem = st.session_state.get("semestre_global") or "—"
-    ev  = st.session_state.get("evento_global")  or "—"
+    """Barra superior fija: brand + semestre/evento + fecha + disparo/ΔP + modo."""
+    t          = _v4_t()
+    sem        = st.session_state.get("semestre_global") or "—"
+    ev         = st.session_state.get("evento_global")  or "—"
+    ev_path    = st.session_state.get("ev_path_global") or ""
+    n_ev       = st.session_state.get("n_evento_global") or ""
+    raiz       = st.session_state.get("cfg_RAIZ") or ""
     mode_cls   = "local" if not IS_CLOUD else "cloud"
     mode_label = "Local + PF" if not IS_CLOUD else "Nube"
     mode_icon  = _v4_icon("server", 13) if not IS_CLOUD else _v4_icon("cloud", 13)
+
+    # Cargar info del evento (cached — no bloquea el render)
+    fecha_str, disparo_str, p_desc_mw = "", "", 0.0
+    if ev_path and n_ev:
+        try:
+            fecha_str, disparo_str, p_desc_mw = _load_event_header_info(
+                ev_path, n_ev, raiz, sem
+            )
+        except Exception:
+            pass
+
+    # Formatear fecha: solo dd/mm/aaaa
+    fecha_disp = ""
+    if fecha_str and fecha_str != "—":
+        fecha_disp = fecha_str.split(" ")[0] if " " in fecha_str else fecha_str[:10]
+
+    # Limpiar nombre del disparo: quitar prefijo sym_, truncar
+    disparo_disp = ""
+    if disparo_str and disparo_str not in ("—", "nan", ""):
+        disparo_disp = disparo_str.replace("sym_", "").strip()
+
+    # Construir pills extra
+    extra_pills = ""
+    if fecha_disp:
+        extra_pills += (
+            f'<div class="v4-sep"></div>'
+            f'<div class="v4-event-pill">'
+            f'{_v4_icon("info", 13, t["textMuted"])}'
+            f'<span class="v4-event-label">Fecha</span>'
+            f'<span class="v4-event-val">{fecha_disp}</span>'
+            f'</div>'
+        )
+    if disparo_disp:
+        p_str = f"{p_desc_mw:.1f}" if p_desc_mw > 0 else "—"
+        extra_pills += (
+            f'<div class="v4-sep"></div>'
+            f'<div class="v4-event-pill danger">'
+            f'{_v4_icon("bolt", 13, t["danger"])}'
+            f'<span class="v4-event-label">Disparo</span>'
+            f'<span class="v4-event-val danger">{disparo_disp}</span>'
+            f'<div class="v4-sep"></div>'
+            f'<span class="v4-event-label">&#916;P</span>'
+            f'<span class="v4-event-val">{p_str}&nbsp;MW</span>'
+            f'</div>'
+        )
+
     st.markdown(f"""
     <div class="v4-topbar">
       <div class="v4-brand">
@@ -411,6 +522,9 @@ def _render_topbar():
           <span class="v4-event-label">Evento</span>
           <span class="v4-event-val">{ev}</span>
         </div>
+        {extra_pills}
+      </div>
+      <div class="v4-topbar-right">
         <span class="v4-mode-badge {mode_cls}">{mode_icon}&nbsp;{mode_label}</span>
       </div>
     </div>
@@ -480,25 +594,31 @@ def _render_block_header(num: str, title: str, subtitle: str, grupo: str, pf_req
       </div>
     </div>{pf_banner}""", unsafe_allow_html=True)
 
-def _render_unit_ctx_bar(available_units: list):
-    """Barra de contexto de unidad: selectbox + stats Pmax/Tecnología/Droop."""
+def _render_unit_ctx_bar(available_units: list, loc_gen_path: str = ""):
+    """Barra de contexto de unidad: selectbox + stats Pmax/Tecnología/Estatismo (Bloque 2)."""
     t = _v4_t()
     _cur = st.session_state.global_selected_unit
     if _cur not in available_units:
         _cur = available_units[0]
         st.session_state.global_selected_unit = _cur
     u_clean = _cur.replace("sym_", "")
-    pmax_val, tech_val, droop_val = "—", "—", "—"
+    pmax_val, tech_val, estat_val = "—", "—", "—"
     try:
         _pm = _load_pmax_cargado(st.session_state.get("ev_path_global"), st.session_state.get("n_evento_global"))
         _tm = _load_tech_map(LOC_NAMES_GEN_PATH)
         _pv, _, _ = _get_pmax_from_cargado(_cur, _pm, _tm)
-        pmax_val  = f"{float(_pv):.1f}" if _pv else "—"
+        pmax_val = f"{float(_pv):.1f}" if _pv else "—"
         _row = (_tm or {}).get(u_clean, (_tm or {}).get(f"sym_{u_clean}", {}))
-        tech_val  = str(_row.get("Tecnología", _row.get("tecnologia", "—")))
-        droop_val = str(_row.get("Droop [%]",  _row.get("droop", "—")))
+        tech_val = str(_row.get("Tecnología", _row.get("tecnologia", "—")))
     except Exception:
         pass
+    # Estatismo desde estatismo_config.json (configurado en Bloque 2)
+    if loc_gen_path:
+        try:
+            _ep = _get_rp_default(u_clean, loc_gen_path)
+            estat_val = f"{_ep:.1f}"
+        except Exception:
+            pass
     col_sel, col_stats = st.columns([2, 10])
     with col_sel:
         new_sel = st.selectbox(
@@ -522,8 +642,8 @@ def _render_unit_ctx_bar(available_units: list):
           <div class="v4-stat"><span class="v4-stat-label">Tecnología</span>
             <span class="v4-stat-value">{tech_val}</span></div>
           <div class="v4-stat-sep"></div>
-          <div class="v4-stat"><span class="v4-stat-label">Droop nominal</span>
-            <span class="v4-stat-value">{droop_val}<span class="v4-stat-unit">%</span></span></div>
+          <div class="v4-stat"><span class="v4-stat-label">Estatismo</span>
+            <span class="v4-stat-value">{estat_val}<span class="v4-stat-unit">%</span></span></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1854,7 +1974,7 @@ if bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_real
                 _sync_session_scale_config(st.session_state.ev_path_global, st.session_state.global_selected_unit)
                 st.session_state.b3_last_unit = st.session_state.global_selected_unit
                 st.session_state.b3_last_event_path = st.session_state.ev_path_global
-        _render_unit_ctx_bar(_available_units)
+        _render_unit_ctx_bar(_available_units, LOC_NAMES_GEN_PATH)
     else:
         st.info("⬆️ Seleccione una unidad en el selector para comenzar el análisis.")
     st.divider()
