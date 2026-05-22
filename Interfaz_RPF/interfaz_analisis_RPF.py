@@ -204,8 +204,16 @@ _V4_CSS_TEMPLATE = (
     "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700"
     "&family=JetBrains+Mono:wght@400;500;600&display=swap');"
     " #MainMenu, footer {{ visibility: hidden; height: 0; }}"
-    " header[data-testid='stHeader'] {{ visibility: hidden; height: 0; }}"
-    " div[data-testid='stDecoration'], div[data-testid='stToolbar'] {{ display: none; }}"
+    " header[data-testid='stHeader'] {{"
+    " background: transparent !important; height: 0 !important;"
+    " overflow: visible !important; border: none !important; }}"
+    " div[data-testid='stDecoration'] {{ display: none; }}"
+    " div[data-testid='stToolbar'] {{"
+    " position: fixed !important; top: 112px !important;"
+    " z-index: 99999 !important; background: transparent !important; }}"
+    " [data-testid='stSidebarCollapsedControl'] {{"
+    " top: 112px !important; z-index: 99999 !important;"
+    " position: fixed !important; visibility: visible !important; }}"
     " .block-container {{ padding: 108px 0 0 0 !important; max-width: 100% !important; }}"
     " .stApp {{ background: {bg} !important;"
     " font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important; }}"
@@ -360,12 +368,6 @@ _V4_CSS_TEMPLATE = (
     " top: 108px !important; height: calc(100vh - 108px) !important;"
     " }}"
     " section[data-testid='stSidebar'] > div:first-child {{ padding-top: 12px !important; }}"
-    " [data-testid='stSidebarCollapsedControl'] {{"
-    " top: 112px !important; z-index: 99999 !important; position: fixed !important;"
-    " }}"
-    " button[data-testid='stBaseButton-headerNoPadding'] {{"
-    " top: 112px !important; z-index: 99999 !important; position: fixed !important;"
-    " }}"
     " section[data-testid='stSidebar'] .stToggle label {{"
     " color: {textMuted} !important; font-size: 12px !important;"
     " }}"
@@ -406,6 +408,10 @@ _V4_CSS_TEMPLATE = (
     " color: {primary}; font-weight: 600; border-bottom-color: {primary}; }}"
     " .v4-tab-btn:hover {{ color: {text}; }}"
     " .v4-tab-click-row {{ margin: -6px 0 0 0; height: 4px; overflow: hidden; }}"
+    " .stMarkdownContainer:has(.v4-tab-hide-btns)"
+    " + div[data-testid='stHorizontalBlock'] {{"
+    " height: 0 !important; overflow: hidden !important;"
+    " min-height: 0 !important; margin: 0 !important; padding: 0 !important; }}"
     "</style>"
 )
 
@@ -447,7 +453,10 @@ def _v4_tab_bar(tab_defs: list, block_key: str) -> str:
         unsafe_allow_html=True,
     )
 
-    # Botones invisibles (tamaño mínimo) — capturan el click
+    # Marcador para CSS :has() — oculta la fila de botones que sigue
+    st.markdown('<div class="v4-tab-hide-btns"></div>', unsafe_allow_html=True)
+
+    # Botones ocultos por CSS — solo capturan el click
     _tab_cols = st.columns(len(tab_defs))
     for td, _col in zip(tab_defs, _tab_cols):
         with _col:
