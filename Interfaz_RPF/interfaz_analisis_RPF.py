@@ -138,7 +138,7 @@ st.set_page_config(
     page_title="Analisis RPF",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -429,6 +429,20 @@ _V4_CSS_TEMPLATE = (
     " .stMarkdownContainer:has(.v4-tab-row-marker)"
     " + div[data-testid='stHorizontalBlock'] button:hover {{"
     " background: {surfaceHover} !important; color: {text} !important; }}"
+    " .v4-stepper {{ pointer-events: none !important; }}"
+    " .stMarkdownContainer:has(.v4-nav-overlay-marker)"
+    " + div[data-testid='stHorizontalBlock'] {{"
+    " position: fixed !important; top: 56px !important; left: 0 !important; right: 0 !important;"
+    " height: 52px !important; z-index: 10000 !important; background: transparent !important;"
+    " gap: 0 !important; margin: 0 !important; padding: 0 !important; }}"
+    " .stMarkdownContainer:has(.v4-nav-overlay-marker)"
+    " + div[data-testid='stHorizontalBlock'] > div {{"
+    " flex: 1 !important; min-width: 0 !important; }}"
+    " .stMarkdownContainer:has(.v4-nav-overlay-marker)"
+    " + div[data-testid='stHorizontalBlock'] button {{"
+    " opacity: 0 !important; height: 52px !important; width: 100% !important;"
+    " cursor: pointer !important; border: none !important; background: transparent !important;"
+    " border-radius: 0 !important; padding: 0 !important; }}"
     "</style>"
 )
 
@@ -512,7 +526,7 @@ _V4_BLOQUES = [
     {"id": "analisis_simulacion",   "num": "04", "short": "Sim",        "label": "Análisis Simulación",  "icon": "chart",    "grupo": "Análisis", "pf": True},
     {"id": "comparativa_real_simu", "num": "05", "short": "Real vs Sim","label": "Real vs Simulación",   "icon": "scale",    "grupo": "Análisis", "pf": True},
     {"id": "reporte_tecnico",       "num": "06", "short": "Reporte",    "label": "Reporte Técnico",      "icon": "report",   "grupo": "Salida",   "pf": False},
-    {"id": "config_global",         "num": "07", "short": "Gráficas",   "label": "Config. Gráficas",     "icon": "palette",  "grupo": "Salida",   "pf": False},
+    {"id": "config_global",         "num": "07", "short": "Config",     "label": "Configuración",        "icon": "sliders",  "grupo": "Salida",   "pf": False},
 ]
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -731,13 +745,21 @@ def _render_stepper(active_block: str):
         )
         if i < len(_V4_BLOQUES) - 1:
             items_html += f'<span class="v4-connector{" past" if is_past else ""}"></span>'
-    # Stepper visual — navegación via sidebar
+    # Stepper visual (pointer-events: none via CSS — los clicks van a los botones overlay)
     st.markdown(
         f'<div class="v4-stepper">'
         f'<div class="v4-stepper-inner">{items_html}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
+    # Botones invisibles overlay — position fixed sobre el stepper via CSS
+    st.markdown('<div class="v4-nav-overlay-marker"></div>', unsafe_allow_html=True)
+    _nav_ov_cols = st.columns(len(_V4_BLOQUES))
+    for _b, _col in zip(_V4_BLOQUES, _nav_ov_cols):
+        with _col:
+            if st.button(_b["short"], key=f"_nav_ov_{_b['id']}", use_container_width=True):
+                st.session_state.active_block = _b["id"]
+                st.rerun()
 
 def _render_block_header(num: str, title: str, subtitle: str, grupo: str, pf_required: bool = False):
     """Breadcrumb + número de bloque + título + subtítulo (opcional banner cloud)."""
@@ -864,6 +886,20 @@ def _guardar_config(cfg: dict):
         json.dump(cfg, _f, ensure_ascii=False, indent=2)
 
 _cfg = _cargar_config()
+
+# ── Config vars — desde session_state (actualizado por Bloque 07) o desde archivo ──
+# Siempre disponibles en todos los bloques aunque el Bloque 07 no esté activo.
+RAIZ               = st.session_state.get("cfg_RAIZ",               _cfg.get("RAIZ", ""))
+RAIZ_DATOS         = st.session_state.get("cfg_RAIZ_DATOS",         _cfg.get("RAIZ_DATOS", ""))
+PF_BASE            = st.session_state.get("cfg_PF_BASE",            _cfg.get("PF_BASE", ""))
+LOC_NAMES_GEN_PATH = st.session_state.get("cfg_LOC_NAMES_GEN_PATH", _cfg.get("LOC_NAMES_GEN_PATH", ""))
+LOC_CAR_PATH       = st.session_state.get("cfg_LOC_CAR_PATH",       _cfg.get("LOC_CAR_PATH", ""))
+LOC_XFO_PATH       = st.session_state.get("cfg_LOC_XFO_PATH",       _cfg.get("LOC_XFO_PATH", ""))
+PF_PROYECTO        = st.session_state.get("cfg_PF_PROYECTO",        _cfg.get("PF_PROYECTO", ""))
+CASO_BASE          = st.session_state.get("cfg_CASO_BASE",          _cfg.get("CASO_BASE", ""))
+EXCLUIR_SLACK      = st.session_state.get("cfg_EXCLUIR_SLACK",      _cfg.get("EXCLUIR_SLACK", ""))
+XFO_PF             = float(st.session_state.get("cfg_XFO_PF",       _cfg.get("XFO_PF", 1.0)))
+show_hhmmss        = st.session_state.get("global_show_hhmmss",     False)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FUNCIONES DE ANÁLISIS RPF — compartidas entre bloques 2, 3 y 4
@@ -1770,46 +1806,12 @@ if "b4_sim_zip_name" not in st.session_state: st.session_state.b4_sim_zip_name =
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SIDEBAR — CONFIGURACIÓN Y SELECTOR DE MÓDULO
+# SIDEBAR — Solo apariencia y selector de evento
+# Navegación: usar el stepper (clickeable) en la zona superior de la página
 # ─────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown('<div style="padding:6px 4px 4px 4px;font-size:13px;font-weight:700">⚡ RPF Analysis</div>', unsafe_allow_html=True)
-
-    # ─── NAVEGACIÓN AGRUPADA (Setup / Análisis / Salida) ─────────────────
-    _any_running_nav = (
-        st.session_state.get("pf_running") or st.session_state.get("mod_running")
-        or any(st.session_state.get(f"{_p}_running") for _p in ("gen","lne","xfo","sht","car"))
-        or st.session_state.get("ext_running") or st.session_state.get("ci_running")
-        or st.session_state.get("scada_running") or st.session_state.get("emf_running")
-    )
-    if _any_running_nav:
-        st.warning("Proceso en ejecución — navegación bloqueada.")
-
-    for _grp_name, _grp_ids in [
-        ("Setup",    ["modelo_base", "carga_datos", "config_unidades"]),
-        ("Análisis", ["analisis_datos", "analisis_simulacion", "comparativa_real_simu"]),
-        ("Salida",   ["reporte_tecnico", "config_global"]),
-    ]:
-        st.markdown(f'<div class="v4-nav-group-label">{_grp_name}</div>', unsafe_allow_html=True)
-        for _b in _V4_BLOQUES:
-            if _b["id"] not in _grp_ids:
-                continue
-            _is_active   = st.session_state.active_block == _b["id"]
-            _is_disabled = _any_running_nav  # todos los bloques accesibles en cloud (PF deshabilitado solo en botones de ejecución)
-            if st.button(
-                f'{_b["num"]} · {_b["label"]}',
-                key=f"nav_{_b['id']}",
-                disabled=_is_disabled,
-                type="primary" if _is_active else "secondary",
-                use_container_width=True,
-            ):
-                st.session_state.active_block = _b["id"]
-                st.rerun()
-
-    bloque_trabajo = st.session_state.active_block
-
-    # ─── TOGGLE DE TEMA (dark / light) ────────────────────────────────────
-    st.markdown("---")
+    st.markdown('<div class="v4-nav-group-label">Apariencia</div>', unsafe_allow_html=True)
     _dark_on = st.toggle(
         "🌙 Modo oscuro",
         value=(st.session_state.get("ui_theme", "light") == "dark"),
@@ -1820,6 +1822,9 @@ with st.sidebar:
     if st.session_state.get("ui_theme", "light") != _new_theme:
         st.session_state.ui_theme = _new_theme
         st.rerun()
+    st.markdown("---")
+
+bloque_trabajo = st.session_state.active_block
 
 # Helper para identificar columnas de frecuencia
 def _is_frequency_column(col_name, series_data):
@@ -1866,23 +1871,10 @@ def _short_col_name(col):
 
 
 with st.sidebar:
-    # ─── SELECCIÓN DE SEMESTRE Y EVENTO ───────────────────────────────────
+    # ─── SELECCIÓN DE EVENTO ──────────────────────────────────────────────────
     st.markdown('<div class="v4-nav-group-label">Evento</div>', unsafe_allow_html=True)
-    RAIZ = st.text_input(
-        "Ruta base CNDC",
-        value=_cfg["RAIZ"],
-        help="Carpeta raíz donde están los semestres.",
-        key="cfg_RAIZ",
-    )
+    _raiz = st.session_state.get("cfg_RAIZ", _cfg.get("RAIZ", ""))
 
-    RAIZ_DATOS = st.text_input(
-        "Ruta origen de datos (SCADA/EMF)",
-        value=_cfg["RAIZ_DATOS"],
-        help="Ruta donde se encuentran los archivos fuente para procesar.",
-        key="cfg_RAIZ_DATOS",
-    )
-
-    # ── Selector de semestre y evento ────────────────────────────────────────
     if IS_CLOUD:
         # ── Modo nube: datos desde SharePoint ────────────────────────────────
         if not _SP_OK:
@@ -1963,10 +1955,10 @@ with st.sidebar:
 
     else:
         # ── Modo local: rutas de Windows ─────────────────────────────────────
-        if os.path.isdir(RAIZ):
+        if os.path.isdir(_raiz):
             semestres = sorted(
-                d for d in os.listdir(RAIZ)
-                if os.path.isdir(os.path.join(RAIZ, d))
+                d for d in os.listdir(_raiz)
+                if os.path.isdir(os.path.join(_raiz, d))
             )
             if semestres:
                 idx_sem = 0
@@ -1980,11 +1972,11 @@ with st.sidebar:
                 st.warning("❌ No se encontraron semestres")
                 st.session_state.semestre_global = None
         else:
-            st.error(f"❌ Ruta no encontrada:\n{RAIZ}")
+            st.error(f"❌ Ruta no encontrada:\n{_raiz}")
             st.session_state.semestre_global = None
 
         if st.session_state.semestre_global:
-            base_ev = os.path.join(RAIZ, st.session_state.semestre_global, "Análisis_todos_los_eventos")
+            base_ev = os.path.join(_raiz, st.session_state.semestre_global, "Análisis_todos_los_eventos")
             if os.path.isdir(base_ev):
                 eventos = sorted(
                     d for d in os.listdir(base_ev)
@@ -1998,13 +1990,13 @@ with st.sidebar:
                         "Seleccione Evento", eventos, index=idx_ev, key="sel_evento_global"
                     )
                     st.session_state.evento_global = evento_sel
-                    ev_path = os.path.join(RAIZ, st.session_state.semestre_global,
+                    ev_path = os.path.join(_raiz, st.session_state.semestre_global,
                                            "Análisis_todos_los_eventos", st.session_state.evento_global)
                     m_ev = re.search(r"(\d+)$", st.session_state.evento_global.strip())
                     n_evento = m_ev.group(1) if m_ev else st.session_state.evento_global.split()[-1]
                     st.session_state.ev_path_global = ev_path
                     st.session_state.n_evento_global = n_evento
-                    st.session_state.raiz_rpf_local  = RAIZ   # para _save_event_cfg
+                    st.session_state.raiz_rpf_local  = _raiz   # para _save_event_cfg
                     if st.session_state.get("last_n_evento_global") != n_evento:
                         st.session_state.b3_kpi_zip_bytes = None
                         st.session_state.b3_kpi_excel_bytes = None
@@ -2019,91 +2011,11 @@ with st.sidebar:
                 st.error("❌ Carpeta de eventos no encontrada")
                 st.session_state.evento_global = None
         else:
-            st.info("← Seleccione semestre primero")
+            st.info("← Configure RAIZ en Bloque 07 → Config. Simulación")
             st.session_state.evento_global = None
 
-        # ── Sincronización automática local → SharePoint ──────────────────────
-        if _SP_OK and _WATCHER_MOD_OK and os.path.isdir(RAIZ):
-            st.markdown("---")
-            _w = _get_watcher()
-            if not _w.is_running:
-                if st.button("▶ Iniciar sync automático con SharePoint",
-                             key="btn_start_sync",
-                             help="Detecta cambios en archivos y los sube a SharePoint"):
-                    ok = _w.start(RAIZ)
-                    if ok:
-                        st.toast("✅ Sync iniciado", icon="🔄")
-                    else:
-                        st.warning("⚠️ No se pudo iniciar. Instale: `pip install watchdog`")
-                        st.caption("pip install watchdog")
-            else:
-                _ws = _w.stats
-                _pending_lbl = f" ({_ws['pending']} pendientes)" if _ws["pending"] else ""
-                st.success(f"🔄 Sync activo{_pending_lbl}")
-                if _ws["last_file"]:
-                    st.caption(f"Último: {_ws['last_file']} a las {_ws['last_ts']}")
-                st.caption(f"↑ {_ws['uploaded']} archivos  |  ⚠ {_ws['errors']} errores")
-                if st.button("⏹ Detener sync", key="btn_stop_sync"):
-                    _w.stop()
-                    st.rerun()
-        elif not _SP_OK and not IS_CLOUD:
-            st.markdown("---")
-            st.caption("☁ SharePoint no disponible — sync desactivado")
-
-    # Validación de flujo: avisar si falta evento para bloques 1-5
-    if bloque_trabajo != "modelo_base" and not st.session_state.evento_global:
-        st.warning("⚠️ **Atención:** Para acceder a los bloques 1 al 5, primero debe seleccionar un evento arriba.")
-
     st.markdown("---")
-
-    # ─── CONFIGURACIÓN DE RUTAS Y PARÁMETROS (Agrupados) ────────────────── # type: ignore
-    with st.expander("🛠️ Rutas y Parámetros del Proyecto"):
-        show_hhmmss = st.checkbox(
-            "Mostrar tiempo en HH:MM:SS", value=False, key="global_show_hhmmss",
-            help="Muestra el eje de tiempo en formato HH:MM:SS en todas las gráficas."
-        )
-        st.markdown("---")
-        PF_BASE = st.text_input(
-            "PowerFactory — directorio base",
-            value=_cfg["PF_BASE"],
-            key="cfg_PF_BASE",
-        )
-        LOC_NAMES_GEN_PATH = st.text_input(
-            "loc_names_gen.xlsx",
-            value=_cfg["LOC_NAMES_GEN_PATH"],
-            key="cfg_LOC_NAMES_GEN_PATH",
-        )
-        LOC_CAR_PATH = st.text_input(
-            "loc_name_cargas.xlsx",
-            value=_cfg["LOC_CAR_PATH"],
-            key="cfg_LOC_CAR_PATH",
-        )
-        LOC_XFO_PATH = st.text_input(
-            "loc_names_xfo.xlsx",
-            value=_cfg["LOC_XFO_PATH"],
-            key="cfg_LOC_XFO_PATH",
-        )
-        PF_PROYECTO = st.text_input("Proyecto PowerFactory", value=_cfg["PF_PROYECTO"], key="cfg_PF_PROYECTO")
-        CASO_BASE = st.text_input("Caso base", value=_cfg["CASO_BASE"], key="cfg_CASO_BASE")
-        st.caption("Ajustes de flujo")
-        EXCLUIR_SLACK = st.text_input("Generadores excluidos de slack", value=_cfg["EXCLUIR_SLACK"], key="cfg_EXCLUIR_SLACK")
-        XFO_PF = st.number_input("Factor XFO_PF", value=float(_cfg["XFO_PF"]), key="cfg_XFO_PF")
-
-    st.markdown("---")
-    if st.button("Guardar configuración", help="Guarda las rutas actuales."):
-        _guardar_config({
-            "RAIZ":               RAIZ,
-            "RAIZ_DATOS":         RAIZ_DATOS,
-            "PF_BASE":            PF_BASE,
-            "LOC_NAMES_GEN_PATH": LOC_NAMES_GEN_PATH,
-            "LOC_CAR_PATH":       LOC_CAR_PATH,
-            "LOC_XFO_PATH":       LOC_XFO_PATH,
-            "PF_PROYECTO":        PF_PROYECTO,
-            "CASO_BASE":          CASO_BASE,
-            "EXCLUIR_SLACK":      EXCLUIR_SLACK,
-            "XFO_PF":             XFO_PF,
-        })
-        st.success("Configuración guardada.")
+    st.caption("⚙️ Rutas y config en Bloque 07")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TÍTULO PRINCIPAL
@@ -2604,121 +2516,205 @@ if bloque_trabajo == "modelo_base":
         )
 
 elif bloque_trabajo == "config_unidades":
+    # Contenido movido al Bloque 07 → Tab "Configuración Unidades"
     _render_block_header("02", "Config. Unidades",
-        "Parámetros técnicos de las 23 unidades COBEE (P_max, droop, tecnología). Independiente del evento seleccionado.",
+        "Parámetros técnicos de las 23 unidades COBEE (P_max, droop, tecnología).",
         "Setup", pf_required=False)
-
-    _tmap = _load_tech_map(LOC_NAMES_GEN_PATH)
-
-    if not _tmap:
-        st.error(f"No se pudo cargar `loc_names_gen.xlsx` desde:\n`{LOC_NAMES_GEN_PATH}`")
-        st.stop()
-
-    # Pmax desde datos_cargados si hay evento cargado, si no desde loc_names_gen
-    _pmax_map = {}
-    if st.session_state.get("ev_path_global") and st.session_state.get("n_evento_global"):
-        _pmax_map = _load_pmax_cargado(
-            st.session_state.ev_path_global, st.session_state.n_evento_global
-        )
-
-    st.subheader("📋 Inventario de Unidades COBEE")
-
-    _cfg_rows = []
-    for _tk in sorted(_tmap.keys()):
-        if _tk.replace("sym_", "").replace("SYM_", "") not in COBEE_UNITS_INTERES:
-            continue
-        _rp_v = _get_rp_default(_tk, LOC_NAMES_GEN_PATH)
-        # Pmax: primero desde datos_cargados, luego desde loc_names_gen
-        _pm_v = _pmax_map.get(_tk, _tmap[_tk].get("P_max (MW)", 0.0))
-        _src  = "datos_cargados" if _tk in _pmax_map else "loc_names_gen"
-        _cfg_rows.append({
-            "ID PowerFactory": _tk,
-            "P_max [MW]": _pm_v,
-            "Estatismo (Rp) [%]": _rp_v,
-            "Fuente Pmax": _src,
-        })
-
-    if _cfg_rows:
-        
-        st.dataframe(_df_safe(pd.DataFrame(_cfg_rows)), use_container_width=True, hide_index=True)
-        
-        st.markdown("---") # type: ignore
-        st.subheader("📥 Importar / Exportar Configuración")
-        ci1, ci2 = st.columns(2)
-        with ci1:
-            st.markdown("**Cargar parámetros:**")
-            # Opción 1: Subida de archivo (Recomendado para entornos web/remotos)
-            _up_csv = st.file_uploader("Subir archivo CSV:", type=["csv"], key="config_uploader")
-            
-            # Opción 2: Ruta directa (Útil para ejecución local rápida)
-            _csv_path_input = st.text_input("O ingresar ruta absoluta del archivo:", value=r"C:\Users\jose.lozano\Downloads\2026-05-07T00-20_export.csv")
-            
-            if st.button(" Procesar e Importar"):
-                _source_df = None
-                if _up_csv: _source_df = pd.read_csv(_up_csv)
-                elif os.path.isfile(_csv_path_input): _source_df = pd.read_csv(_csv_path_input)
-                
-                if _source_df is not None:
-                    if "ID PowerFactory" in _source_df.columns and "Estatismo (Rp) [%]" in _source_df.columns:
-                        for _, row in _source_df.iterrows():
-                            _save_rp_cfg(LOC_NAMES_GEN_PATH, str(row["ID PowerFactory"]), float(row["Estatismo (Rp) [%]"]))
-                        st.success("✅ Parámetros de Estatismo importados correctamente. Los cambios se verán reflejados en los bloques de análisis.")
-                        st.rerun() # type: ignore
-                    else:
-                        st.error("El archivo no tiene el formato correcto. Se requieren las columnas: 'ID PowerFactory' y 'Estatismo (Rp) [%]'.")
-                else:
-                    st.error("No se ha podido acceder al archivo. Verifique la ruta o suba el archivo manualmente.")
-
-        with ci2:
-            st.markdown("**Guardar estado actual:**")
-            _export_csv = pd.DataFrame(_cfg_rows).to_csv(index=False).encode('utf-8')
-            st.download_button("⬇️ Descargar Configuración Actual (CSV)", _export_csv,
-                               file_name="config_rpf_unidades.csv", mime="text/csv")
-
-        st.markdown("---") # type: ignore
-        st.subheader("✏️ Edición de Parámetros")
-        _master_ids = [r["ID PowerFactory"] for r in _cfg_rows]
-        _u_to_edit = st.selectbox("Seleccione unidad para modificar:", _master_ids)
-        
-        if _u_to_edit:
-            _pm_e = _get_pmax(_tmap.get(_u_to_edit, {}))
-            _tk_e = _u_to_edit
-            st.markdown(f"**Editando:** `{_tk_e}`")
-            _widget_pmax_rp(_tk_e, LOC_NAMES_GEN_PATH, key_prefix="cfg_edit")
+    _t02 = _v4_t()
+    st.markdown(
+        f'<div style="padding:24px;background:{_t02["surfaceAlt"]};border:1px solid {_t02["border"]};'
+        f'border-radius:8px;margin-top:16px;text-align:center">'
+        f'<div style="font-size:22px;margin-bottom:8px">📦</div>'
+        f'<div style="font-size:15px;font-weight:700;color:{_t02["text"]}">Contenido movido a Bloque 07</div>'
+        f'<div style="font-size:13px;color:{_t02["textMuted"]};margin-top:4px">'
+        f'La configuración de unidades está en <b>Bloque 07 → Configuración Unidades</b></div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    if st.button("→ Ir a Configuración Unidades", type="primary", key="b02_goto_b07"):
+        st.session_state.active_block = "config_global"
+        st.session_state["v4_tab_b07"] = "unidades"
+        st.rerun()
 
 elif bloque_trabajo == "config_global": # type: ignore
-    _render_block_header("07", "Config. Gráficas",
-        "Personalice paleta de colores, grosor de línea, marcadores de KPI y plantillas Plotly.",
+    _render_block_header("07", "Configuración",
+        "Parámetros del proyecto, unidades COBEE y visualización de gráficas.",
         "Salida", pf_required=False)
-    
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.session_state.graph_config["freq_color_real"] = st.color_picker("Frecuencia Real", st.session_state.graph_config["freq_color_real"])
-        st.session_state.graph_config["freq_color_sim0"] = st.color_picker("Frecuencia Sim E.0", st.session_state.graph_config["freq_color_sim0"])
-        st.session_state.graph_config["freq_color_sim1"] = st.color_picker("Frecuencia Sim E.1", st.session_state.graph_config["freq_color_sim1"]) # type: ignore
-    with c2:
-        st.session_state.graph_config["pot_color_real"] = st.color_picker("Potencia Real", st.session_state.graph_config["pot_color_real"])
-        st.session_state.graph_config["pot_color_sim0"] = st.color_picker("Potencia Sim E.0", st.session_state.graph_config["pot_color_sim0"])
-        st.session_state.graph_config["pot_color_sim1"] = st.color_picker("Potencia Sim E.1", st.session_state.graph_config["pot_color_sim1"])
-    with c3:
-        st.session_state.graph_config["line_width"] = st.slider("Grosor de línea", 1.0, 5.0, float(st.session_state.graph_config["line_width"]), 0.5)
-        st.session_state.graph_config["marker_size"] = st.slider("Tamaño de marcadores", 5, 25, int(st.session_state.graph_config["marker_size"]))
-        st.session_state.graph_config["show_grid"] = st.checkbox("Mostrar cuadrícula", value=st.session_state.graph_config["show_grid"])
-        st.session_state.graph_config["plot_height"] = st.slider("Altura del gráfico (px)", 400, 1000, int(st.session_state.graph_config["plot_height"]), 20)
-        st.session_state.graph_config["template"] = st.selectbox("Plantilla de color", ["plotly_white", "plotly", "ggplot2", "seaborn", "simple_white", "none"],
-                                                                  index=["plotly_white", "plotly", "ggplot2", "seaborn", "simple_white", "none"].index(st.session_state.graph_config["template"]),
-                                                                  help="Plantilla de colores para los gráficos de Plotly.")
 
-    st.caption("🔁 Nota: lo que ajustes en Bloque 7 (config_global) se aplica a todas las gráficas del sistema via st.session_state.graph_config.")
-    st.markdown("---")
-    st.subheader("Visibilidad de Marcadores CNDC")
-    mc1, mc2 = st.columns(2)
-    with mc1:
-        st.session_state.graph_config["show_initial"] = st.toggle("Mostrar Iniciales (f₀, P₀)", value=st.session_state.graph_config["show_initial"])
-        st.session_state.graph_config["show_nadir"] = st.toggle("Mostrar Nadir (f_min)", value=st.session_state.graph_config["show_nadir"])
-    with mc2:
-        st.session_state.graph_config["show_dt_eval"] = st.toggle("Mostrar t₀+35s (f_Δt, P_Δt)", value=st.session_state.graph_config["show_dt_eval"])
-        st.session_state.graph_config["show_deadband"] = st.toggle("Mostrar Banda Muerta (±25mHz)", value=st.session_state.graph_config["show_deadband"])
+    _b7_tab = _v4_tab_bar([
+        {"id": "sim",      "label": "⚙ Config. Simulación"},
+        {"id": "unidades", "label": "🔧 Config. Unidades"},
+        {"id": "graficas", "label": "🎨 Config. Gráficas"},
+    ], "b07")
+
+    # ─── TAB 1: CONFIGURACIÓN SIMULACIÓN ────────────────────────────────────
+    if _b7_tab == "sim":
+        _v4_section_head("Rutas del Proyecto", "Directorios y parámetros usados por los módulos de análisis.", "database")
+        c1, c2 = st.columns(2)
+        with c1:
+            RAIZ = st.text_input("Ruta base CNDC",
+                value=st.session_state.get("cfg_RAIZ", _cfg.get("RAIZ", "")), key="cfg_RAIZ",
+                help="Carpeta raíz donde están los semestres.")
+            RAIZ_DATOS = st.text_input("Ruta origen de datos (SCADA/EMF)",
+                value=st.session_state.get("cfg_RAIZ_DATOS", _cfg.get("RAIZ_DATOS", "")), key="cfg_RAIZ_DATOS",
+                help="Ruta donde se encuentran los archivos fuente para procesar.")
+            PF_BASE = st.text_input("PowerFactory — directorio base",
+                value=st.session_state.get("cfg_PF_BASE", _cfg.get("PF_BASE", "")), key="cfg_PF_BASE")
+            PF_PROYECTO = st.text_input("Proyecto PowerFactory",
+                value=st.session_state.get("cfg_PF_PROYECTO", _cfg.get("PF_PROYECTO", "")), key="cfg_PF_PROYECTO")
+            CASO_BASE = st.text_input("Caso base",
+                value=st.session_state.get("cfg_CASO_BASE", _cfg.get("CASO_BASE", "")), key="cfg_CASO_BASE")
+        with c2:
+            LOC_NAMES_GEN_PATH = st.text_input("loc_names_gen.xlsx",
+                value=st.session_state.get("cfg_LOC_NAMES_GEN_PATH", _cfg.get("LOC_NAMES_GEN_PATH", "")), key="cfg_LOC_NAMES_GEN_PATH")
+            LOC_CAR_PATH = st.text_input("loc_name_cargas.xlsx",
+                value=st.session_state.get("cfg_LOC_CAR_PATH", _cfg.get("LOC_CAR_PATH", "")), key="cfg_LOC_CAR_PATH")
+            LOC_XFO_PATH = st.text_input("loc_names_xfo.xlsx",
+                value=st.session_state.get("cfg_LOC_XFO_PATH", _cfg.get("LOC_XFO_PATH", "")), key="cfg_LOC_XFO_PATH")
+            EXCLUIR_SLACK = st.text_input("Generadores excluidos de slack",
+                value=st.session_state.get("cfg_EXCLUIR_SLACK", _cfg.get("EXCLUIR_SLACK", "")), key="cfg_EXCLUIR_SLACK")
+            XFO_PF = st.number_input("Factor XFO_PF",
+                value=float(st.session_state.get("cfg_XFO_PF", _cfg.get("XFO_PF", 1.0))), key="cfg_XFO_PF")
+        st.markdown("---")
+        show_hhmmss = st.checkbox("Mostrar tiempo en HH:MM:SS",
+            value=st.session_state.get("global_show_hhmmss", False), key="global_show_hhmmss",
+            help="Muestra el eje de tiempo en formato HH:MM:SS en todas las gráficas.")
+        st.markdown("---")
+        if st.button("💾 Guardar configuración", type="primary", help="Guarda las rutas actuales en el archivo de config."):
+            _guardar_config({
+                "RAIZ":               st.session_state.get("cfg_RAIZ", ""),
+                "RAIZ_DATOS":         st.session_state.get("cfg_RAIZ_DATOS", ""),
+                "PF_BASE":            st.session_state.get("cfg_PF_BASE", ""),
+                "LOC_NAMES_GEN_PATH": st.session_state.get("cfg_LOC_NAMES_GEN_PATH", ""),
+                "LOC_CAR_PATH":       st.session_state.get("cfg_LOC_CAR_PATH", ""),
+                "LOC_XFO_PATH":       st.session_state.get("cfg_LOC_XFO_PATH", ""),
+                "PF_PROYECTO":        st.session_state.get("cfg_PF_PROYECTO", ""),
+                "CASO_BASE":          st.session_state.get("cfg_CASO_BASE", ""),
+                "EXCLUIR_SLACK":      st.session_state.get("cfg_EXCLUIR_SLACK", ""),
+                "XFO_PF":             st.session_state.get("cfg_XFO_PF", 1.0),
+            })
+            st.success("✅ Configuración guardada.")
+        # SharePoint sync — solo modo local
+        if not IS_CLOUD:
+            _raiz_b7 = st.session_state.get("cfg_RAIZ", "")
+            if _SP_OK and _WATCHER_MOD_OK and os.path.isdir(_raiz_b7):
+                st.markdown("---")
+                _v4_section_head("Sincronización SharePoint", "Sync automático de archivos locales a SharePoint.", "cloud")
+                _w = _get_watcher()
+                if not _w.is_running:
+                    if st.button("▶ Iniciar sync automático", key="btn_start_sync"):
+                        ok = _w.start(_raiz_b7)
+                        if ok:
+                            st.toast("✅ Sync iniciado", icon="🔄")
+                        else:
+                            st.warning("⚠️ Instale: `pip install watchdog`")
+                else:
+                    _ws = _w.stats
+                    _pending_lbl = f" ({_ws['pending']} pendientes)" if _ws["pending"] else ""
+                    st.success(f"🔄 Sync activo{_pending_lbl}")
+                    if _ws["last_file"]:
+                        st.caption(f"Último: {_ws['last_file']} a las {_ws['last_ts']}")
+                    st.caption(f"↑ {_ws['uploaded']} archivos  |  ⚠ {_ws['errors']} errores")
+                    if st.button("⏹ Detener sync", key="btn_stop_sync"):
+                        _w.stop()
+                        st.rerun()
+            elif not _SP_OK:
+                st.caption("☁ SharePoint no disponible — sync desactivado")
+
+    # ─── TAB 2: CONFIGURACIÓN UNIDADES ──────────────────────────────────────
+    elif _b7_tab == "unidades":
+        _v4_section_head("Inventario de Unidades COBEE",
+            "P_max, droop y tecnología de las 23 unidades. Independiente del evento.", "sliders")
+        _tmap = _load_tech_map(LOC_NAMES_GEN_PATH)
+        if not _tmap:
+            st.error(f"No se pudo cargar `loc_names_gen.xlsx` desde:\n`{LOC_NAMES_GEN_PATH}`")
+        else:
+            _pmax_map = {}
+            if st.session_state.get("ev_path_global") and st.session_state.get("n_evento_global"):
+                _pmax_map = _load_pmax_cargado(
+                    st.session_state.ev_path_global, st.session_state.n_evento_global
+                )
+            _cfg_rows = []
+            for _tk in sorted(_tmap.keys()):
+                if _tk.replace("sym_", "").replace("SYM_", "") not in COBEE_UNITS_INTERES:
+                    continue
+                _rp_v = _get_rp_default(_tk, LOC_NAMES_GEN_PATH)
+                _pm_v = _pmax_map.get(_tk, _tmap[_tk].get("P_max (MW)", 0.0))
+                _src  = "datos_cargados" if _tk in _pmax_map else "loc_names_gen"
+                _cfg_rows.append({
+                    "ID PowerFactory": _tk,
+                    "P_max [MW]": _pm_v,
+                    "Estatismo (Rp) [%]": _rp_v,
+                    "Fuente Pmax": _src,
+                })
+            if _cfg_rows:
+                st.dataframe(_df_safe(pd.DataFrame(_cfg_rows)), use_container_width=True, hide_index=True)
+                st.markdown("---")
+                _v4_section_head("Importar / Exportar Configuración", icon="download")
+                ci1, ci2 = st.columns(2)
+                with ci1:
+                    st.markdown("**Cargar parámetros:**")
+                    _up_csv = st.file_uploader("Subir archivo CSV:", type=["csv"], key="config_uploader")
+                    _csv_path_input = st.text_input("O ingresar ruta absoluta:",
+                        value=r"C:\Users\jose.lozano\Downloads\2026-05-07T00-20_export.csv")
+                    if st.button("📥 Procesar e Importar"):
+                        _source_df = None
+                        if _up_csv: _source_df = pd.read_csv(_up_csv)
+                        elif os.path.isfile(_csv_path_input): _source_df = pd.read_csv(_csv_path_input)
+                        if _source_df is not None:
+                            if "ID PowerFactory" in _source_df.columns and "Estatismo (Rp) [%]" in _source_df.columns:
+                                for _, row in _source_df.iterrows():
+                                    _save_rp_cfg(LOC_NAMES_GEN_PATH, str(row["ID PowerFactory"]), float(row["Estatismo (Rp) [%]"]))
+                                st.success("✅ Parámetros importados correctamente.")
+                                st.rerun()
+                            else:
+                                st.error("Columnas requeridas: 'ID PowerFactory' y 'Estatismo (Rp) [%]'")
+                        else:
+                            st.error("No se pudo acceder al archivo.")
+                with ci2:
+                    st.markdown("**Guardar estado actual:**")
+                    _export_csv = pd.DataFrame(_cfg_rows).to_csv(index=False).encode('utf-8')
+                    st.download_button("⬇️ Descargar Config. Actual (CSV)", _export_csv,
+                                       file_name="config_rpf_unidades.csv", mime="text/csv")
+                st.markdown("---")
+                _v4_section_head("Edición de Parámetros", icon="sliders")
+                _master_ids = [r["ID PowerFactory"] for r in _cfg_rows]
+                _u_to_edit = st.selectbox("Seleccione unidad para modificar:", _master_ids)
+                if _u_to_edit:
+                    st.markdown(f"**Editando:** `{_u_to_edit}`")
+                    _widget_pmax_rp(_u_to_edit, LOC_NAMES_GEN_PATH, key_prefix="cfg_edit")
+
+    # ─── TAB 3: CONFIGURACIÓN GRÁFICAS ──────────────────────────────────────
+    elif _b7_tab == "graficas":
+        _v4_section_head("Colores y Estilo",
+            "Personalice paleta, grosor de línea y plantillas Plotly.", "palette")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.session_state.graph_config["freq_color_real"] = st.color_picker("Frecuencia Real", st.session_state.graph_config["freq_color_real"])
+            st.session_state.graph_config["freq_color_sim0"] = st.color_picker("Frecuencia Sim E.0", st.session_state.graph_config["freq_color_sim0"])
+            st.session_state.graph_config["freq_color_sim1"] = st.color_picker("Frecuencia Sim E.1", st.session_state.graph_config["freq_color_sim1"])
+        with c2:
+            st.session_state.graph_config["pot_color_real"] = st.color_picker("Potencia Real", st.session_state.graph_config["pot_color_real"])
+            st.session_state.graph_config["pot_color_sim0"] = st.color_picker("Potencia Sim E.0", st.session_state.graph_config["pot_color_sim0"])
+            st.session_state.graph_config["pot_color_sim1"] = st.color_picker("Potencia Sim E.1", st.session_state.graph_config["pot_color_sim1"])
+        with c3:
+            st.session_state.graph_config["line_width"] = st.slider("Grosor de línea", 1.0, 5.0, float(st.session_state.graph_config["line_width"]), 0.5)
+            st.session_state.graph_config["marker_size"] = st.slider("Tamaño de marcadores", 5, 25, int(st.session_state.graph_config["marker_size"]))
+            st.session_state.graph_config["show_grid"] = st.checkbox("Mostrar cuadrícula", value=st.session_state.graph_config["show_grid"])
+            st.session_state.graph_config["plot_height"] = st.slider("Altura del gráfico (px)", 400, 1000, int(st.session_state.graph_config["plot_height"]), 20)
+            st.session_state.graph_config["template"] = st.selectbox("Plantilla de color",
+                ["plotly_white", "plotly", "ggplot2", "seaborn", "simple_white", "none"],
+                index=["plotly_white", "plotly", "ggplot2", "seaborn", "simple_white", "none"].index(st.session_state.graph_config["template"]),
+                help="Plantilla de colores para los gráficos.")
+        st.markdown("---")
+        _v4_section_head("Visibilidad de Marcadores CNDC", icon="activity")
+        mc1, mc2 = st.columns(2)
+        with mc1:
+            st.session_state.graph_config["show_initial"] = st.toggle("Mostrar Iniciales (f₀, P₀)", value=st.session_state.graph_config["show_initial"])
+            st.session_state.graph_config["show_nadir"] = st.toggle("Mostrar Nadir (f_min)", value=st.session_state.graph_config["show_nadir"])
+        with mc2:
+            st.session_state.graph_config["show_dt_eval"] = st.toggle("Mostrar t₀+35s (f_Δt, P_Δt)", value=st.session_state.graph_config["show_dt_eval"])
+            st.session_state.graph_config["show_deadband"] = st.toggle("Mostrar Banda Muerta (±25mHz)", value=st.session_state.graph_config["show_deadband"])
 
 elif bloque_trabajo == "carga_datos":
     _render_block_header("01", "Carga de Datos",
