@@ -429,20 +429,11 @@ _V4_CSS_TEMPLATE = (
     " .stMarkdownContainer:has(.v4-tab-row-marker)"
     " + div[data-testid='stHorizontalBlock'] button:hover {{"
     " background: {surfaceHover} !important; color: {text} !important; }}"
-    " .v4-stepper {{ pointer-events: none !important; }}"
-    " .stMarkdownContainer:has(.v4-nav-overlay-marker)"
+    " .v4-step {{ cursor: pointer !important; }}"
+    " .v4-step:hover {{ background: {surfaceHover} !important; border-radius: 7px !important; }}"
+    " .stMarkdownContainer:has(.v4-hidden-nav-marker)"
     " + div[data-testid='stHorizontalBlock'] {{"
-    " position: fixed !important; top: 56px !important; left: 0 !important; right: 0 !important;"
-    " height: 52px !important; z-index: 10000 !important; background: transparent !important;"
-    " gap: 0 !important; margin: 0 !important; padding: 0 !important; }}"
-    " .stMarkdownContainer:has(.v4-nav-overlay-marker)"
-    " + div[data-testid='stHorizontalBlock'] > div {{"
-    " flex: 1 !important; min-width: 0 !important; }}"
-    " .stMarkdownContainer:has(.v4-nav-overlay-marker)"
-    " + div[data-testid='stHorizontalBlock'] button {{"
-    " opacity: 0 !important; height: 52px !important; width: 100% !important;"
-    " cursor: pointer !important; border: none !important; background: transparent !important;"
-    " border-radius: 0 !important; padding: 0 !important; }}"
+    " position: fixed !important; top: -9999px !important; left: -9999px !important; }}"
     "</style>"
 )
 
@@ -737,27 +728,40 @@ def _render_stepper(active_block: str):
         num_txt    = "✓" if is_past else b["num"]
         badge_html = f'<span class="v4-step-badge">local</span>' if (IS_CLOUD and b["pf"]) else ""
         icon_col   = t["success"] if is_past else (t["accent"] if is_active else t["textMuted"])
+        # JavaScript que busca el botón oculto por su texto y lo hace clic
+        _bid = b["id"]
+        _js  = (
+            f"(function(){{"
+            f"var t='__nav_{_bid}__';"
+            f"var btns=document.querySelectorAll('button');"
+            f"for(var i=0;i<btns.length;i++){{"
+            f"if(btns[i].textContent.trim()===t){{btns[i].click();return;}}"
+            f"}}"
+            f"}})();"
+        )
         items_html += (
-            f'<span class="{cls}" title="{b["label"]}">'
+            f'<span class="{cls}" title="{b["label"]}" onclick="{_js}">'
             f'<span class="v4-step-num">{num_txt}</span>'
             f'{_v4_icon(b["icon"], 13, icon_col)}'
             f'<span>{b["short"]}</span>{badge_html}</span>'
         )
         if i < len(_V4_BLOQUES) - 1:
             items_html += f'<span class="v4-connector{" past" if is_past else ""}"></span>'
-    # Stepper visual (pointer-events: none via CSS — los clicks van a los botones overlay)
+
+    # Stepper visual con steps clickeables (onclick dispara botones ocultos debajo)
     st.markdown(
         f'<div class="v4-stepper">'
         f'<div class="v4-stepper-inner">{items_html}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
-    # Botones invisibles overlay — position fixed sobre el stepper via CSS
-    st.markdown('<div class="v4-nav-overlay-marker"></div>', unsafe_allow_html=True)
-    _nav_ov_cols = st.columns(len(_V4_BLOQUES))
-    for _b, _col in zip(_V4_BLOQUES, _nav_ov_cols):
+    # Botones de navegación ocultos fuera de pantalla (top:-9999px via CSS)
+    # El JS del stepper los encuentra por textContent y llama .click()
+    st.markdown('<div class="v4-hidden-nav-marker"></div>', unsafe_allow_html=True)
+    _nav_hid_cols = st.columns(len(_V4_BLOQUES))
+    for _b, _col in zip(_V4_BLOQUES, _nav_hid_cols):
         with _col:
-            if st.button(_b["short"], key=f"_nav_ov_{_b['id']}", use_container_width=True):
+            if st.button(f"__nav_{_b['id']}__", key=f"_nav_hid_{_b['id']}"):
                 st.session_state.active_block = _b["id"]
                 st.rerun()
 
