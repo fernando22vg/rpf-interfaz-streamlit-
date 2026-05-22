@@ -407,11 +407,24 @@ _V4_CSS_TEMPLATE = (
     " .v4-tab-btn.active {{"
     " color: {primary}; font-weight: 600; border-bottom-color: {primary}; }}"
     " .v4-tab-btn:hover {{ color: {text}; }}"
-    " .v4-tab-click-row {{ margin: -6px 0 0 0; height: 4px; overflow: hidden; }}"
-    " .stMarkdownContainer:has(.v4-tab-hide-btns)"
+    " .stMarkdownContainer:has(.v4-tab-row-marker)"
     " + div[data-testid='stHorizontalBlock'] {{"
-    " height: 0 !important; overflow: hidden !important;"
-    " min-height: 0 !important; margin: 0 !important; padding: 0 !important; }}"
+    " border-bottom: 2px solid {border}; margin-bottom: 14px; gap: 0 !important; }}"
+    " .stMarkdownContainer:has(.v4-tab-row-marker)"
+    " + div[data-testid='stHorizontalBlock'] button {{"
+    " border-radius: 0 !important; border: none !important;"
+    " border-bottom: 2px solid transparent !important;"
+    " background: transparent !important; box-shadow: none !important;"
+    " color: {textMuted} !important; font-size: 13px !important;"
+    " font-weight: 500 !important; padding: 8px 4px 10px 4px !important;"
+    " height: auto !important; margin-bottom: -2px !important; }}"
+    " .stMarkdownContainer:has(.v4-tab-row-marker)"
+    " + div[data-testid='stHorizontalBlock'] button[data-testid*='primary'] {{"
+    " border-bottom: 2px solid {primary} !important;"
+    " color: {primary} !important; font-weight: 600 !important; }}"
+    " .stMarkdownContainer:has(.v4-tab-row-marker)"
+    " + div[data-testid='stHorizontalBlock'] button:hover {{"
+    " background: {surfaceHover} !important; color: {text} !important; }}"
     "</style>"
 )
 
@@ -426,43 +439,23 @@ def _v4_tab_bar(tab_defs: list, block_key: str) -> str:
     tab_defs: [{"id": "t1", "label": "Tab", "icon": "activity"}, ...]
     Retorna el id del tab activo.
     """
-    t   = _v4_t()
     sk  = f"v4_tab_{block_key}"
     ids = [td["id"] for td in tab_defs]
     if sk not in st.session_state or st.session_state[sk] not in ids:
         st.session_state[sk] = ids[0]
     active = st.session_state[sk]
 
-    # Barra visual HTML (tabs)
-    items_html = ""
-    for td in tab_defs:
-        is_act    = td["id"] == active
-        color     = t["primary"] if is_act else t["textMuted"]
-        border    = t["primary"] if is_act else "transparent"
-        weight    = "600"        if is_act else "500"
-        icon_html = _v4_icon(td["icon"], 13, color) if td.get("icon") else ""
-        items_html += (
-            f'<span style="display:inline-flex;align-items:center;gap:5px;'
-            f'padding:7px 16px 9px 16px;font-size:13px;font-weight:{weight};'
-            f'color:{color};border-bottom:2px solid {border};white-space:nowrap">'
-            f'{icon_html}{td["label"]}</span>'
-        )
-    st.markdown(
-        f'<div style="display:flex;border-bottom:1px solid {t["border"]};margin-bottom:14px">'
-        f'{items_html}</div>',
-        unsafe_allow_html=True,
-    )
+    # Marcador para CSS :has() — aplica estilo "tab" a los botones que siguen
+    st.markdown('<div class="v4-tab-row-marker"></div>', unsafe_allow_html=True)
 
-    # Marcador para CSS :has() — oculta la fila de botones que sigue
-    st.markdown('<div class="v4-tab-hide-btns"></div>', unsafe_allow_html=True)
-
-    # Botones ocultos por CSS — solo capturan el click
+    # Botones funcionales — el CSS los convierte en tabs (sin borde, subrayado en activo)
     _tab_cols = st.columns(len(tab_defs))
     for td, _col in zip(tab_defs, _tab_cols):
         with _col:
             if st.button(
                 td["label"],
                 key=f"{sk}_{td['id']}",
+                type="primary" if td["id"] == active else "secondary",
                 use_container_width=True,
             ):
                 st.session_state[sk] = td["id"]
