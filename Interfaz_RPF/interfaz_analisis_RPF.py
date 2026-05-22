@@ -380,6 +380,32 @@ _V4_CSS_TEMPLATE = (
     " font-size: 11.5px; font-weight: 700; color: {danger}; white-space: nowrap; flex-shrink: 0;"
     " }}"
     " .v4-disc-chip-mw {{ font-weight: 400; opacity: 0.8; margin-left: 3px; }}"
+    " .v4-section-head {{"
+    " padding: 10px 0 8px 0; border-bottom: 1px solid {border}; margin-bottom: 14px; }}"
+    " .v4-section-title {{"
+    " font-size: 15px; font-weight: 700; color: {text}; display: flex; align-items: center; gap: 7px; }}"
+    " .v4-section-sub {{"
+    " font-size: 12px; color: {textMuted}; margin-top: 3px; }}"
+    " .v4-ctx-bar {{"
+    " display: flex; align-items: center; gap: 12px; padding: 6px 14px;"
+    " background: {surfaceHover}; border: 1px solid {border}; border-radius: 6px;"
+    " margin-bottom: 10px; }}"
+    " .v4-ctx-unit {{ font-size: 17px; font-weight: 800; font-family: 'JetBrains Mono', monospace;"
+    " color: {primary}; }}"
+    " .v4-ctx-sep {{ color: {border}; font-size: 14px; }}"
+    " .v4-ctx-item {{ font-size: 12.5px; color: {textMuted}; }}"
+    " .v4-ctx-item b {{ color: {text}; }}"
+    " .v4-tab-bar {{ display: flex; gap: 0; border-bottom: 1px solid {border}; margin-bottom: 14px; }}"
+    " .v4-tab-btn {{"
+    " display: inline-flex; align-items: center; gap: 5px; padding: 7px 16px 9px 16px;"
+    " font-size: 13px; font-weight: 500; color: {textMuted}; background: transparent;"
+    " border: none; border-bottom: 2px solid transparent;"
+    " cursor: pointer; white-space: nowrap; transition: color .15s;"
+    " }}"
+    " .v4-tab-btn.active {{"
+    " color: {primary}; font-weight: 600; border-bottom-color: {primary}; }}"
+    " .v4-tab-btn:hover {{ color: {text}; }}"
+    " .v4-tab-click-row {{ margin: -6px 0 0 0; height: 4px; overflow: hidden; }}"
     "</style>"
 )
 
@@ -387,6 +413,90 @@ def _inject_v4_css():
     """Inyecta el CSS del tema v4. Usa template + .format() para evitar el bug
     del tokenizador C de Python 3.12 con f-strings y expresiones de subscript."""
     st.markdown(_V4_CSS_TEMPLATE.format(**_v4_t()), unsafe_allow_html=True)
+
+
+def _v4_tab_bar(tab_defs: list, block_key: str) -> str:
+    """Barra de tabs persistente usando session_state.
+    tab_defs: [{"id": "t1", "label": "Tab", "icon": "activity"}, ...]
+    Retorna el id del tab activo.
+    """
+    t   = _v4_t()
+    sk  = f"v4_tab_{block_key}"
+    ids = [td["id"] for td in tab_defs]
+    if sk not in st.session_state or st.session_state[sk] not in ids:
+        st.session_state[sk] = ids[0]
+    active = st.session_state[sk]
+
+    # Barra visual HTML (tabs)
+    items_html = ""
+    for td in tab_defs:
+        is_act    = td["id"] == active
+        color     = t["primary"] if is_act else t["textMuted"]
+        border    = t["primary"] if is_act else "transparent"
+        weight    = "600"        if is_act else "500"
+        icon_html = _v4_icon(td["icon"], 13, color) if td.get("icon") else ""
+        items_html += (
+            f'<span style="display:inline-flex;align-items:center;gap:5px;'
+            f'padding:7px 16px 9px 16px;font-size:13px;font-weight:{weight};'
+            f'color:{color};border-bottom:2px solid {border};white-space:nowrap">'
+            f'{icon_html}{td["label"]}</span>'
+        )
+    st.markdown(
+        f'<div style="display:flex;border-bottom:1px solid {t["border"]};margin-bottom:14px">'
+        f'{items_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Botones invisibles (tamaño mínimo) — capturan el click
+    _tab_cols = st.columns(len(tab_defs))
+    for td, _col in zip(tab_defs, _tab_cols):
+        with _col:
+            if st.button(
+                td["label"],
+                key=f"{sk}_{td['id']}",
+                use_container_width=True,
+            ):
+                st.session_state[sk] = td["id"]
+                st.rerun()
+
+    return active
+
+
+def _v4_section_head(title: str, description: str = "", icon: str = ""):
+    """Header estandarizado dentro de un tab/sección."""
+    t         = _v4_t()
+    icon_html = _v4_icon(icon, 16, t["primary"]) + " " if icon else ""
+    desc_html = (
+        f'<div style="font-size:12px;color:{t["textMuted"]};margin-top:3px">{description}</div>'
+        if description else ""
+    )
+    st.markdown(
+        f'<div style="padding:10px 0 8px 0;border-bottom:1px solid {t["border"]};margin-bottom:14px">'
+        f'<div style="font-size:15px;font-weight:700;color:{t["text"]}">{icon_html}{title}</div>'
+        f'{desc_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _v4_inline_ctx(unit_name: str, evento: str, pmax_mw: float):
+    """Barra de contexto inline respeta el tema (reemplaza las hardcoded dark)."""
+    t = _v4_t()
+    st.markdown(
+        f'<div style="display:flex;align-items:center;gap:12px;padding:6px 14px;'
+        f'background:{t["surfaceHover"]};border:1px solid {t["border"]};'
+        f'border-radius:6px;margin-bottom:10px">'
+        f'<span style="font-size:17px;font-weight:800;font-family:JetBrains Mono,monospace;color:{t["primary"]}">'
+        f'{unit_name}</span>'
+        f'<span style="color:{t["border"]};font-size:14px">|</span>'
+        f'<span style="font-size:12.5px;color:{t["textMuted"]}">Evento '
+        f'<b style="color:{t["text"]}">{evento}</b></span>'
+        f'<span style="color:{t["border"]};font-size:14px">|</span>'
+        f'<span style="font-size:12.5px;color:{t["textMuted"]}">Pmax '
+        f'<b style="color:{t["text"]}">{pmax_mw:.1f} MW</b></span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
 
 _V4_BLOQUES = [
     {"id": "modelo_base",           "num": "00", "short": "Modelo",     "label": "Datos del Modelo",     "icon": "database", "grupo": "Setup",    "pf": True},
@@ -2609,35 +2719,29 @@ elif bloque_trabajo == "carga_datos":
         "Workflow lineal para extracción CNDC, generación de condiciones iniciales y carga en PowerFactory.",
         "Setup", pf_required=True)
 
-    tab_ext, tab_cond, tab_pf = st.tabs([
-        "1. Extracción CNDC", # type: ignore
-        "2. Condiciones Iniciales", # type: ignore
-        "3. PowerFactory" # type: ignore
-    ])
-
     semestre = st.session_state.semestre_global
     evento = st.session_state.evento_global
     ev_path = st.session_state.ev_path_global
     n_evento = st.session_state.n_evento_global
 
+    # ── Tab bar persistente ───────────────────────────────────────────────────
+    _b1_tab = _v4_tab_bar([
+        {"id": "ext",  "icon": "download", "label": "1 · Extracción CNDC"},
+        {"id": "cond", "icon": "database", "label": "2 · Condiciones Iniciales"},
+        {"id": "pf",   "icon": "server",   "label": "3 · PowerFactory"},
+    ], "b01")
+
     # ═════════════════════════════════════════════════════════════════════════════
-    # PASO 1: EXTRACCIÓN DE DATOS CNDC
+    # TAB 1: EXTRACCIÓN DE DATOS CNDC
     # ═════════════════════════════════════════════════════════════════════════════
-    with tab_ext: # type: ignore
-        st.header("1️⃣ Extracción de Datos CNDC")
-        st.info(
+    if _b1_tab == "ext":
+        _v4_section_head("Extracción de Datos CNDC",
             "📥 Este módulo extrae datos de despacho y demanda CNDC, combinando "
             "información de archivos DC, DCDR, DEENER y tabla_resultados para generar "
             "`datos_simulacion_*_2daopcion.xlsx`"
         )
 
         if semestre and evento:
-            st.subheader(f"📍 Evento seleccionado: **{evento}**")
-            st.caption(f"Semestre: **{semestre}**")
-
-            st.markdown("---") # type: ignore
-            st.subheader("✓ Archivos de entrada requeridos")
-
             dc_files       = glob.glob(os.path.join(ev_path, "Despacho", "dc_*.xls*"))
             dcdr_files     = glob.glob(os.path.join(ev_path, "Despacho", "dcdr_*.xls*"))
             deener_files   = glob.glob(os.path.join(ev_path, "Demanda de Energia y Potencia", "deener_*.xlsx"))
@@ -2863,18 +2967,16 @@ elif bloque_trabajo == "carga_datos":
             st.warning("👈 Seleccione Semestre y Evento en la barra lateral.")
 
     # ═════════════════════════════════════════════════════════════════════════════
-    # PASO 2: GENERACIÓN DE CONDICIONES INICIALES
     # ═════════════════════════════════════════════════════════════════════════════
-    with tab_cond: # type: ignore
-        st.header("2️⃣ Generación de Condiciones Iniciales")
-        st.info(
-            "📝 Este módulo genera condiciones iniciales (pgini para generadores y "
-            "plini para cargas) desde archivos de datos de simulación."
-        )
+    # TAB 2: CONDICIONES INICIALES
+    # ═════════════════════════════════════════════════════════════════════════════
+    elif _b1_tab == "cond":
+        _v4_section_head("Generación de Condiciones Iniciales",
+            "📝 Genera condiciones iniciales (pgini para generadores y plini para cargas) "
+            "desde archivos de datos de simulación.",
+            "database")
 
         if semestre and evento:
-            st.subheader(f"📍 Evento seleccionado: **{evento}**")
-            st.caption(f"Semestre: **{semestre}**")
 
             st.markdown("---") # type: ignore
             st.subheader("✓ Archivos de entrada requeridos")
@@ -3129,18 +3231,17 @@ elif bloque_trabajo == "carga_datos":
             st.warning("👈 Seleccione Semestre y Evento en la barra lateral.")
 
     # ═════════════════════════════════════════════════════════════════════════════
-    # PASO 3: CARGA EN POWERFACTORY # type: ignore
     # ═════════════════════════════════════════════════════════════════════════════
-    with tab_pf:
-        st.header("3️⃣ Carga en PowerFactory")
+    # TAB 3: POWERFACTORY
+    # ═════════════════════════════════════════════════════════════════════════════
+    elif _b1_tab == "pf":
+        _v4_section_head("Carga en PowerFactory",
+            "Carga condiciones iniciales en el modelo PF y ejecuta el flujo de trabajo RMS.",
+            "server")
 
         if semestre and evento:
-            st.subheader(f"📍 Evento seleccionado: **{evento}**")
-            st.caption(f"Semestre: **{semestre}**")
-            st.markdown("---") # type: ignore
-
-            # ─── SECCIÓN 2 — PANEL DE ARCHIVOS DE ENTRADA ───────────────────────────
-            st.header("2 · Archivos de Entrada")
+            # ─── SECCIÓN — ARCHIVOS DE ENTRADA ──────────────────────────────────────
+            _v4_section_head("Archivos de Entrada", icon="database")
 
             ci_files    = glob.glob(os.path.join(ev_path, "condiciones_iniciales_*.xlsx"))
             dsim_files  = glob.glob(os.path.join(ev_path, "datos_simulacion_*_2daopcion.xlsx"))
@@ -3820,35 +3921,22 @@ elif bloque_trabajo == "analisis_datos":
         st.warning("⬆️ Seleccione una unidad en el selector superior para ver el análisis.")
         st.stop()
 
-    # ── Indicador de contexto compacto ────────────────────────────────────────
-    _ev_label = st.session_state.evento_global or ""
-    _u_clean_b3 = _sel_unit.replace("sym_", "")
-    st.markdown(
-        f'<div style="display:flex;align-items:center;gap:12px;background:#0f172a;'
-        f'border:1px solid #1e3a5f;border-radius:6px;padding:6px 14px;margin-bottom:6px;">'
-        f'<span style="color:#38bdf8;font-size:18px;font-weight:800;font-family:monospace">{_u_clean_b3}</span>'
-        f'<span style="color:#475569;font-size:13px">|</span>'
-        f'<span style="color:#94a3b8;font-size:13px">Evento <b style="color:#cbd5e1">{_ev_label}</b></span>'
-        f'<span style="color:#475569;font-size:13px">|</span>'
-        f'<span style="color:#94a3b8;font-size:13px">Pmax <b style="color:#cbd5e1">{_pmax_ref:.1f} MW</b></span>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    tab_scada, tab_emf, tab_comp = st.tabs([
-        "Registro SCADA COBEE (1SEG)", # type: ignore
-        "Extracción Gráficos EMF CNDC", # type: ignore
-        "Comparativa SCADA vs CNDC" # type: ignore
-    ])
+    # ── Tab bar persistente ───────────────────────────────────────────────────
+    _b3_tab = _v4_tab_bar([
+        {"id": "scada", "icon": "activity", "label": "SCADA COBEE (1SEG)"},
+        {"id": "emf",   "icon": "chart",    "label": "EMF CNDC"},
+        {"id": "comp",  "icon": "scale",    "label": "Comparativa SCADA vs CNDC"},
+    ], "b03")
 
     # ═════════════════════════════════════════════════════════════════════════
-    # SUB-TAB 1: SCADA COBEE (OrdenadorDatosEvento)
+    # TAB 1: SCADA COBEE
     # ═════════════════════════════════════════════════════════════════════════
-    with tab_scada:
-        st.subheader("📡 Procesamiento de Registros SCADA (1 Segundo)")
-        st.markdown(
+    if _b3_tab == "scada":
+        _v4_section_head(
+            "Procesamiento de Registros SCADA (1 Segundo)",
             "Busca el archivo '1 seg' en la carpeta de FALLA del CNDC y organiza "
-            "la potencia y frecuencia en archivos CSV individuales por unidad."
+            "la potencia y frecuencia en archivos CSV individuales por unidad.",
+            "activity",
         )
 
         scada_dir = os.path.join(ev_path, "Graficas Registro 1SEG COBEE")
@@ -4228,12 +4316,15 @@ elif bloque_trabajo == "analisis_datos":
                         )
 
     # ═════════════════════════════════════════════════════════════════════════
-    # SUB-TAB 2: GRÁFICOS EMF CNDC (ExtractorResultadosCNDC)
+    # TAB 2: EMF CNDC
     # ═════════════════════════════════════════════════════════════════════════
-    with tab_emf:
-        st.subheader("📉 Extracción de Datos desde Gráficos EMF")
-        st.markdown("Digitaliza archivos EMF (Enhanced Metafile) para extraer los puntos "
-                    "exactos de frecuencia y potencia graficados por el CNDC.")
+    elif _b3_tab == "emf":
+        _v4_section_head(
+            "Extracción de Datos desde Gráficos EMF CNDC",
+            "Digitaliza archivos EMF (Enhanced Metafile) para extraer los puntos "
+            "exactos de frecuencia y potencia graficados por el CNDC.",
+            "chart",
+        )
 
         emf_dir = os.path.join(ev_path, CARPETA_COBEE_EMF)
         
@@ -4602,10 +4693,10 @@ elif bloque_trabajo == "analisis_datos":
                         )
 
     # ═════════════════════════════════════════════════════════════════════════
-    # SUB-TAB 3: COMPARATIVA (Súper Gráfico)
+    # TAB 3: COMPARATIVA
     # ═════════════════════════════════════════════════════════════════════════
-    with tab_comp:
-        st.subheader("📈 Comparativa Dinámica: SCADA vs CNDC")
+    elif _b3_tab == "comp":
+        _v4_section_head("Comparativa Dinámica: SCADA vs CNDC", "", "scale")
         
         scada_dir = os.path.join(ev_path, "Graficas Registro 1SEG COBEE")
         emf_dir = os.path.join(ev_path, "Resultados_COBEE") # type: ignore
@@ -4989,24 +5080,14 @@ elif bloque_trabajo == "analisis_simulacion":
         _pm_b4 = _load_pmax_cargado(ev_path, n_evento)
         _tm_b4 = _load_tech_map(LOC_NAMES_GEN_PATH)
         _pmax_b4, _, _ = _get_pmax_from_cargado(_sel_unit, _pm_b4, _tm_b4)
-        st.markdown(
-            f'<div style="display:flex;align-items:center;gap:12px;background:#0f172a;'
-            f'border:1px solid #1e3a5f;border-radius:6px;padding:6px 14px;margin-bottom:6px;">'
-            f'<span style="color:#38bdf8;font-size:18px;font-weight:800;font-family:monospace">{_u_clean_b4}</span>'
-            f'<span style="color:#475569;font-size:13px">|</span>'
-            f'<span style="color:#94a3b8;font-size:13px">Evento <b style="color:#cbd5e1">{st.session_state.evento_global}</b></span>'
-            f'<span style="color:#475569;font-size:13px">|</span>'
-            f'<span style="color:#94a3b8;font-size:13px">Pmax <b style="color:#cbd5e1">{float(_pmax_b4):.1f} MW</b></span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
     else:
         st.warning("⬆️ Seleccione una unidad en el selector superior para ver el análisis.")
         st.stop()
 
-    # ── Parámetros de análisis CNDC (compartidos entre pestañas) ────────────────
-    st.markdown("---") # type: ignore
-    st.markdown("### ⚙️ Parámetros de Análisis CNDC")
+    # ── Parámetros compartidos entre tabs ─────────────────────────────────────
+    _v4_section_head("⚙️ Parámetros de Análisis CNDC",
+        f"t₀ auto-detectado: {_t0_autodet:.1f} s  ·  Ajuste si difiere del evento real.",
+        "sliders")
     _bp1, _bp2 = st.columns(2)
     _b3_t_falla = _bp1.number_input(
         "Tiempo de falla en simulación (t₀) [s]",
@@ -5023,19 +5104,22 @@ elif bloque_trabajo == "analisis_simulacion":
         key="b3_dt",
     ))
     _bsave1, _bsave2 = st.columns(2)
-    if _bsave1.button("💾 Guardar t₀ y Δt", key="save_b3_params", help="Guarda t₀ y Δt en la configuración del evento para próximas sesiones."):
+    if _bsave1.button("💾 Guardar t₀ y Δt", key="save_b3_params",
+                      help="Guarda t₀ y Δt en la configuración del evento para próximas sesiones."):
         _save_event_cfg(ev_path, "t_sim_falla", _b3_t_falla)
         _save_event_cfg(ev_path, "delta_t_cndc", _b3_dt)
         st.toast(f"Guardado t₀={_b3_t_falla:.1f} s, Δt={_b3_dt} s", icon="✅")
-    if _bsave2.button("↩ Usar t₀ auto-detectado", key="reset_b3_t0", help=f"Restaurar t₀ al valor auto-detectado ({_t0_autodet:.1f} s)."):
+    if _bsave2.button("↩ Usar t₀ auto-detectado", key="reset_b3_t0",
+                      help=f"Restaurar t₀ al valor auto-detectado ({_t0_autodet:.1f} s)."):
         st.session_state.b3_t_falla = _t0_autodet
         st.rerun()
 
-    tab_sim_cndc, tab_sim_cobee, tab_sim_comp = st.tabs([ # type: ignore
-        f"Simulación E{n_evento}.0 (CNDC)",
-        f"Simulación E{n_evento}.1 (COBEE)",
-        "Comparativa de Simulaciones"
-    ])
+    # ── Tab bar persistente ───────────────────────────────────────────────────
+    _b4_tab = _v4_tab_bar([
+        {"id": "cndc",  "icon": "database", "label": f"Simulación E{n_evento}.0 (CNDC)"},
+        {"id": "cobee", "icon": "chart",    "label": f"Simulación E{n_evento}.1 (COBEE)"},
+        {"id": "comp",  "icon": "scale",    "label": "Comparativa de Simulaciones"},
+    ], "b04")
 
     def load_and_display_simulation_data(sim_type_suffix, sel_file):
         """Loads simulation data and displays basic info and dataframe."""
@@ -5196,7 +5280,8 @@ elif bloque_trabajo == "analisis_simulacion":
         return _kpi, ts_aligned, fs_hz, ps_mw, pm_v, rp_v
 
     # Pestaña 1: Simulación E{N}.0 (CNDC)
-    with tab_sim_cndc: # type: ignore
+    if _b4_tab == "cndc":
+        _v4_section_head(f"Simulación E{n_evento}.0 — Escenario CNDC", icon="database")
         _gcfg = st.session_state.graph_config
         _r0 = _render_sim_tab(
             sim_ver=f"E{n_evento}.0",
@@ -5206,8 +5291,8 @@ elif bloque_trabajo == "analisis_simulacion":
             pfx="b3_sim0",
         )
 
-    # Pestaña 2: Simulación E{N}.1 (COBEE)
-    with tab_sim_cobee: # type: ignore
+    elif _b4_tab == "cobee":
+        _v4_section_head(f"Simulación E{n_evento}.1 — Escenario COBEE", icon="chart")
         _gcfg = st.session_state.graph_config
         _r1 = _render_sim_tab(
             sim_ver=f"E{n_evento}.1",
@@ -5217,9 +5302,8 @@ elif bloque_trabajo == "analisis_simulacion":
             pfx="b3_sim1",
         )
 
-    # Pestaña 3: Comparativa de Simulaciones
-    with tab_sim_comp:
-        st.subheader(f"Comparativa E{n_evento}.0 vs E{n_evento}.1")
+    elif _b4_tab == "comp":
+        _v4_section_head(f"Comparativa E{n_evento}.0 vs E{n_evento}.1", icon="scale")
         _gcfg = st.session_state.graph_config
         ok0, ok1 = os.path.isdir(_dir0_b3), os.path.isdir(_dir1_b3)
         if not ok0 or not ok1:
@@ -5334,25 +5418,8 @@ elif bloque_trabajo == "comparativa_real_simu":
 
     _event_cfg = _load_event_cfg(ev_path)
 
-    # ── Indicador de contexto compacto ────────────────────────────────────────
     _sel_unit_b5 = st.session_state.global_selected_unit
-    if _sel_unit_b5:
-        _u_clean_b5 = _sel_unit_b5.replace("sym_", "")
-        _pm_b5 = _load_pmax_cargado(ev_path, n_evento)
-        _tm_b5 = _load_tech_map(LOC_NAMES_GEN_PATH)
-        _pmax_b5, _, _ = _get_pmax_from_cargado(_sel_unit_b5, _pm_b5, _tm_b5)
-        st.markdown(
-            f'<div style="display:flex;align-items:center;gap:12px;background:#0f172a;'
-            f'border:1px solid #1e3a5f;border-radius:6px;padding:6px 14px;margin-bottom:6px;">'
-            f'<span style="color:#38bdf8;font-size:18px;font-weight:800;font-family:monospace">{_u_clean_b5}</span>'
-            f'<span style="color:#475569;font-size:13px">|</span>'
-            f'<span style="color:#94a3b8;font-size:13px">Evento <b style="color:#cbd5e1">{st.session_state.evento_global}</b></span>'
-            f'<span style="color:#475569;font-size:13px">|</span>'
-            f'<span style="color:#94a3b8;font-size:13px">Pmax <b style="color:#cbd5e1">{float(_pmax_b5):.1f} MW</b></span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-    else:
+    if not _sel_unit_b5:
         st.warning("⬆️ Seleccione una unidad en el selector superior para ver el análisis.")
         st.stop()
 
@@ -5370,7 +5437,7 @@ elif bloque_trabajo == "comparativa_real_simu":
         return series.apply(_to_sec)
 
     # ── Panel de configuración ─────────────────────────────────────────────────
-    st.markdown("### Configuración")
+    _v4_section_head("Configuración de fuentes y simulaciones", icon="sliders")
     col_src, col_sim, col_tech = st.columns([1, 1, 1])
     with col_src:
         src_real = st.radio("Fuente Real:", ["SCADA COBEE (1SEG)", "EMF CNDC"], key="b4_src_real")
