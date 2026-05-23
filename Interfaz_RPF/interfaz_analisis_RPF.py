@@ -248,7 +248,6 @@ _V4_CSS_TEMPLATE = (
     " .v4-brand-title {{ font-size: 15px; font-weight: 700; color: {text}; line-height: 1.1; }}"
     " .v4-brand-sub   {{ font-size: 11.5px; color: {textMuted}; line-height: 1.2; margin-top: 1px; }}"
     " .v4-topbar-center {{ display: flex; align-items: center; gap: 8px; flex: 1; overflow-x: auto; white-space: nowrap; min-width: 0; }}"
-    " .v4-topbar-sel-spacer {{ width: 164px; flex-shrink: 0; }}"
     " .v4-topbar-right {{ display: flex; align-items: center; gap: 8px; flex-shrink: 0; }}"
     " .v4-event-pill {{"
     " display: inline-flex; align-items: center; gap: 7px; padding: 5px 13px; height: 40px;"
@@ -302,7 +301,7 @@ _V4_CSS_TEMPLATE = (
     " height: 44px !important; z-index: 9997 !important;"
     " background: {surface} !important; border-bottom: 1px solid {border} !important;"
     " display: flex !important; align-items: center !important; gap: 16px !important;"
-    " padding: 0 24px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;"
+    " padding: 0 24px 0 170px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;"
     " pointer-events: none !important;"
     " }}"
     " .v4-unit-ctx {{"
@@ -517,30 +516,31 @@ _V4_CSS_TEMPLATE = (
     " [data-testid='stDataFrame'] [role='gridcell'] {{ padding: 2px 8px !important; }}"
     " .element-container:has(.v4-unit-select-marker) {{"
     " height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }}"
-    " .element-container:has(.v4-unit-select-marker) {{"
-    " height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }}"
     " .element-container:has(.v4-unit-select-marker) + .element-container {{"
-    " position: fixed !important; top: 12px !important; right: 112px !important;"
-    " left: auto !important; z-index: 10000 !important;"
-    " width: 152px !important; max-width: 152px !important; min-width: 100px !important;"
-    " height: 42px !important; margin: 0 !important; padding: 0 !important;"
-    " overflow: hidden !important; }}"
-    " .element-container:has(.v4-unit-select-marker) + .element-container .stSelectbox,"
-    " .element-container:has(.v4-unit-select-marker) + .element-container .stSelectbox > div {{"
-    " width: 152px !important; max-width: 152px !important; margin: 0 !important; padding: 0 !important; }}"
+    " position: fixed !important; top: 119px !important; left: 14px !important;"
+    " right: auto !important; z-index: 9998 !important;"
+    " width: 148px !important; max-width: 148px !important;"
+    " height: 34px !important; margin: 0 !important; padding: 0 !important;"
+    " overflow: visible !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container .stSelectbox {{"
+    " width: 148px !important; max-width: 148px !important;"
+    " margin: 0 !important; padding: 0 !important; }}"
     " .element-container:has(.v4-unit-select-marker) + .element-container .stSelectbox label {{"
     " display: none !important; }}"
     " .element-container:has(.v4-unit-select-marker) + .element-container"
-    " .stSelectbox [data-baseweb='select'] > div {{"
-    " min-height: 40px !important; height: 40px !important; padding: 0 10px !important;"
-    " border-color: {primary} !important; background: {surfaceHover} !important;"
-    " font-size: 14px !important; font-weight: 700 !important;"
-    " font-family: 'JetBrains Mono', monospace !important;"
-    " color: {primary} !important; border-radius: 7px !important; border-width: 1.5px !important;"
-    " cursor: pointer !important; pointer-events: auto !important; width: 152px !important; }}"
+    " [data-baseweb='select'] {{"
+    " width: 148px !important; max-width: 148px !important; }}"
     " .element-container:has(.v4-unit-select-marker) + .element-container"
-    " .stSelectbox [data-baseweb='select'] span {{"
-    " color: {primary} !important; font-weight: 700 !important; font-size: 14px !important; }}"
+    " [data-baseweb='select'] > div {{"
+    " width: 148px !important; max-width: 148px !important;"
+    " min-height: 32px !important; height: 32px !important; padding: 0 8px !important;"
+    " border-color: {primary} !important; background: {surfaceHover} !important;"
+    " font-size: 13px !important; font-weight: 700 !important;"
+    " font-family: 'JetBrains Mono', monospace !important;"
+    " color: {primary} !important; border-radius: 6px !important; border-width: 1.5px !important;"
+    " cursor: pointer !important; pointer-events: auto !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container span {{"
+    " color: {primary} !important; font-weight: 700 !important; font-size: 13px !important; }}"
     " .element-container:has(.v4-unit-select-marker) + .element-container * {{"
     " pointer-events: auto !important; }}"
     "</style>"
@@ -880,7 +880,6 @@ def _build_topbar_html() -> str:
         f'</div>'
         f'{disc_chips_html}'
         f'</div>'
-        f'<div class="v4-topbar-sel-spacer"></div>'
         f'<div class="v4-topbar-right">'
         f'<span class="v4-mode-badge {mode_cls}">{mode_icon}&nbsp;{mode_label}</span>'
         f'</div>'
@@ -967,13 +966,8 @@ def _build_unit_bar_html() -> str:
             st.session_state[_cache_key] = {
                 "pmax": pmax_val, "tech": tech_val, "estat": estat_val
             }
-    label_color  = t["primary"] if u_clean else t["textMuted"]
-    unit_display = u_clean or "—"
     return (
         f'<div class="v4-unit-bar">'
-        f'<span class="v4-unit-dot"></span>'
-        f'<span class="v4-unit-name" style="color:{label_color}">{unit_display}</span>'
-        f'<div class="v4-stat-sep"></div>'
         f'<div class="v4-stat"><span class="v4-stat-label">P_MAX</span>'
         f'<span class="v4-stat-value">{pmax_val}<span class="v4-stat-unit">MW</span></span></div>'
         f'<div class="v4-stat-sep"></div>'
@@ -2309,32 +2303,34 @@ if _IN_ANALYSIS:
         st.markdown(
             '<div class="v4-unit-select-marker"></div>'
             '<script>(function(){'
+            'var W="148px";'
             'function _fix(){'
             'var m=document.querySelector(".v4-unit-select-marker");'
             'if(!m)return;'
             'var mc=m.closest(".element-container")||m.parentElement;'
             'var ns=mc?mc.nextElementSibling:null;'
-            'if(!ns)return;'
+            'if(!ns||ns._rpfFixed)return;'
             'var S=ns.style;'
             'S.setProperty("position","fixed","important");'
-            'S.setProperty("top","12px","important");'
-            'S.setProperty("right","112px","important");'
-            'S.setProperty("left","auto","important");'
-            'S.setProperty("width","152px","important");'
-            'S.setProperty("max-width","152px","important");'
-            'S.setProperty("height","42px","important");'
-            'S.setProperty("overflow","hidden","important");'
-            'S.setProperty("z-index","10000","important");'
+            'S.setProperty("top","119px","important");'
+            'S.setProperty("left","14px","important");'
+            'S.setProperty("right","auto","important");'
+            'S.setProperty("width",W,"important");'
+            'S.setProperty("max-width",W,"important");'
+            'S.setProperty("height","34px","important");'
+            'S.setProperty("z-index","9998","important");'
             'S.setProperty("margin","0","important");'
-            'S.setProperty("padding","0","important");'
-            'var inner=ns.querySelectorAll(".stSelectbox,.stSelectbox>div,[data-baseweb=select]>div");'
-            'inner.forEach(function(el){'
-            'el.style.setProperty("width","152px","important");'
-            'el.style.setProperty("max-width","152px","important");'
-            '});'
+            'S.setProperty("overflow","visible","important");'
+            '[".stSelectbox","[data-baseweb=select]","[data-baseweb=select]>div"]'
+            '.forEach(function(sel){'
+            'ns.querySelectorAll(sel).forEach(function(el){'
+            'el.style.setProperty("width",W,"important");'
+            'el.style.setProperty("max-width",W,"important");'
+            '});});'
+            'ns._rpfFixed=true;'
             '}'
-            '_fix();setTimeout(_fix,150);setTimeout(_fix,500);setTimeout(_fix,1500);'
-            'new MutationObserver(_fix).observe(document.body,{childList:true,subtree:false});'
+            '_fix();setTimeout(_fix,80);setTimeout(_fix,400);setTimeout(_fix,1200);'
+            'new MutationObserver(function(){_fix();}).observe(document.body,{childList:true,subtree:false});'
             '})();</script>',
             unsafe_allow_html=True,
         )
