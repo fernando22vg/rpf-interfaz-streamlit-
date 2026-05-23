@@ -247,7 +247,8 @@ _V4_CSS_TEMPLATE = (
     " }}"
     " .v4-brand-title {{ font-size: 15px; font-weight: 700; color: {text}; line-height: 1.1; }}"
     " .v4-brand-sub   {{ font-size: 11.5px; color: {textMuted}; line-height: 1.2; margin-top: 1px; }}"
-    " .v4-topbar-center {{ display: flex; align-items: center; gap: 8px; flex: 1; overflow-x: auto; white-space: nowrap; min-width: 0; padding-right: 168px; }}"
+    " .v4-topbar-center {{ display: flex; align-items: center; gap: 8px; flex: 1; overflow-x: auto; white-space: nowrap; min-width: 0; }}"
+    " .v4-topbar-sel-spacer {{ width: 164px; flex-shrink: 0; }}"
     " .v4-topbar-right {{ display: flex; align-items: center; gap: 8px; flex-shrink: 0; }}"
     " .v4-event-pill {{"
     " display: inline-flex; align-items: center; gap: 7px; padding: 5px 13px; height: 40px;"
@@ -879,6 +880,7 @@ def _build_topbar_html() -> str:
         f'</div>'
         f'{disc_chips_html}'
         f'</div>'
+        f'<div class="v4-topbar-sel-spacer"></div>'
         f'<div class="v4-topbar-right">'
         f'<span class="v4-mode-badge {mode_cls}">{mode_icon}&nbsp;{mode_label}</span>'
         f'</div>'
@@ -965,8 +967,13 @@ def _build_unit_bar_html() -> str:
             st.session_state[_cache_key] = {
                 "pmax": pmax_val, "tech": tech_val, "estat": estat_val
             }
+    label_color  = t["primary"] if u_clean else t["textMuted"]
+    unit_display = u_clean or "—"
     return (
         f'<div class="v4-unit-bar">'
+        f'<span class="v4-unit-dot"></span>'
+        f'<span class="v4-unit-name" style="color:{label_color}">{unit_display}</span>'
+        f'<div class="v4-stat-sep"></div>'
         f'<div class="v4-stat"><span class="v4-stat-label">P_MAX</span>'
         f'<span class="v4-stat-value">{pmax_val}<span class="v4-stat-unit">MW</span></span></div>'
         f'<div class="v4-stat-sep"></div>'
