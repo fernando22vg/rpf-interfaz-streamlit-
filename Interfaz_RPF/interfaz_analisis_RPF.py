@@ -278,7 +278,7 @@ _V4_CSS_TEMPLATE = (
     " font-size: 12px; font-weight: 500; color: {textMuted};"
     " white-space: nowrap; cursor: default;"
     " }}"
-    " .v4-step.active {{ background: {surfaceHover}; color: {text}; font-weight: 600; }}"
+    " .v4-step.active {{ background: {surfaceHover}; color: {text}; font-weight: 600; border-bottom: 2px solid {primary}; border-radius: 7px 7px 0 0; }}"
     " .v4-step.past   {{ color: {success}; }}"
     " .v4-step.disabled {{ opacity: 0.45; }}"
     " .v4-step-num {{"
@@ -336,7 +336,7 @@ _V4_CSS_TEMPLATE = (
     " font-variant-numeric: tabular-nums;"
     " font-family: 'JetBrains Mono', ui-monospace, monospace;"
     " }}"
-    " .v4-block-title {{ font-size: 15px; font-weight: 700; color: {text}; line-height: 1.2; }}"
+    " .v4-block-title {{ font-size: 16px; font-weight: 700; color: {text}; line-height: 1.2; letter-spacing: -0.01em; }}"
     " .v4-block-sub   {{ font-size: 11.5px; color: {textMuted}; margin-top: 2px; max-width: 720px; line-height: 1.4; }}"
     " .v4-banner {{"
     " display: flex; align-items: flex-start; gap: 8px;"
@@ -408,7 +408,7 @@ _V4_CSS_TEMPLATE = (
     " .stCheckbox label span, .stToggle label span {{ color: {text} !important; }}"
     " .stMarkdown p, .stMarkdown li {{ font-size: 12.5px !important; color: {text} !important; }}"
     " .stMarkdown h1 {{ font-size: 17px !important; color: {text} !important; }}"
-    " .stMarkdown h2 {{ font-size: 14px !important; color: {text} !important; }}"
+    " .stMarkdown h2 {{ font-size: 15px !important; font-weight: 700 !important; color: {text} !important; }}"
     " .stMarkdown h3 {{ font-size: 13px !important; color: {text} !important; }}"
     " .stMarkdown h4 {{ font-size: 12px !important; color: {text} !important; }}"
     " .stCaption {{ font-size: 11px !important; color: {textMuted} !important; }}"
@@ -543,6 +543,35 @@ _V4_CSS_TEMPLATE = (
     " color: {primary} !important; font-weight: 700 !important; font-size: 13px !important; }}"
     " .element-container:has(.v4-unit-select-marker) + .element-container * {{"
     " pointer-events: auto !important; }}"
+    " .v4-card {{"
+    " background: {surface}; border: 1px solid {border}; border-radius: 8px;"
+    " padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }}"
+    " .v4-card-sm {{"
+    " background: {surface}; border: 1px solid {border}; border-radius: 6px;"
+    " padding: 8px 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }}"
+    " .v4-chip-tech {{"
+    " display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px;"
+    " font-size: 11px; font-weight: 600; line-height: 1.4; }}"
+    " .v4-chip-hidro  {{ background: #DBEAFE; color: #1D4ED8; border: 1px solid #BFDBFE; }}"
+    " .v4-chip-termo  {{ background: #FEE2E2; color: #B91C1C; border: 1px solid #FECACA; }}"
+    " .v4-chip-gas    {{ background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; }}"
+    " .v4-chip-eolico {{ background: #D1FAE5; color: #065F46; border: 1px solid #A7F3D0; }}"
+    " .v4-chip-solar  {{ background: #FEF9C3; color: #854D0E; border: 1px solid #FEF08A; }}"
+    " .stButton > button:hover {{"
+    " background: {surfaceHover} !important; border-color: {borderStrong} !important;"
+    " transition: background 0.12s, border-color 0.12s; }}"
+    " .stButton > button[kind='primary']:hover {{"
+    " filter: brightness(1.08) !important; }}"
+    " .stTextInput input:focus, .stNumberInput input:focus {{"
+    " border-color: {primary} !important;"
+    " box-shadow: 0 0 0 2px {infoBg} !important; outline: none !important; }}"
+    " .stSelectbox [data-baseweb='select'] > div:focus-within {{"
+    " border-color: {primary} !important;"
+    " box-shadow: 0 0 0 2px {infoBg} !important; }}"
+    " .stMetric [data-testid='stMetricValue'] {{"
+    " font-size: 20px !important; font-weight: 700 !important;"
+    " color: {text} !important; font-variant-numeric: tabular-nums; }}"
+    " .stMetric label {{ letter-spacing: 0.04em !important; text-transform: uppercase !important; }}"
     "</style>"
 )
 
@@ -966,13 +995,26 @@ def _build_unit_bar_html() -> str:
             st.session_state[_cache_key] = {
                 "pmax": pmax_val, "tech": tech_val, "estat": estat_val
             }
+    # Chip de tecnología con color según tipo
+    _tech_color_map = {
+        "hidro": "hidro", "hidroeléctrica": "hidro", "hidroelectrica": "hidro",
+        "termo": "termo", "termoeléctrica": "termo", "termoelectrica": "termo",
+        "gas":   "gas",   "turbina gas": "gas",
+        "eólico": "eolico", "eolico": "eolico", "eólica": "eolico", "eolica": "eolico",
+        "solar": "solar", "fotovoltaica": "solar",
+    }
+    _tkey = _tech_color_map.get(tech_val.lower().strip(), "")
+    if _tkey:
+        tech_html = f'<span class="v4-chip-tech v4-chip-{_tkey}">{tech_val}</span>'
+    else:
+        tech_html = f'<span class="v4-stat-value">{tech_val}</span>'
     return (
         f'<div class="v4-unit-bar">'
         f'<div class="v4-stat"><span class="v4-stat-label">P_MAX</span>'
         f'<span class="v4-stat-value">{pmax_val}<span class="v4-stat-unit">MW</span></span></div>'
         f'<div class="v4-stat-sep"></div>'
         f'<div class="v4-stat"><span class="v4-stat-label">Tecnología</span>'
-        f'<span class="v4-stat-value">{tech_val}</span></div>'
+        f'{tech_html}</div>'
         f'<div class="v4-stat-sep"></div>'
         f'<div class="v4-stat"><span class="v4-stat-label">Estatismo</span>'
         f'<span class="v4-stat-value">{estat_val}<span class="v4-stat-unit">%</span></span></div>'
@@ -2869,7 +2911,7 @@ elif bloque_trabajo == "config_global": # type: ignore
             EXCLUIR_SLACK = st.text_input("Generadores excluidos de slack",
                 value=st.session_state.get("cfg_EXCLUIR_SLACK", _cfg.get("EXCLUIR_SLACK", "")), key="cfg_EXCLUIR_SLACK")
             XFO_PF = st.number_input("Factor XFO_PF",
-                value=float(st.session_state.get("cfg_XFO_PF", _cfg.get("XFO_PF", 1.0))), key="cfg_XFO_PF")
+                value=float(st.session_state.get("cfg_XFO_PF", _cfg.get("XFOa_PF", 1.0))), key="cfg_XFO_PF")
         st.markdown("---")
         show_hhmmss = st.checkbox("Mostrar tiempo en HH:MM:SS",
             value=st.session_state.get("global_show_hhmmss", False), key="global_show_hhmmss",
