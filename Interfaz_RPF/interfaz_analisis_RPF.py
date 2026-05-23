@@ -224,7 +224,7 @@ _V4_CSS_TEMPLATE = (
     " [data-testid='stSidebarCollapseButton'] {{"
     " visibility: visible !important; opacity: 1 !important;"
     " position: relative !important; z-index: 100 !important; }}"
-    " .block-container {{ padding: 116px 12px 16px 12px !important; max-width: 100% !important; }}"
+    " .block-container {{ padding: 116px 20px 24px 20px !important; max-width: 1200px !important; margin-left: auto !important; margin-right: auto !important; }}"
     " html {{ overflow-y: auto !important; }}"
     " body {{ overflow-y: auto !important; overflow-x: hidden !important; }}"
     " .stApp {{ overflow: visible !important; min-height: 100vh;"
@@ -572,6 +572,10 @@ _V4_CSS_TEMPLATE = (
     " font-size: 20px !important; font-weight: 700 !important;"
     " color: {text} !important; font-variant-numeric: tabular-nums; }}"
     " .stMetric label {{ letter-spacing: 0.04em !important; text-transform: uppercase !important; }}"
+    " .stDataFrameResizable {{"
+    " margin-left: auto !important; margin-right: auto !important; }}"
+    " [data-testid='stDataFrame'] {{"
+    " margin-left: auto !important; margin-right: auto !important; }}"
     "</style>"
 )
 
@@ -2418,7 +2422,7 @@ if bloque_trabajo == "modelo_base":
         **Objetivo:** Actualizar los archivos Excel de mapeo base para que los simuladores operen con la última versión de la red.
         """)
 
-    st.subheader("⚙️ Configuración de Escaneo")
+    _v4_section_head("Configuración de Escaneo", icon="sliders")
     c1, c2 = st.columns(2)
     with c1:
         st.text_input("Proyecto PowerFactory", value=PF_PROYECTO, disabled=True)
@@ -2716,7 +2720,7 @@ if bloque_trabajo == "modelo_base":
         st.session_state.get(f"{_p}_running") for _p in ("gen","lne","xfo","sht","car"))
 
     st.markdown("---") # type: ignore
-    st.subheader("🗂️ Scripts de Mapeo y Catalogo")
+    _v4_section_head("Scripts de Mapeo y Catálogo", icon="database")
     st.caption("Ejecutar en orden después de actualizar `DatosSINdigsilent.xlsx`.")
 
     # ── 2. loc_namesGEN ───────────────────────────────────────────────────────
@@ -3325,7 +3329,7 @@ elif bloque_trabajo == "carga_datos":
         if semestre and evento:
 
             st.markdown("---") # type: ignore
-            st.subheader("✓ Archivos de entrada requeridos")
+            _v4_section_head("Archivos de entrada requeridos", icon="check")
 
             sim_files  = glob.glob(os.path.join(ev_path, "datos_simulacion_*_2daopcion.xlsx"))
             loc_gen_ok = os.path.isfile(LOC_NAMES_GEN_PATH)
@@ -3400,7 +3404,7 @@ elif bloque_trabajo == "carga_datos":
             todos_ok = len(sim_files) > 0 and loc_gen_ok and loc_car_ok and loc_xfo_ok
 
             if todos_ok:
-                st.subheader("⚙️ Opciones de generación")
+                _v4_section_head("Opciones de generación", icon="sliders")
 
                 col_o1, col_o2 = st.columns(2)
                 with col_o1:
@@ -3703,7 +3707,7 @@ elif bloque_trabajo == "carga_datos":
                 col_opt_a, col_opt_b = st.columns(2)
 
                 with col_opt_a:
-                    st.subheader("Potencia del disparo")
+                    _v4_section_head("Potencia del disparo", icon="bolt")
 
                     p_desc_ui = 0.0 # type: ignore
                     if tabla_files:
@@ -3832,7 +3836,7 @@ elif bloque_trabajo == "carga_datos":
                         st.caption("No se identificaron unidades del disparo en las condiciones iniciales.")
 
                 with col_opt_b:
-                    st.subheader("Post Load Flow")
+                    _v4_section_head("Post Load Flow", icon="activity")
 
                     ajustar_post_lf = st.checkbox(
                         "Activar ajuste post-LF  (AJUSTAR_POST_LF)",
@@ -4120,7 +4124,7 @@ elif bloque_trabajo == "carga_datos":
             else:
                 for _rf in _result_files:
                     _rf_name = os.path.basename(_rf)
-                    st.subheader(f"📊 {_rf_name}")
+                    _v4_section_head(_rf_name, icon="chart")
 
                     try:
                         _is_ajustado = "ajustado" in _rf_name
@@ -4411,7 +4415,7 @@ elif bloque_trabajo == "analisis_datos":
                     xaxis_max_sc = _get_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", float(t_norm.max()))
 
                     # ── Parámetros CNDC (antes del gráfico) ───────────────────
-                    st.markdown("#### ⚙️ Parámetros CNDC")
+                    _v4_section_head("Parámetros CNDC", icon="sliders")
                     _pmax_cargado_b2 = _load_pmax_cargado(ev_path, n_evento) # type: ignore
                     _tmap_b2         = _load_tech_map(LOC_NAMES_GEN_PATH)
                     _b2_pm_val, _tk_b2, _b2_pm_fuente = _get_pmax_from_cargado(
@@ -4598,7 +4602,7 @@ elif bloque_trabajo == "analisis_datos":
 
                     # ── Tabla KPIs CNDC ───────────────────────────────────────
                     st.markdown("---") # type: ignore
-                    st.markdown("#### 📋 KPIs CNDC — Criterio RPF (Registro Real)")
+                    _v4_section_head("KPIs CNDC — Criterio RPF", "Registro Real SCADA COBEE", icon="chart")
                     _mostrar_tabla_cndc(_kpi_b2, _b2_pmax, int(_b2_dt),
                                         fuente="SCADA COBEE (1SEG)", rocof=_rocof_b2)
 
@@ -4821,7 +4825,7 @@ elif bloque_trabajo == "analisis_datos":
                         ))
 
                     # ── Integración de Metodología CNDC en pestaña EMF ────────
-                    st.markdown("#### ⚙️ Parámetros de Análisis (Metodología CNDC)")
+                    _v4_section_head("Parámetros de Análisis", "Metodología CNDC", icon="sliders")
                     _pmax_cargado_emf = _load_pmax_cargado(ev_path, n_evento)
                     _tmap_emf         = _load_tech_map(LOC_NAMES_GEN_PATH)
                     _emf_pm_val, _tk_emf, _emf_pm_fuente = _get_pmax_from_cargado(
@@ -4959,7 +4963,7 @@ elif bloque_trabajo == "analisis_datos":
                     
                     st.plotly_chart(fig_emf, use_container_width=True, key="b2emf_plotly_chart")
 
-                    st.markdown("#### 📋 KPIs CNDC — Criterio RPF (Registro EMF)")
+                    _v4_section_head("KPIs CNDC — Criterio RPF", "Registro EMF CNDC", icon="chart")
                     if st.button("Descargar datos EMF a Excel", key=f"dl_emf_data_{_sel_unit}"): # type: ignore
                         excel_data = _apply_excel_formatting(
                             df_emf,
@@ -5212,7 +5216,7 @@ elif bloque_trabajo == "analisis_datos":
 
     # ── Exportación masiva Bloque 3 ──────────────────────────────────────────
     st.markdown("---") # type: ignore
-    st.subheader("📥 Exportar todos los gráficos de Bloque 3")
+    _v4_section_head("Exportar todos los gráficos de Bloque 3", icon="download")
     st.caption("Genera capturas PNG de SCADA y EMF para todas las unidades disponibles.")
 
     if st.button("🗂️ Generar ZIP de gráficos registrados (SCADA/EMF)", key="btn_zip_b2"):
@@ -5638,7 +5642,7 @@ elif bloque_trabajo == "analisis_simulacion":
                 )
 
         st.markdown("---")
-        st.markdown(f"#### 📋 KPIs CNDC — {sim_ver}")
+        _v4_section_head(f"KPIs CNDC — {sim_ver}", "Resultado simulación PowerFactory", icon="chart")
         _mostrar_tabla_cndc(_kpi, pm_v, _b3_dt, fuente=f"Simulación {sim_ver}", rocof=_rocof)
         return _kpi, ts_aligned, fs_hz, ps_mw, pm_v, rp_v
 
@@ -5759,7 +5763,7 @@ elif bloque_trabajo == "analisis_simulacion":
                     _k1 = _cndc_kpis(_ts1, _fs1, _ps1, pm_vc, rp_vc, _b3_dt)
                     if _k1: _kpi_rows_sc.append({"Fuente": f"E{n_evento}.1 (COBEE)", **_k1})
                 if _kpi_rows_sc:
-                    st.markdown("#### 📋 Comparativa de KPIs")
+                    _v4_section_head("Comparativa de KPIs", icon="chart")
                     _df_ksc = _df_safe(pd.DataFrame(_kpi_rows_sc))
                     for _c in _df_ksc.columns:
                         if _df_ksc[_c].dtype == object:
@@ -5985,7 +5989,7 @@ elif bloque_trabajo == "comparativa_real_simu":
                 st.warning(f"⚠️ No se encontró Pmax para **{_sel_unit}** en datos_cargados ni loc_names_gen.")
 
             st.markdown("---")
-            st.markdown("#### 📋 KPIs CNDC — Comparativa Real vs. Simulación")
+            _v4_section_head("KPIs CNDC — Comparativa Real vs. Simulación", icon="chart")
 
             # Definición de filas: (etiqueta, función(kpi, p_max, rocof) → str)
             _dt = delta_t_cndc  # captura local para lambdas
@@ -6120,7 +6124,7 @@ if bloque_trabajo == "reporte_tecnico":
     _render_block_header("06", "Reporte Técnico",
         "Consolida KPIs de SCADA, EMF y simulación. Exporta informe para entrega al CNDC.",
         "Salida", pf_required=False)
-    st.subheader("⚙️ Configuración del Reporte")
+    _v4_section_head("Configuración del Reporte", icon="sliders")
     if not st.session_state.semestre_global or not st.session_state.evento_global:
         st.warning("👈 Seleccione Semestre y Evento en la barra lateral para ver la auditoría del proyecto.")
         st.stop()
@@ -6129,7 +6133,7 @@ if bloque_trabajo == "reporte_tecnico":
     n_evento = st.session_state.n_evento_global
 
     # ─── SECCIÓN 1: AUDITORÍA DE ARCHIVOS DEL EVENTO ───────────────────────────
-    st.subheader("Auditoría de Archivos del Evento")
+    _v4_section_head("Auditoría de Archivos del Evento", icon="server")
     st.caption("Estado actual de los archivos generados y requeridos para el evento seleccionado.")
     
     def _check_file(path_glob):
@@ -6171,7 +6175,7 @@ if bloque_trabajo == "reporte_tecnico":
 
     # ─── SECCIÓN 2: DOCUMENTACIÓN DE MEMORIA Y PROCESOS ────────────────────────
     st.markdown("---") # type: ignore
-    st.subheader("📚 Manual Técnico y Memoria del Sistema")
+    _v4_section_head("Manual Técnico y Memoria del Sistema", icon="report")
 
     with st.expander("🧠 Archivos de Memoria y Contexto", expanded=True):
         st.markdown(r"""
@@ -6242,7 +6246,7 @@ if bloque_trabajo == "reporte_tecnico":
 
     # ─── SECCIÓN 3: RESUMEN DE RUTAS ──────────────────────────────────────────
     st.markdown("---")
-    st.subheader("⚙️ Rutas de Memoria Activas")
+    _v4_section_head("Rutas de Memoria Activas", icon="server")
     
     c_r1, c_r2 = st.columns(2)
     with c_r1:
@@ -6261,7 +6265,7 @@ if bloque_trabajo == "reporte_tecnico":
     st.markdown("---") # type: ignore
     col_rep1, col_rep2 = st.columns([2,1])
     with col_rep1:
-        st.subheader(" Generador de Reporte Final")
+        _v4_section_head("Generador de Reporte Final", icon="report")
         st.write("Consolida los KPIs de todas las unidades y las gráficas comparativas en un documento PDF/Word.")
     with col_rep2:
         st.write("")
