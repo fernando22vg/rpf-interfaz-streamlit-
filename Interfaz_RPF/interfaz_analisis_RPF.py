@@ -301,7 +301,7 @@ _V4_CSS_TEMPLATE = (
     " height: 44px !important; z-index: 9997 !important;"
     " background: {surface} !important; border-bottom: 1px solid {border} !important;"
     " display: flex !important; align-items: center !important; gap: 16px !important;"
-    " padding: 0 24px 0 166px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;"
+    " padding: 0 24px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;"
     " pointer-events: none !important;"
     " }}"
     " .v4-unit-ctx {{"
@@ -516,23 +516,27 @@ _V4_CSS_TEMPLATE = (
     " [data-testid='stDataFrame'] [role='gridcell'] {{ padding: 2px 8px !important; }}"
     " .element-container:has(.v4-unit-select-marker) {{"
     " height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }}"
+    " .element-container:has(.v4-unit-select-marker) {{"
+    " height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }}"
     " .element-container:has(.v4-unit-select-marker) + .element-container {{"
-    " position: fixed !important; top: 118px !important; left: 12px !important;"
-    " z-index: 9999 !important; width: 148px !important; height: 40px !important;"
-    " margin: 0 !important; padding: 0 !important; overflow: visible !important; }}"
-    " .element-container:has(.v4-unit-select-marker) + .element-container .stSelectbox {{"
-    " margin: 0 !important; padding: 0 !important; }}"
+    " position: fixed !important; top: 12px !important; right: 112px !important;"
+    " left: auto !important; z-index: 10000 !important;"
+    " width: 152px !important; max-width: 152px !important; min-width: 100px !important;"
+    " height: 42px !important; margin: 0 !important; padding: 0 !important;"
+    " overflow: hidden !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container .stSelectbox,"
+    " .element-container:has(.v4-unit-select-marker) + .element-container .stSelectbox > div {{"
+    " width: 152px !important; max-width: 152px !important; margin: 0 !important; padding: 0 !important; }}"
     " .element-container:has(.v4-unit-select-marker) + .element-container .stSelectbox label {{"
     " display: none !important; }}"
     " .element-container:has(.v4-unit-select-marker) + .element-container"
     " .stSelectbox [data-baseweb='select'] > div {{"
-    " min-height: 36px !important; height: 36px !important; padding: 0 10px !important;"
+    " min-height: 40px !important; height: 40px !important; padding: 0 10px !important;"
     " border-color: {primary} !important; background: {surfaceHover} !important;"
     " font-size: 14px !important; font-weight: 700 !important;"
     " font-family: 'JetBrains Mono', monospace !important;"
-    " color: {primary} !important; border-radius: 7px !important;"
-    " border-width: 1.5px !important;"
-    " cursor: pointer !important; pointer-events: auto !important; }}"
+    " color: {primary} !important; border-radius: 7px !important; border-width: 1.5px !important;"
+    " cursor: pointer !important; pointer-events: auto !important; width: 152px !important; }}"
     " .element-container:has(.v4-unit-select-marker) + .element-container"
     " .stSelectbox [data-baseweb='select'] span {{"
     " color: {primary} !important; font-weight: 700 !important; font-size: 14px !important; }}"
@@ -961,8 +965,13 @@ def _build_unit_bar_html() -> str:
             st.session_state[_cache_key] = {
                 "pmax": pmax_val, "tech": tech_val, "estat": estat_val
             }
+    label_color = t["primary"] if u_clean else t["textMuted"]
+    unit_display = u_clean or "—"
     return (
         f'<div class="v4-unit-bar">'
+        f'<span class="v4-unit-dot"></span>'
+        f'<span class="v4-unit-name" style="color:{label_color}">{unit_display}</span>'
+        f'<div class="v4-stat-sep"></div>'
         f'<div class="v4-stat"><span class="v4-stat-label">P_MAX</span>'
         f'<span class="v4-stat-value">{pmax_val}<span class="v4-stat-unit">MW</span></span></div>'
         f'<div class="v4-stat-sep"></div>'
@@ -2304,16 +2313,25 @@ if _IN_ANALYSIS:
             'var mc=m.closest(".element-container")||m.parentElement;'
             'var ns=mc?mc.nextElementSibling:null;'
             'if(!ns)return;'
-            'ns.style.setProperty("position","fixed","important");'
-            'ns.style.setProperty("top","118px","important");'
-            'ns.style.setProperty("left","12px","important");'
-            'ns.style.setProperty("width","148px","important");'
-            'ns.style.setProperty("max-width","148px","important");'
-            'ns.style.setProperty("z-index","9999","important");'
-            'ns.style.setProperty("margin","0","important");'
-            'ns.style.setProperty("padding","0","important");'
+            'var S=ns.style;'
+            'S.setProperty("position","fixed","important");'
+            'S.setProperty("top","12px","important");'
+            'S.setProperty("right","112px","important");'
+            'S.setProperty("left","auto","important");'
+            'S.setProperty("width","152px","important");'
+            'S.setProperty("max-width","152px","important");'
+            'S.setProperty("height","42px","important");'
+            'S.setProperty("overflow","hidden","important");'
+            'S.setProperty("z-index","10000","important");'
+            'S.setProperty("margin","0","important");'
+            'S.setProperty("padding","0","important");'
+            'var inner=ns.querySelectorAll(".stSelectbox,.stSelectbox>div,[data-baseweb=select]>div");'
+            'inner.forEach(function(el){'
+            'el.style.setProperty("width","152px","important");'
+            'el.style.setProperty("max-width","152px","important");'
+            '});'
             '}'
-            '_fix();setTimeout(_fix,150);setTimeout(_fix,600);setTimeout(_fix,1500);'
+            '_fix();setTimeout(_fix,150);setTimeout(_fix,500);setTimeout(_fix,1500);'
             'new MutationObserver(_fix).observe(document.body,{childList:true,subtree:false});'
             '})();</script>',
             unsafe_allow_html=True,
