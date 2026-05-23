@@ -932,25 +932,35 @@ def _build_unit_bar_html() -> str:
     t       = _v4_t()
     unit    = st.session_state.get("global_selected_unit") or ""
     u_clean = unit.replace("sym_", "")
-    pmax_val = tech_val = estat_val = "—"
+    # Intentar leer valores; si falla usar caché de session_state
+    _cache_key = f"_unitbar_cache_{u_clean}"
+    _cached    = st.session_state.get(_cache_key, {})
+    pmax_val   = _cached.get("pmax", "—")
+    tech_val   = _cached.get("tech", "—")
+    estat_val  = _cached.get("estat", "—")
     if u_clean:
         try:
             _pm  = _load_pmax_cargado(st.session_state.get("ev_path_global"),
                                        st.session_state.get("n_evento_global"))
             _tm  = _load_tech_map(LOC_NAMES_GEN_PATH)
             _pv, _, _ = _get_pmax_from_cargado(unit, _pm, _tm)
-            pmax_val  = f"{float(_pv):.1f}" if _pv else "—"
-            _row      = (_tm or {}).get(u_clean, (_tm or {}).get(f"sym_{u_clean}", {}))
-            tech_val  = str(_row.get("Tecnología", _row.get("tecnologia", "Hidroeléctrica")))
-            if "hidro" in tech_val.lower():
-                tech_val = "Hidro"
+            if _pv:
+                pmax_val = f"{float(_pv):.1f}"
+                _row     = (_tm or {}).get(u_clean, (_tm or {}).get(f"sym_{u_clean}", {}))
+                _tv      = str(_row.get("Tecnología", _row.get("tecnologia", "Hidroeléctrica")))
+                tech_val = "Hidro" if "hidro" in _tv.lower() else _tv
         except Exception:
             pass
         try:
-            _ep       = _get_rp_default(u_clean, LOC_NAMES_GEN_PATH)
+            _ep = _get_rp_default(u_clean, LOC_NAMES_GEN_PATH)
             estat_val = f"{_ep:.1f}"
         except Exception:
             pass
+        # Actualizar caché solo cuando se obtienen valores reales
+        if pmax_val != "—" or estat_val != "—":
+            st.session_state[_cache_key] = {
+                "pmax": pmax_val, "tech": tech_val, "estat": estat_val
+            }
     return (
         f'<div class="v4-unit-bar">'
         f'<div class="v4-stat"><span class="v4-stat-label">P_MAX</span>'
@@ -2284,8 +2294,30 @@ if _IN_ANALYSIS:
                 _sync_session_scale_config(st.session_state.ev_path_global, st.session_state.global_selected_unit)
                 st.session_state.b3_last_unit = st.session_state.global_selected_unit
                 st.session_state.b3_last_event_path = st.session_state.ev_path_global
-        # ── Selector de unidad fijo en topbar (marcador + widget nativo) ──────
-        st.markdown('<div class="v4-unit-select-marker"></div>', unsafe_allow_html=True)
+        # ── Selector de unidad fijo en unit-bar (marcador + JS fallback) ───────
+        st.markdown(
+            '<div class="v4-unit-select-marker"></div>'
+            '<script>(function(){'
+            'function _fix(){'
+            'var m=document.querySelector(".v4-unit-select-marker");'
+            'if(!m)return;'
+            'var mc=m.closest(".element-container")||m.parentElement;'
+            'var ns=mc?mc.nextElementSibling:null;'
+            'if(!ns)return;'
+            'ns.style.setProperty("position","fixed","important");'
+            'ns.style.setProperty("top","118px","important");'
+            'ns.style.setProperty("left","12px","important");'
+            'ns.style.setProperty("width","148px","important");'
+            'ns.style.setProperty("max-width","148px","important");'
+            'ns.style.setProperty("z-index","9999","important");'
+            'ns.style.setProperty("margin","0","important");'
+            'ns.style.setProperty("padding","0","important");'
+            '}'
+            '_fix();setTimeout(_fix,150);setTimeout(_fix,600);setTimeout(_fix,1500);'
+            'new MutationObserver(_fix).observe(document.body,{childList:true,subtree:false});'
+            '})();</script>',
+            unsafe_allow_html=True,
+        )
         _tb_cur = st.session_state.get("global_selected_unit")
         _tb_idx = _available_units.index(_tb_cur) if _tb_cur in _available_units else 0
         _tb_sel = st.selectbox(
