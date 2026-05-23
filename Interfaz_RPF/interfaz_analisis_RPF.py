@@ -297,11 +297,12 @@ _V4_CSS_TEMPLATE = (
     " .v4-connector {{ width: 20px; height: 1px; background: {border}; display: inline-block; vertical-align: middle; flex-shrink: 0; }}"
     " .v4-connector.past {{ background: {success}; }}"
     " .v4-unit-bar {{"
-    " display: flex; align-items: center; gap: 16px;"
-    " padding: 7px 14px; background: {surfaceAlt};"
-    " border: 1px solid {border}; border-radius: 8px;"
-    " margin-bottom: 10px; min-height: 42px;"
-    " box-shadow: 0 1px 3px rgba(0,0,0,0.04);"
+    " position: fixed !important; top: 116px !important; left: 0 !important; right: 0 !important;"
+    " height: 44px !important; z-index: 9997 !important;"
+    " background: {surface} !important; border-bottom: 1px solid {border} !important;"
+    " display: flex !important; align-items: center !important; gap: 16px !important;"
+    " padding: 0 24px 0 170px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;"
+    " pointer-events: none !important;"
     " }}"
     " .v4-unit-ctx {{"
     " display: flex; align-items: center; gap: 16px; flex-wrap: wrap;"
@@ -417,18 +418,10 @@ _V4_CSS_TEMPLATE = (
     " font-size: 12px !important; padding: 8px 12px !important; }}"
     " .stAlert p {{ font-size: 12px !important; }}"
     " .stTabs [data-baseweb='tab-list'] {{"
-    " background: {surface} !important; border-bottom: 2px solid {border} !important;"
-    " gap: 2px !important; padding-bottom: 0 !important; }}"
-    " .stTabs [data-baseweb='tab'] {{"
-    " color: {textMuted} !important; font-size: 12px !important;"
-    " font-weight: 500 !important; padding: 8px 14px !important;"
-    " border-radius: 6px 6px 0 0 !important;"
-    " transition: color .15s, background .15s !important; }}"
-    " .stTabs [data-baseweb='tab']:hover {{"
-    " color: {text} !important; background: {surfaceHover} !important; }}"
+    " background: {surface} !important; border-bottom: 1px solid {border} !important; }}"
+    " .stTabs [data-baseweb='tab'] {{ color: {textMuted} !important; font-size: 12px !important; }}"
     " .stTabs [aria-selected='true'] {{"
-    " color: {primary} !important; font-weight: 700 !important;"
-    " border-bottom: 2px solid {primary} !important; }}"
+    " color: {primary} !important; border-bottom-color: {primary} !important; }}"
     " .stDataFrame {{ font-size: 11.5px !important; }}"
     " .stMetric {{ padding: 8px 10px !important; }}"
     " .stMetric label {{ font-size: 10.5px !important; color: {textMuted} !important; }}"
@@ -521,6 +514,35 @@ _V4_CSS_TEMPLATE = (
     " min-height: 30px !important; font-size: 11.5px !important;"
     " font-weight: 700 !important; }}"
     " [data-testid='stDataFrame'] [role='gridcell'] {{ padding: 2px 8px !important; }}"
+    " .element-container:has(.v4-unit-select-marker) {{"
+    " height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container {{"
+    " position: fixed !important; top: 119px !important; left: 14px !important;"
+    " right: auto !important; z-index: 9998 !important;"
+    " width: 148px !important; max-width: 148px !important;"
+    " height: 34px !important; margin: 0 !important; padding: 0 !important;"
+    " overflow: visible !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container .stSelectbox {{"
+    " width: 148px !important; max-width: 148px !important;"
+    " margin: 0 !important; padding: 0 !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container .stSelectbox label {{"
+    " display: none !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container"
+    " [data-baseweb='select'] {{"
+    " width: 148px !important; max-width: 148px !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container"
+    " [data-baseweb='select'] > div {{"
+    " width: 148px !important; max-width: 148px !important;"
+    " min-height: 32px !important; height: 32px !important; padding: 0 8px !important;"
+    " border-color: {primary} !important; background: {surfaceHover} !important;"
+    " font-size: 13px !important; font-weight: 700 !important;"
+    " font-family: 'JetBrains Mono', monospace !important;"
+    " color: {primary} !important; border-radius: 6px !important; border-width: 1.5px !important;"
+    " cursor: pointer !important; pointer-events: auto !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container span {{"
+    " color: {primary} !important; font-weight: 700 !important; font-size: 13px !important; }}"
+    " .element-container:has(.v4-unit-select-marker) + .element-container * {{"
+    " pointer-events: auto !important; }}"
     " .v4-card {{"
     " background: {surface}; border: 1px solid {border}; border-radius: 8px;"
     " padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }}"
@@ -1001,33 +1023,11 @@ def _build_unit_bar_html() -> str:
 
 
 def _render_unit_ctx_bar(available_units: list, loc_gen_path: str = ""):
-    """Asegura que global_selected_unit sea válido."""
+    """Asegura que global_selected_unit sea válido. La barra visual está en el topbar fijo."""
     _cur = st.session_state.global_selected_unit
     if _cur not in available_units:
         _cur = available_units[0]
         st.session_state.global_selected_unit = _cur
-
-
-def _render_unit_bar_inline(available_units: list):
-    """Selector de unidad activa + stats (P_MAX / Tecnología / Estatismo) en flujo inline.
-    Reemplaza el antiguo hack de posicionamiento fijo con CSS/JS."""
-    _tb_cur = st.session_state.get("global_selected_unit")
-    _tb_idx = available_units.index(_tb_cur) if _tb_cur in available_units else 0
-
-    _uc_sel, _uc_stats = st.columns([1, 2.8])
-    with _uc_sel:
-        _tb_sel = st.selectbox(
-            "🏭 Unidad activa",
-            available_units,
-            index=_tb_idx,
-            key="topbar_unit_sel",
-            format_func=lambda u: u.replace("sym_", ""),
-        )
-        if _tb_sel != st.session_state.get("global_selected_unit"):
-            st.session_state.global_selected_unit = _tb_sel
-            st.rerun()
-    with _uc_stats:
-        st.markdown(_build_unit_bar_html(), unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTES GLOBALÉS
@@ -2296,25 +2296,43 @@ if (bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_rea
     except Exception:
         pass
 
-# ─── CHROME: CSS + topbar + stepper fijos en un solo st.markdown ─────────────
+# ─── CHROME: CSS + todos los elementos fijos en un solo st.markdown ──────────
 _IN_ANALYSIS = bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_real_simu"]
 
-# Un solo st.markdown para CSS base + topbar + stepper
+# CSS condicional inline
+_extra_css = ""
+if _IN_ANALYSIS:
+    _extra_css = (
+        "<style>"
+        " .block-container { padding-top: 162px !important; }"
+        " section[data-testid='stSidebar'] { top: 160px !important;"
+        "   height: calc(100vh - 160px) !important; align-self: flex-start !important; }"
+        " [data-testid='stSidebarCollapsedControl'] { top: 160px !important; }"
+        " div[data-testid='stToolbar'] { top: 164px !important; }"
+        "</style>"
+    )
+
+# Unit bar (solo en bloques de análisis, si hay unidad)
+_unit_bar_html = _build_unit_bar_html() if _IN_ANALYSIS else ""
+
+# Un solo st.markdown para CSS base + topbar + stepper + unit bar
 # El wrapper height:0 colapsa el element-container en el flujo del DOM
 _inject_v4_css()           # <style> único para tema
 st.markdown(               # un solo element-container para todo el chrome visible
     f'<div style="height:0;overflow:visible;margin:0;padding:0;line-height:0">'
     f'{_build_topbar_html()}'
     f'{_build_stepper_html(bloque_trabajo)}'
-    f'</div>',
+    f'{_unit_bar_html}'
+    f'</div>'
+    + _extra_css,
     unsafe_allow_html=True,
 )
 
-# ─── SELECTOR DE UNIDAD + STATS (Bloques 3, 4, 5) ───────────────────────────
+# ─── SINCRONIZACIÓN Y SELECTOR DE UNIDAD (Bloques 3, 4, 5) ──────────────────
 if _IN_ANALYSIS:
     _available_units = get_event_units(st.session_state.ev_path_global, st.session_state.n_evento_global)
     if _available_units:
-        # Validar que la unidad activa exista en la lista
+        # Validar unidad actual
         _render_unit_ctx_bar(_available_units, LOC_NAMES_GEN_PATH)
         # Sincronizar config de escala si cambió evento/unidad
         if st.session_state.global_selected_unit and st.session_state.ev_path_global:
@@ -2323,8 +2341,54 @@ if _IN_ANALYSIS:
                 _sync_session_scale_config(st.session_state.ev_path_global, st.session_state.global_selected_unit)
                 st.session_state.b3_last_unit = st.session_state.global_selected_unit
                 st.session_state.b3_last_event_path = st.session_state.ev_path_global
-        # Selector de unidad + stats en flujo normal (sin hack CSS/JS)
-        _render_unit_bar_inline(_available_units)
+        # ── Selector de unidad fijo en unit-bar (marcador + JS fallback) ───────
+        st.markdown(
+            '<div class="v4-unit-select-marker"></div>'
+            '<script>(function(){'
+            'var W="148px";'
+            'function _fix(){'
+            'var m=document.querySelector(".v4-unit-select-marker");'
+            'if(!m)return;'
+            'var mc=m.closest(".element-container")||m.parentElement;'
+            'var ns=mc?mc.nextElementSibling:null;'
+            'if(!ns||ns._rpfFixed)return;'
+            'var S=ns.style;'
+            'S.setProperty("position","fixed","important");'
+            'S.setProperty("top","119px","important");'
+            'S.setProperty("left","14px","important");'
+            'S.setProperty("right","auto","important");'
+            'S.setProperty("width",W,"important");'
+            'S.setProperty("max-width",W,"important");'
+            'S.setProperty("height","34px","important");'
+            'S.setProperty("z-index","9998","important");'
+            'S.setProperty("margin","0","important");'
+            'S.setProperty("overflow","visible","important");'
+            '[".stSelectbox","[data-baseweb=select]","[data-baseweb=select]>div"]'
+            '.forEach(function(sel){'
+            'ns.querySelectorAll(sel).forEach(function(el){'
+            'el.style.setProperty("width",W,"important");'
+            'el.style.setProperty("max-width",W,"important");'
+            '});});'
+            'ns._rpfFixed=true;'
+            '}'
+            '_fix();setTimeout(_fix,80);setTimeout(_fix,400);setTimeout(_fix,1200);'
+            'new MutationObserver(function(){_fix();}).observe(document.body,{childList:true,subtree:false});'
+            '})();</script>',
+            unsafe_allow_html=True,
+        )
+        _tb_cur = st.session_state.get("global_selected_unit")
+        _tb_idx = _available_units.index(_tb_cur) if _tb_cur in _available_units else 0
+        _tb_sel = st.selectbox(
+            "Unidad activa",
+            _available_units,
+            index=_tb_idx,
+            key="topbar_unit_sel",
+            format_func=lambda u: u.replace("sym_", ""),
+            label_visibility="collapsed",
+        )
+        if _tb_sel != st.session_state.get("global_selected_unit"):
+            st.session_state.global_selected_unit = _tb_sel
+            st.rerun()
     else:
         st.info("⬆️ Seleccione evento en el panel izquierdo para comenzar el análisis.")
 
