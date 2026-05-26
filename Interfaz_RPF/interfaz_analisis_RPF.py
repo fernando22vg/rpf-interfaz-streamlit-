@@ -241,9 +241,10 @@ _V4_CSS_TEMPLATE = (
     " }}"
     " .v4-brand {{ display: flex; align-items: center; gap: 10px; }}"
     " .v4-brand-mark {{"
-    " width: 38px; height: 38px; border-radius: 9px; flex-shrink: 0;"
+    " width: 42px; height: 42px; border-radius: 10px; flex-shrink: 0;"
     " background: linear-gradient(135deg, {primary}, {accent});"
     " display: flex; align-items: center; justify-content: center;"
+    " box-shadow: 0 2px 8px rgba(0,0,0,0.18);"
     " }}"
     " .v4-brand-title {{ font-size: 15px; font-weight: 700; color: {text}; line-height: 1.1; }}"
     " .v4-brand-sub   {{ font-size: 11.5px; color: {textMuted}; line-height: 1.2; margin-top: 1px; }}"
@@ -895,10 +896,26 @@ def _build_topbar_html() -> str:
             f'</div>'
         )
 
+    # ── Brand mark: onda sinusoidal + rayo (RPF) ──────────────────────────────
+    # Para reemplazar con logo COBEE: sustituir _RPF_BRAND_SVG por:
+    #   <img src="URL_O_DATA_URI" width="28" height="28" style="object-fit:contain">
+    # o un <svg>...</svg> con el logo vectorial de COBEE.
+    _RPF_BRAND_SVG = (
+        '<svg width="26" height="22" viewBox="0 0 30 24" fill="none"'
+        ' xmlns="http://www.w3.org/2000/svg">'
+        # Onda sinusoidal (lado izquierdo): representa la frecuencia del SIN
+        '<path d="M1 12 C3 6.5 5.5 6.5 7.5 12 C9.5 17.5 12 17.5 14 12"'
+        ' stroke="white" stroke-width="2" fill="none"'
+        ' stroke-linecap="round" stroke-linejoin="round"/>'
+        # Rayo (lado derecho): representa la respuesta primaria
+        '<path d="M20 2 L16 12.5 L19.5 12.5 L18 22 L25 11 L21.5 11 L23 2 Z"'
+        ' fill="white" opacity="0.95"/>'
+        '</svg>'
+    )
     return (
         f'<div class="v4-topbar">'
         f'<div class="v4-brand">'
-        f'<div class="v4-brand-mark">{_v4_icon("bolt", 16, "#FFF")}</div>'
+        f'<div class="v4-brand-mark">{_RPF_BRAND_SVG}</div>'
         f'<div><div class="v4-brand-title">RPF Analysis</div>'
         f'<div class="v4-brand-sub">Respuesta Primaria de Frecuencia</div></div>'
         f'</div>'
