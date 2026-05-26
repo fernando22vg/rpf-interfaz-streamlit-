@@ -2334,6 +2334,49 @@ st.markdown(               # un solo element-container para todo el chrome visib
     unsafe_allow_html=True,
 )
 
+# ─── JS: ajuste dinámico del layout cuando la sidebar se abre/cierra ─────────
+st.markdown(
+    '<script>(function(){'
+    'function _rpfAdjust(){'
+    '  var sb=document.querySelector("section[data-testid=\'stSidebar\']");'
+    '  var main=document.querySelector("section[data-testid=\'stMain\']");'
+    '  if(!sb||!main)return;'
+    '  var w=sb.getBoundingClientRect().width;'
+    # Cuando la sidebar colapsa Streamlit la deja con ~0-2px de ancho visible
+    '  var open=w>60;'
+    '  if(open){'
+    '    main.style.setProperty("padding-left",w+"px","important");'
+    '  }else{'
+    '    main.style.setProperty("padding-left","0px","important");'
+    '  }'
+    '}'
+    # Ejecutar al inicio y con retardos para esperar render de Streamlit
+    '_rpfAdjust();'
+    'setTimeout(_rpfAdjust,150);'
+    'setTimeout(_rpfAdjust,600);'
+    'setTimeout(_rpfAdjust,1500);'
+    # ResizeObserver: detecta cambio de ancho de la sidebar
+    '(function(){'
+    '  function _attach(){'
+    '    var sb=document.querySelector("section[data-testid=\'stSidebar\']");'
+    '    if(!sb){setTimeout(_attach,300);return;}'
+    '    if(window.ResizeObserver){'
+    '      new ResizeObserver(_rpfAdjust).observe(sb);'
+    '    }'
+    '  }'
+    '  _attach();'
+    '})();'
+    # MutationObserver: detecta cambios en atributos/hijos del body (rerun Streamlit)
+    'new MutationObserver(function(ml){'
+    '  ml.forEach(function(m){'
+    '    if(m.attributeName==="aria-expanded"||m.type==="childList")_rpfAdjust();'
+    '  });'
+    '}).observe(document.body,{childList:true,subtree:true,attributes:true,'
+    'attributeFilter:["aria-expanded","data-collapsed","style"]});'
+    '})();</script>',
+    unsafe_allow_html=True,
+)
+
 # ─── SINCRONIZACIÓN Y SELECTOR DE UNIDAD (Bloques 3, 4, 5) ──────────────────
 if _IN_ANALYSIS:
     _available_units = get_event_units(st.session_state.ev_path_global, st.session_state.n_evento_global)
