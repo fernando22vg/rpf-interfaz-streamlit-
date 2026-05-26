@@ -4,11 +4,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=jose
-Group=jose
-WorkingDirectory=/srv/rpf/sync
-ExecStart=/bin/bash /srv/rpf/sync/file_watcher.sh
-EnvironmentFile=/srv/rpf/sync/.env
+User=joselozano
+Group=joselozano
+WorkingDirectory=/home/joselozano/rpf-ejecucion
+ExecStart=/bin/bash /home/joselozano/rpf-ejecucion/file_watcher.sh
+EnvironmentFile=/home/joselozano/rpf-ejecucion/.env
 
 # Reiniciar automáticamente si el proceso muere
 Restart=always

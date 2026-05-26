@@ -5,16 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=jose
-Group=jose
-WorkingDirectory=/srv/rpf/sync
-ExecStart=/usr/bin/python3 /srv/rpf/sync/sp_sync_daemon.py
-EnvironmentFile=/srv/rpf/sync/.env
+User=joselozano
+Group=joselozano
+WorkingDirectory=/home/joselozano/rpf-ejecucion
+ExecStart=/usr/bin/python3 /home/joselozano/rpf-ejecucion/sp_sync_daemon.py
+EnvironmentFile=/home/joselozano/rpf-ejecucion/.env
 
-# Captura stdout/stderr en journald (ver con: journalctl -u rpf-sync)
 StandardOutput=journal
 StandardError=journal
 
-# No fallar silenciosamente si la red no está disponible
-# ExitCodeHandler permite que salida 1 (errores parciales) no marque el timer como fallido
+# Salida 1 (errores parciales) no marca el timer como fallido
 SuccessExitStatus=0 1
