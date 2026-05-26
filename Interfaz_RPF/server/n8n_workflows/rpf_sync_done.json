@@ -1,0 +1,208 @@
+{
+  "name": "RPF - Sync Done Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rpf-sync-done",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-sync-done",
+      "name": "Webhook Sync Done",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "rpf-sync-done"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer y transformar el payload del daemon\nconst body = $input.first().json.body || $input.first().json;\n\nconst totalMB = (body.total_bytes / 1048576).toFixed(2);\nconst haErrors = body.total_errors > 0;\nconst statsJson = JSON.stringify(body.stats || {});\n\n// Parsear timestamp del daemon (ISO format)\nconst ts = body.timestamp ? new Date(body.timestamp).toISOString() : new Date().toISOString();\n\n// Construir resumen legible\nconst folders = Object.keys(body.stats || {});\nconst folderSummary = folders.map(f => {\n  const s = body.stats[f];\n  return `${f}: ${s.downloaded} archivos, ${(s.bytes_downloaded/1048576).toFixed(1)} MB`;\n}).join(' | ');\n\nreturn [{\n  json: {\n    sync_started_at: ts,\n    total_downloaded: body.total_downloaded || 0,\n    total_errors: body.total_errors || 0,\n    total_mb: parseFloat(totalMB),\n    stats_json: statsJson,\n    folder_summary: folderSummary,\n    dry_run: body.dry_run || false,\n    has_errors: haErrors,\n    // Para la respuesta HTTP\n    status: haErrors ? 'sync_with_errors' : 'sync_ok',\n    message: `Sync OK: ${body.total_downloaded} archivos, ${totalMB} MB`\n  }\n}];"
+      },
+      "id": "transform-sync-data",
+      "name": "Transformar Datos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "rpf_sync_log",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "sync_started_at": "={{ $json.sync_started_at }}",
+            "total_downloaded": "={{ $json.total_downloaded }}",
+            "total_errors": "={{ $json.total_errors }}",
+            "total_mb": "={{ $json.total_mb }}",
+            "stats_json": "={{ $json.stats_json }}",
+            "folder_summary": "={{ $json.folder_summary }}",
+            "dry_run": "={{ $json.dry_run }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "outputConnectorData": true
+        }
+      },
+      "id": "postgres-insert-sync",
+      "name": "PostgreSQL: Log Sync",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 300],
+      "credentials": {
+        "postgres": {
+          "id": "PENDIENTE_CONFIGURAR",
+          "name": "RPF PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-errors",
+              "leftValue": "={{ $('Transformar Datos').first().json.total_errors }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-has-errors",
+      "name": "¿Tiene errores?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log de alerta - en el futuro puede enviar email/Telegram\nconst data = $('Transformar Datos').first().json;\nconsole.log(`[RPF ALERTA] Sync con ${data.total_errors} errores`);\nconsole.log(`Stats: ${data.folder_summary}`);\n\nreturn [{ json: { alerta: 'sync_con_errores', ...data } }];"
+      },
+      "id": "log-error-alert",
+      "name": "Log Alerta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sync exitoso - log informativo\nconst data = $('Transformar Datos').first().json;\nconsole.log(`[RPF OK] ${data.message}`);\nconsole.log(`Detalle: ${data.folder_summary}`);\n\nreturn [{ json: { status: 'ok', ...data } }];"
+      },
+      "id": "log-sync-ok",
+      "name": "Log OK",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 420]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, received: $('Transformar Datos').first().json.message }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-200",
+      "name": "Responder 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [680, 520]
+    }
+  ],
+  "connections": {
+    "Webhook Sync Done": {
+      "main": [
+        [
+          {
+            "node": "Transformar Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transformar Datos": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL: Log Sync",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Responder 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Log Sync": {
+      "main": [
+        [
+          {
+            "node": "¿Tiene errores?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tiene errores?": {
+      "main": [
+        [
+          {
+            "node": "Log Alerta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": ""
+  },
+  "tags": [
+    { "name": "RPF" },
+    { "name": "Capa1" }
+  ]
+}

@@ -1,0 +1,191 @@
+{
+  "name": "RPF - File Ingestion (inotify)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "rpf-new-file",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-new-file",
+      "name": "Webhook Nuevo Archivo",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "rpf-new-file"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analizar el archivo recibido del file_watcher.sh\n// Payload esperado: { file: '/home/.../rpf-proyecto-datos/...', ts: '2026-05-26T...' }\nconst body = $input.first().json.body || $input.first().json;\n\nconst filepath = body.file || '';\nconst filename = filepath.split('/').pop();\nconst ext = filename.split('.').pop().toLowerCase();\n\n// Determinar tipo de datos por la ruta\nlet file_type = 'otro';\nif (filepath.includes('01_INFO_CNDC_RPF')) {\n  file_type = 'evento';\n} else if (filepath.includes('02_DATOS_CNDC_RPF')) {\n  file_type = 'scada';\n} else if (filepath.includes('DATOS_EXTRAIDOS')) {\n  file_type = 'mapeo';\n}\n\n// Extraer semestre/evento si aplica\nlet semestre = null;\nlet evento = null;\nconst semMatch = filepath.match(/([12][0-9]{3}) sem([12])/);\nif (semMatch) {\n  semestre = `${semMatch[1]}_sem${semMatch[2]}`;\n}\nconst evMatch = filepath.match(/Evento (\\d+)/);\nif (evMatch) {\n  evento = `Evento_${evMatch[1]}`;\n}\n\nconst esRelevante = ['xlsx', 'xls', 'csv', 'json', 'txt', 'pdf'].includes(ext);\n\nreturn [{\n  json: {\n    filepath,\n    filename,\n    ext,\n    file_type,\n    semestre,\n    evento,\n    received_at: body.ts || new Date().toISOString(),\n    es_relevante: esRelevante\n  }\n}];"
+      },
+      "id": "classify-file",
+      "name": "Clasificar Archivo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-relevante",
+              "leftValue": "={{ $json.es_relevante }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-relevante",
+      "name": "¿Es relevante?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "rpf_file_log",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "filepath": "={{ $json.filepath }}",
+            "received_at": "={{ $json.received_at }}",
+            "processed": false,
+            "file_type": "={{ $json.file_type }}",
+            "semestre": "={{ $json.semestre }}",
+            "evento": "={{ $json.evento }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "postgres-insert-file",
+      "name": "PostgreSQL: Registrar Archivo",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [900, 200],
+      "credentials": {
+        "postgres": {
+          "id": "PENDIENTE_CONFIGURAR",
+          "name": "RPF PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Archivo ignorado (extensión no relevante)\nconst f = $json.filename;\nconsole.log(`[RPF] Archivo ignorado (no procesable): ${f}`);\nreturn [{ json: { skipped: true, file: f } }];"
+      },
+      "id": "skip-file",
+      "name": "Ignorar Archivo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, file: $('Clasificar Archivo').first().json.filename, type: $('Clasificar Archivo').first().json.file_type }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-ok",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Nuevo Archivo": {
+      "main": [
+        [
+          {
+            "node": "Clasificar Archivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificar Archivo": {
+      "main": [
+        [
+          {
+            "node": "¿Es relevante?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Es relevante?": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL: Registrar Archivo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignorar Archivo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Registrar Archivo": {
+      "main": [
+        [
+          {
+            "node": "Responder OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": ""
+  },
+  "tags": [
+    { "name": "RPF" },
+    { "name": "Capa1" }
+  ]
+}
