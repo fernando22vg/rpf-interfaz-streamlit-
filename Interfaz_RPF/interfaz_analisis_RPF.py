@@ -2335,46 +2335,43 @@ st.markdown(               # un solo element-container para todo el chrome visib
 )
 
 # ─── JS: ajuste dinámico del layout cuando la sidebar se abre/cierra ─────────
-st.markdown(
-    '<script>(function(){'
-    'function _rpfAdjust(){'
-    '  var sb=document.querySelector("section[data-testid=\'stSidebar\']");'
-    '  var main=document.querySelector("section[data-testid=\'stMain\']");'
-    '  if(!sb||!main)return;'
-    '  var w=sb.getBoundingClientRect().width;'
-    # Cuando la sidebar colapsa Streamlit la deja con ~0-2px de ancho visible
-    '  var open=w>60;'
-    '  if(open){'
-    '    main.style.setProperty("padding-left",w+"px","important");'
-    '  }else{'
-    '    main.style.setProperty("padding-left","0px","important");'
-    '  }'
-    '}'
-    # Ejecutar al inicio y con retardos para esperar render de Streamlit
-    '_rpfAdjust();'
-    'setTimeout(_rpfAdjust,150);'
-    'setTimeout(_rpfAdjust,600);'
-    'setTimeout(_rpfAdjust,1500);'
-    # ResizeObserver: detecta cambio de ancho de la sidebar
-    '(function(){'
-    '  function _attach(){'
-    '    var sb=document.querySelector("section[data-testid=\'stSidebar\']");'
-    '    if(!sb){setTimeout(_attach,300);return;}'
-    '    if(window.ResizeObserver){'
-    '      new ResizeObserver(_rpfAdjust).observe(sb);'
-    '    }'
-    '  }'
-    '  _attach();'
-    '})();'
-    # MutationObserver: detecta cambios en atributos/hijos del body (rerun Streamlit)
-    'new MutationObserver(function(ml){'
-    '  ml.forEach(function(m){'
-    '    if(m.attributeName==="aria-expanded"||m.type==="childList")_rpfAdjust();'
-    '  });'
-    '}).observe(document.body,{childList:true,subtree:true,attributes:true,'
-    'attributeFilter:["aria-expanded","data-collapsed","style"]});'
-    '})();</script>',
-    unsafe_allow_html=True,
+# st.markdown bloquea <script> — se usa components.html (iframe mismo origen)
+# window.parent accede al documento principal desde el iframe
+import streamlit.components.v1 as _v1_cmp
+_v1_cmp.html(
+    """<script>
+(function(){
+  var P=window.parent;
+  if(!P)return;
+  function adj(){
+    var sb=P.document.querySelector("section[data-testid='stSidebar']");
+    var mn=P.document.querySelector("section[data-testid='stMain']");
+    if(!sb||!mn)return;
+    var w=sb.getBoundingClientRect().width;
+    if(w>60){
+      mn.style.setProperty("padding-left",w+"px","important");
+    }else{
+      mn.style.setProperty("padding-left","0px","important");
+    }
+  }
+  adj();
+  setTimeout(adj,150);setTimeout(adj,600);setTimeout(adj,1500);
+  // ResizeObserver sobre la sidebar
+  (function at(){
+    var sb=P.document.querySelector("section[data-testid='stSidebar']");
+    if(!sb){setTimeout(at,300);return;}
+    if(P.ResizeObserver){new P.ResizeObserver(adj).observe(sb);}
+  })();
+  // MutationObserver para reruns de Streamlit
+  new P.MutationObserver(function(ml){
+    ml.forEach(function(m){
+      if(m.attributeName==="aria-expanded"||m.type==="childList")adj();
+    });
+  }).observe(P.document.body,{childList:true,subtree:true,attributes:true,
+    attributeFilter:["aria-expanded","data-collapsed","style"]});
+})();
+</script>""",
+    height=0,
 )
 
 # ─── SINCRONIZACIÓN Y SELECTOR DE UNIDAD (Bloques 3, 4, 5) ──────────────────
