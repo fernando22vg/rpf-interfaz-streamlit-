@@ -38,6 +38,10 @@ ENV/
 .streamlit/cache/
 .streamlit/secrets.toml
 
+# Intelligence Bridge — secretos del servidor (nunca a Git)
+server/.env
+server/logs/
+
 # Project-specific
 config_rutas.json
 *.xlsx~$*

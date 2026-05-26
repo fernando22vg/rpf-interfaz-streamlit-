@@ -1,0 +1,16 @@
+[Unit]
+Description=RPF SharePoint Sync — cada 15 minutos
+Requires=rpf-sync.service
+
+[Timer]
+# Primera ejecución: 3 minutos después del arranque
+OnBootSec=3min
+# Ejecuciones sucesivas: cada 15 minutos (medido desde que terminó la anterior)
+OnUnitActiveSec=15min
+# Si el sistema estaba apagado durante un ciclo, ejecutar al volver a encender
+Persistent=true
+# No acumular ejecuciones atrasadas (máximo 1 missed run)
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

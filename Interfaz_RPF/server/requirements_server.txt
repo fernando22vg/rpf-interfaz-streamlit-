@@ -1,0 +1,5 @@
+# Dependencias mínimas para el servidor Ubuntu
+# Instalar con: pip3 install -r requirements_server.txt
+
+requests>=2.31.0
+python-dotenv>=1.0.0

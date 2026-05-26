@@ -1,0 +1,21 @@
+[Unit]
+Description=RPF File Watcher — detecta archivos nuevos y notifica n8n
+After=network.target
+
+[Service]
+Type=simple
+User=jose
+Group=jose
+WorkingDirectory=/srv/rpf/sync
+ExecStart=/bin/bash /srv/rpf/sync/file_watcher.sh
+EnvironmentFile=/srv/rpf/sync/.env
+
+# Reiniciar automáticamente si el proceso muere
+Restart=always
+RestartSec=10s
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

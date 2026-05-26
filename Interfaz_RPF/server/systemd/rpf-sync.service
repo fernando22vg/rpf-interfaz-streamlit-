@@ -1,0 +1,20 @@
+[Unit]
+Description=RPF SharePoint Sync — descarga incremental de datos al servidor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jose
+Group=jose
+WorkingDirectory=/srv/rpf/sync
+ExecStart=/usr/bin/python3 /srv/rpf/sync/sp_sync_daemon.py
+EnvironmentFile=/srv/rpf/sync/.env
+
+# Captura stdout/stderr en journald (ver con: journalctl -u rpf-sync)
+StandardOutput=journal
+StandardError=journal
+
+# No fallar silenciosamente si la red no está disponible
+# ExitCodeHandler permite que salida 1 (errores parciales) no marque el timer como fallido
+SuccessExitStatus=0 1
