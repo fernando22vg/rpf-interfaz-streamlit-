@@ -5,33 +5,34 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "rpf-new-file",
-        "responseMode": "lastNode",
+        "responseMode": "responseNode",
         "options": {}
       },
-      "id": "webhook-new-file",
+      "id": "6951bb4c-538e-453d-b2a8-6ab2232736b7",
       "name": "Webhook Nuevo Archivo",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 300],
+      "position": [-656, 112],
       "webhookId": "rpf-new-file"
     },
     {
       "parameters": {
         "jsCode": "// Analizar el archivo recibido del file_watcher.sh\n// Payload esperado: { file: '/home/.../rpf-proyecto-datos/...', ts: '2026-05-26T...' }\nconst body = $input.first().json.body || $input.first().json;\n\nconst filepath = body.file || '';\nconst filename = filepath.split('/').pop();\nconst ext = filename.split('.').pop().toLowerCase();\n\n// Determinar tipo de datos por la ruta\nlet file_type = 'otro';\nif (filepath.includes('01_INFO_CNDC_RPF')) {\n  file_type = 'evento';\n} else if (filepath.includes('02_DATOS_CNDC_RPF')) {\n  file_type = 'scada';\n} else if (filepath.includes('DATOS_EXTRAIDOS')) {\n  file_type = 'mapeo';\n}\n\n// Extraer semestre/evento si aplica\nlet semestre = null;\nlet evento = null;\nconst semMatch = filepath.match(/([12][0-9]{3}) sem([12])/);\nif (semMatch) {\n  semestre = `${semMatch[1]}_sem${semMatch[2]}`;\n}\nconst evMatch = filepath.match(/Evento (\\d+)/);\nif (evMatch) {\n  evento = `Evento_${evMatch[1]}`;\n}\n\nconst esRelevante = ['xlsx', 'xls', 'csv', 'json', 'txt', 'pdf'].includes(ext);\n\nreturn [{\n  json: {\n    filepath,\n    filename,\n    ext,\n    file_type,\n    semestre,\n    evento,\n    received_at: body.ts || new Date().toISOString(),\n    es_relevante: esRelevante\n  }\n}];"
       },
-      "id": "classify-file",
+      "id": "35d47268-7e06-4055-a224-49d1a996600a",
       "name": "Clasificar Archivo",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 300]
+      "position": [-448, 112]
     },
     {
       "parameters": {
         "conditions": {
           "options": {
-            "caseSensitive": false,
+            "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "strict",
+            "version": 2
           },
           "conditions": [
             {
@@ -48,51 +49,154 @@
         },
         "options": {}
       },
-      "id": "if-relevante",
+      "id": "859b5e74-ca98-4c0e-aaec-ca0285781857",
       "name": "¿Es relevante?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [680, 300]
+      "position": [-224, 112]
     },
     {
       "parameters": {
-        "operation": "insert",
         "schema": {
           "__rl": true,
-          "value": "public",
-          "mode": "list"
+          "value": "=public",
+          "mode": "name"
         },
         "table": {
           "__rl": true,
           "value": "rpf_file_log",
-          "mode": "list"
+          "mode": "list",
+          "cachedResultName": "rpf_file_log"
         },
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "filepath": "={{ $json.filepath }}",
+            "filepath":    "={{ $json.filepath }}",
             "received_at": "={{ $json.received_at }}",
-            "processed": false,
-            "file_type": "={{ $json.file_type }}",
-            "semestre": "={{ $json.semestre }}",
-            "evento": "={{ $json.evento }}"
+            "processed":   false,
+            "file_type":   "={{ $json.file_type }}",
+            "size_bytes":  0,
+            "semestre":    "={{ $json.semestre }}",
+            "evento":      "={{ $json.evento }}"
           },
-          "matchingColumns": [],
-          "schema": []
+          "matchingColumns": ["id"],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "filepath",
+              "displayName": "filepath",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "filename",
+              "displayName": "filename",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "processed",
+              "displayName": "processed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "file_type",
+              "displayName": "file_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "size_bytes",
+              "displayName": "size_bytes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "semestre",
+              "displayName": "semestre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "evento",
+              "displayName": "evento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha_evento",
+              "displayName": "fecha_evento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         },
-        "options": {
-          "queryBatching": "independently"
-        }
+        "options": {}
       },
-      "id": "postgres-insert-file",
+      "id": "42ef1950-c8c1-42f3-8e1c-87a6563b67fa",
       "name": "PostgreSQL: Registrar Archivo",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [900, 200],
+      "position": [0, 0],
       "credentials": {
         "postgres": {
-          "id": "PENDIENTE_CONFIGURAR",
-          "name": "RPF PostgreSQL"
+          "id": "kgt3UvzOqcKrNzhH",
+          "name": "Postgres account"
         }
       }
     },
@@ -100,11 +204,11 @@
       "parameters": {
         "jsCode": "// Archivo ignorado (extensión no relevante)\nconst f = $json.filename;\nconsole.log(`[RPF] Archivo ignorado (no procesable): ${f}`);\nreturn [{ json: { skipped: true, file: f } }];"
       },
-      "id": "skip-file",
+      "id": "baf3ba04-a554-4da9-930e-820abc9c40bc",
       "name": "Ignorar Archivo",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 420]
+      "position": [0, 224]
     },
     {
       "parameters": {
@@ -114,74 +218,38 @@
           "responseCode": 200
         }
       },
-      "id": "respond-ok",
+      "id": "ce24abdc-182b-4f11-88e4-feef999da44b",
       "name": "Responder OK",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1120, 300]
+      "position": [224, 112]
     }
   ],
+  "pinData": {},
   "connections": {
     "Webhook Nuevo Archivo": {
-      "main": [
-        [
-          {
-            "node": "Clasificar Archivo",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Clasificar Archivo", "type": "main", "index": 0 }]]
     },
     "Clasificar Archivo": {
-      "main": [
-        [
-          {
-            "node": "¿Es relevante?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "¿Es relevante?", "type": "main", "index": 0 }]]
     },
     "¿Es relevante?": {
       "main": [
-        [
-          {
-            "node": "PostgreSQL: Registrar Archivo",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Ignorar Archivo",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "PostgreSQL: Registrar Archivo", "type": "main", "index": 0 }],
+        [{ "node": "Ignorar Archivo", "type": "main", "index": 0 }]
       ]
     },
     "PostgreSQL: Registrar Archivo": {
-      "main": [
-        [
-          {
-            "node": "Responder OK",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Responder OK", "type": "main", "index": 0 }]]
     }
   },
   "active": true,
   "settings": {
     "executionOrder": "v1",
-    "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner"
+    "binaryMode": "separate"
   },
   "meta": {
-    "templateCredsSetupCompleted": false,
+    "templateCredsSetupCompleted": true,
     "instanceId": ""
   },
   "tags": [
