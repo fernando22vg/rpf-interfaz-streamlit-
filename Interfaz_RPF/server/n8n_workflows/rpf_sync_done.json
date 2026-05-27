@@ -8,63 +8,73 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "webhook-sync-done",
+      "id": "aed4ee3d-afd9-407f-aea2-ac22d4ed8b69",
       "name": "Webhook Sync Done",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 300],
+      "position": [-880, 112],
       "webhookId": "rpf-sync-done"
     },
     {
       "parameters": {
-        "jsCode": "// Extraer y transformar el payload del daemon\nconst body = $input.first().json.body || $input.first().json;\n\nconst totalMB = (body.total_bytes / 1048576).toFixed(2);\nconst haErrors = body.total_errors > 0;\nconst statsJson = JSON.stringify(body.stats || {});\n\n// Parsear timestamp del daemon (ISO format)\nconst ts = body.timestamp ? new Date(body.timestamp).toISOString() : new Date().toISOString();\n\n// Construir resumen legible\nconst folders = Object.keys(body.stats || {});\nconst folderSummary = folders.map(f => {\n  const s = body.stats[f];\n  return `${f}: ${s.downloaded} archivos, ${(s.bytes_downloaded/1048576).toFixed(1)} MB`;\n}).join(' | ');\n\nreturn [{\n  json: {\n    sync_started_at: ts,\n    total_downloaded: body.total_downloaded || 0,\n    total_errors: body.total_errors || 0,\n    total_mb: parseFloat(totalMB),\n    stats_json: statsJson,\n    folder_summary: folderSummary,\n    dry_run: body.dry_run || false,\n    has_errors: haErrors,\n    // Para la respuesta HTTP\n    status: haErrors ? 'sync_with_errors' : 'sync_ok',\n    message: `Sync OK: ${body.total_downloaded} archivos, ${totalMB} MB`\n  }\n}];"
+        "jsCode": "// Extraer y transformar el payload del daemon\nconst body = $input.first().json.body || $input.first().json;\n\nconst totalMB = (body.total_bytes / 1048576).toFixed(2);\nconst haErrors = body.total_errors > 0;\nconst statsJson = JSON.stringify(body.stats || {});\n\n// Parsear timestamp del daemon (ISO format)\nconst ts = body.timestamp ? new Date(body.timestamp).toISOString() : new Date().toISOString();\n\n// Construir resumen legible\nconst folders = Object.keys(body.stats || {});\nconst folderSummary = folders.map(f => {\n  const s = body.stats[f];\n  return `${f}: ${s.downloaded} archivos, ${(s.bytes_downloaded/1048576).toFixed(1)} MB`;\n}).join(' | ');\n\nreturn [{\n  json: {\n    sync_started_at: ts,\n    total_downloaded: body.total_downloaded || 0,\n    total_errors: body.total_errors || 0,\n    total_mb: parseFloat(totalMB),\n    stats_json: statsJson,\n    folder_summary: folderSummary,\n    dry_run: body.dry_run || false,\n    has_errors: haErrors,\n    status: haErrors ? 'sync_with_errors' : 'sync_ok',\n    message: `Sync OK: ${body.total_downloaded} archivos, ${totalMB} MB`\n  }\n}];"
       },
-      "id": "transform-sync-data",
+      "id": "714cd392-e6eb-4c67-9aed-7bddd1efebd4",
       "name": "Transformar Datos",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 300]
+      "position": [-656, 112]
     },
     {
       "parameters": {
-        "operation": "insert",
         "schema": {
           "__rl": true,
           "value": "public",
-          "mode": "list"
+          "mode": "list",
+          "cachedResultName": "public"
         },
         "table": {
           "__rl": true,
           "value": "rpf_sync_log",
-          "mode": "list"
+          "mode": "list",
+          "cachedResultName": "rpf_sync_log"
         },
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "sync_started_at": "={{ $json.sync_started_at }}",
-            "total_downloaded": "={{ $json.total_downloaded }}",
-            "total_errors": "={{ $json.total_errors }}",
-            "total_mb": "={{ $json.total_mb }}",
-            "stats_json": "={{ $json.stats_json }}",
-            "folder_summary": "={{ $json.folder_summary }}",
-            "dry_run": "={{ $json.dry_run }}"
+            "files_downloaded": "={{ $json.total_downloaded }}",
+            "files_skipped":    0,
+            "errors":           "={{ $json.total_errors }}",
+            "bytes_downloaded": "={{ Math.round($json.total_mb * 1048576) }}",
+            "dry_run":          "={{ $json.dry_run }}",
+            "stats_json":       "={{ $json.stats_json }}"
           },
-          "matchingColumns": [],
-          "schema": []
+          "matchingColumns": ["id"],
+          "schema": [
+            { "id": "id",               "displayName": "id",               "required": false, "defaultMatch": true,  "display": true, "type": "number",   "canBeUsedToMatch": true, "removed": true },
+            { "id": "sync_at",          "displayName": "sync_at",          "required": false, "defaultMatch": false, "display": true, "type": "dateTime", "canBeUsedToMatch": true },
+            { "id": "duration_secs",    "displayName": "duration_secs",    "required": false, "defaultMatch": false, "display": true, "type": "number",   "canBeUsedToMatch": true },
+            { "id": "files_downloaded", "displayName": "files_downloaded", "required": false, "defaultMatch": false, "display": true, "type": "number",   "canBeUsedToMatch": true },
+            { "id": "files_skipped",    "displayName": "files_skipped",    "required": false, "defaultMatch": false, "display": true, "type": "number",   "canBeUsedToMatch": true },
+            { "id": "errors",           "displayName": "errors",           "required": false, "defaultMatch": false, "display": true, "type": "number",   "canBeUsedToMatch": true },
+            { "id": "bytes_downloaded", "displayName": "bytes_downloaded", "required": false, "defaultMatch": false, "display": true, "type": "number",   "canBeUsedToMatch": true },
+            { "id": "dry_run",          "displayName": "dry_run",          "required": false, "defaultMatch": false, "display": true, "type": "boolean",  "canBeUsedToMatch": true },
+            { "id": "stats_json",       "displayName": "stats_json",       "required": false, "defaultMatch": false, "display": true, "type": "object",   "canBeUsedToMatch": true }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         },
-        "options": {
-          "outputConnectorData": true
-        }
+        "options": {}
       },
-      "id": "postgres-insert-sync",
+      "id": "a21e439b-d687-4fcf-b694-f96cd3e5ff8d",
       "name": "PostgreSQL: Log Sync",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [680, 300],
+      "position": [-448, 112],
       "credentials": {
         "postgres": {
-          "id": "PENDIENTE_CONFIGURAR",
-          "name": "RPF PostgreSQL"
+          "id": "kgt3UvzOqcKrNzhH",
+          "name": "Postgres account"
         }
       }
     },
@@ -74,132 +84,92 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "strict",
+            "version": 1
           },
           "conditions": [
             {
               "id": "check-errors",
               "leftValue": "={{ $('Transformar Datos').first().json.total_errors }}",
               "rightValue": 0,
-              "operator": {
-                "type": "number",
-                "operation": "gt"
-              }
+              "operator": { "type": "number", "operation": "gt" }
             }
           ],
           "combinator": "and"
         },
         "options": {}
       },
-      "id": "if-has-errors",
+      "id": "06daf138-ffa3-486a-aa4e-b7a5a5193f46",
       "name": "¿Tiene errores?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [900, 300]
+      "position": [-224, 112]
     },
     {
       "parameters": {
         "jsCode": "// Log de alerta - en el futuro puede enviar email/Telegram\nconst data = $('Transformar Datos').first().json;\nconsole.log(`[RPF ALERTA] Sync con ${data.total_errors} errores`);\nconsole.log(`Stats: ${data.folder_summary}`);\n\nreturn [{ json: { alerta: 'sync_con_errores', ...data } }];"
       },
-      "id": "log-error-alert",
+      "id": "55d2c843-efbc-4a2b-bbcd-afad95587365",
       "name": "Log Alerta",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 200]
+      "position": [0, 0]
     },
     {
       "parameters": {
         "jsCode": "// Sync exitoso - log informativo\nconst data = $('Transformar Datos').first().json;\nconsole.log(`[RPF OK] ${data.message}`);\nconsole.log(`Detalle: ${data.folder_summary}`);\n\nreturn [{ json: { status: 'ok', ...data } }];"
       },
-      "id": "log-sync-ok",
+      "id": "956c2f6c-a9b5-495d-9bf7-1a7a18c87cc7",
       "name": "Log OK",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 420]
+      "position": [0, 224]
     },
     {
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify({ ok: true, received: $('Transformar Datos').first().json.message }) }}",
-        "options": {
-          "responseCode": 200
-        }
+        "options": { "responseCode": 200 }
       },
-      "id": "respond-200",
+      "id": "d0be32a1-f1fe-4fbe-b72e-32c6f2a34a50",
       "name": "Responder 200",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [680, 520]
+      "position": [-448, 320]
     }
   ],
+  "pinData": {},
   "connections": {
     "Webhook Sync Done": {
-      "main": [
-        [
-          {
-            "node": "Transformar Datos",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Transformar Datos", "type": "main", "index": 0 }]]
     },
     "Transformar Datos": {
-      "main": [
-        [
-          {
-            "node": "PostgreSQL: Log Sync",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Responder 200",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        { "node": "PostgreSQL: Log Sync", "type": "main", "index": 0 },
+        { "node": "Responder 200",        "type": "main", "index": 0 }
+      ]]
     },
     "PostgreSQL: Log Sync": {
-      "main": [
-        [
-          {
-            "node": "¿Tiene errores?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "¿Tiene errores?", "type": "main", "index": 0 }]]
     },
     "¿Tiene errores?": {
       "main": [
-        [
-          {
-            "node": "Log Alerta",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Log OK",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Log Alerta", "type": "main", "index": 0 }],
+        [{ "node": "Log OK",     "type": "main", "index": 0 }]
       ]
     }
   },
   "active": true,
   "settings": {
     "executionOrder": "v1",
-    "saveManualExecutions": true,
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
     "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
+    "availableInMCP": false
   },
   "meta": {
-    "templateCredsSetupCompleted": false,
-    "instanceId": ""
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0b659cab26ff0f6e391144d4a951f3c577d3d06eb96c914f499d777262ff894f"
   },
   "tags": [
     { "name": "RPF" },
