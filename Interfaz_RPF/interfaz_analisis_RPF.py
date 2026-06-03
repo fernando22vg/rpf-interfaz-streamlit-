@@ -653,7 +653,7 @@ def _v4_inline_ctx(unit_name: str, evento: str, pmax_mw: float):
 _V4_BLOQUES = [
     {"id": "modelo_base",           "num": "00", "short": "Modelo",     "label": "Datos del Modelo",     "icon": "database", "grupo": "Setup",    "pf": True},
     {"id": "carga_datos",           "num": "01", "short": "Carga",      "label": "Carga de Datos",       "icon": "download", "grupo": "Setup",    "pf": True},
-    {"id": "config_unidades",       "num": "02", "short": "Config",     "label": "Config. Unidades",     "icon": "sliders",  "grupo": "Setup",    "pf": False},
+    {"id": "config_unidades",       "num": "02", "short": "DSL",        "label": "Parámetros DSL",       "icon": "sliders",  "grupo": "Setup",    "pf": False},
     {"id": "analisis_datos",        "num": "03", "short": "SCADA",      "label": "Análisis SCADA/EMF",   "icon": "activity", "grupo": "Análisis", "pf": False},
     {"id": "analisis_simulacion",   "num": "04", "short": "Sim",        "label": "Análisis Simulación",  "icon": "chart",    "grupo": "Análisis", "pf": True},
     {"id": "comparativa_real_simu", "num": "05", "short": "Real vs Sim","label": "Real vs Simulación",   "icon": "scale",    "grupo": "Análisis", "pf": True},
@@ -2919,25 +2919,11 @@ if bloque_trabajo == "modelo_base":
         )
 
 elif bloque_trabajo == "config_unidades":
-    # Contenido movido al Bloque 07 → Tab "Configuración Unidades"
-    _render_block_header("02", "Config. Unidades",
-        "Parámetros técnicos de las 23 unidades COBEE (P_max, droop, tecnología).",
+    _render_block_header("02", "Parámetros DSL",
+        "Gestión y optimización de parámetros DSL Andritz por familia de gobernador.",
         "Setup", pf_required=False)
-    _t02 = _v4_t()
-    st.markdown(
-        f'<div style="padding:24px;background:{_t02["surfaceAlt"]};border:1px solid {_t02["border"]};'
-        f'border-radius:8px;margin-top:16px;text-align:center">'
-        f'<div style="font-size:22px;margin-bottom:8px">📦</div>'
-        f'<div style="font-size:15px;font-weight:700;color:{_t02["text"]}">Contenido movido a Bloque 07</div>'
-        f'<div style="font-size:13px;color:{_t02["textMuted"]};margin-top:4px">'
-        f'La configuración de unidades está en <b>Bloque 07 → Configuración Unidades</b></div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-    if st.button("→ Ir a Configuración Unidades", type="primary", key="b02_goto_b07"):
-        st.session_state.active_block = "config_global"
-        st.session_state["v4_tab_b07"] = "unidades"
-        st.rerun()
+    from bloque_dsl_params import render_bloque_dsl
+    render_bloque_dsl(st.session_state)
 
 elif bloque_trabajo == "config_global": # type: ignore
     _render_block_header("07", "Configuración",

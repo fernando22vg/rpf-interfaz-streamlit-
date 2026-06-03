@@ -1,0 +1,49 @@
+SISTEMA DE ANÁLISIS DE RESPUESTA PRIMARIA DE FRECUENCIA (RPF) - SIN BOLIVIA
+==========================================================================
+
+1. PROPÓSITO:
+Automatizar la evaluación del aporte de RPF de las unidades generadoras de COBEE
+según la normativa del CNDC. Compara registros reales (SCADA/EMF) contra
+simulaciones dinámicas en DIgSILENT PowerFactory.
+
+2. STACK TECNOLÓGICO:
+- Frontend: Streamlit (Python 3.12)
+- Gráficas: Plotly (doble eje Y sincronizado)
+- Datos: Excel (procesados con pandas + python-calamine para velocidad)
+- Simulación: API de PowerFactory (vía subprocess en modo local)
+- Cloud/Sync: Sincronización con SharePoint vía cookies y monitoreo local con Watchdog
+
+3. DIRECTORIOS CRÍTICOS:
+- C:\Datos del CNDC\01_INFO CNDC_RPF: Raíz de semestres y resultados de eventos.
+- C:\Datos del CNDC\02_DATOS CNDC_RPF: Carpeta de origen para archivos "1 seg" (SCADA).
+- C:\Datos del CNDC\DATOS EXTRAIDOS DE DIGSILENT\Designacion de loc_name: Archivos de mapeo (GEN/CAR/XFO).
+- Interfaz_RPF\runners\: Scripts de ejecución puente entre la UI y PowerFactory (vía subprocess).
+- Interfaz_RPF\Programas_1_uso_modelo\: Scripts que se ejecutan DENTRO de PowerFactory.
+- Interfaz_RPF\Datos_Frecuencias\: Datos de frecuencia exportados desde PowerFactory (CSV).
+
+4. FLUJO DE DATOS (8 BLOQUES):
+0. MODELO: Sincroniza topología de PowerFactory a Excel.
+1. CARGA: Prepara el despacho real (pgini/plini) y lo inyecta en el simulador.
+2. CONFIG: Define Pmax y Estatismo nominal por unidad.
+3. REGISTROS: Procesa SCADA (1seg) y EMF (CNDC). Detecta t0 por df/dt.
+4. SIMULACIÓN: Lee resultados de escenarios RMS (E0/E1).
+5. COMPARATIVA: Alinea curvas real vs simu para validar el modelo.
+6. REPORTE: Consolida KPIs y verifica cumplimiento (DeltaP% >= 1.5%).
+7. GRÁFICAS: Configuración visual persistente.
+
+5. CARACTERÍSTICAS CLAVE:
+- Modo Cloud: Detecta ausencia de PowerFactory y activa modo "Solo Lectura" vía SharePoint.
+- Sincronización Bidireccional: Los archivos generados localmente suben a la nube en < 2s.
+- Alineación Temporal: t0 configurable con precisión de centésimas para comparación exacta.
+- Rendimiento: Uso de st.fragment para monitorear logs de PowerFactory sin recargar la UI.
+- Rediseño UI v4 en proceso: Nuevo layout estilo Grafana/Datadog con stepper de pasos,
+  barra superior fija y navegación lateral agrupada (ver PLAN_REDISENO_UI_V4.md).
+
+6. DOCUMENTACIÓN:
+- DOCUMENTO_TECNICO_RPF.md : Arquitectura, módulos, decisiones de diseño y mejoras propuestas.
+- PLAN_REDISENO_UI_V4.md   : Plan detallado de implementación del rediseño visual v4.
+- README.md                : Instalación, estructura del proyecto y guía de despliegue.
+
+7. CONTACTO Y SOPORTE:
+Área de Estudios y Operación - COBEE S.A.
+Mayo 2026.
