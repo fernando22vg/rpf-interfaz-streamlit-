@@ -62,10 +62,41 @@ FROM rpf_sync_log
 ORDER BY sync_at DESC
 LIMIT 50;
 
+-- ── Tabla de KPIs COBEE (Capa 2) ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS rpf_kpi_cobee (
+    id               SERIAL PRIMARY KEY,
+    semestre         VARCHAR(20),
+    evento           VARCHAR(50),
+    fecha_evento     DATE,
+    unidad           VARCHAR(20),
+    p_max_mw         FLOAT,
+    p_0_mw           FLOAT,
+    p_35_mw          FLOAT,
+    r_inicial_mw     FLOAT,
+    r_inicial_pct    FLOAT,
+    p_entregada_mw   FLOAT,
+    p_entregada_pct  FLOAT,
+    aporta_rpf       VARCHAR(20),
+    droop_inf_pct    FLOAT,
+    droop_calc_pct   FLOAT,
+    f_0_hz           FLOAT,
+    f_min_hz         FLOAT,
+    f_35_hz          FLOAT,
+    t_0              TIME,
+    t_min            TIME,
+    t_35             TIME,
+    source_file      TEXT,
+    extracted_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_kpi_cobee_evento   ON rpf_kpi_cobee(evento);
+CREATE INDEX IF NOT EXISTS idx_kpi_cobee_semestre ON rpf_kpi_cobee(semestre);
+CREATE INDEX IF NOT EXISTS idx_kpi_cobee_unidad   ON rpf_kpi_cobee(unidad);
+
 -- Mensaje de confirmación
 DO $$
 BEGIN
-    RAISE NOTICE 'Schema RPF Intelligence (Capa 1) creado correctamente.';
-    RAISE NOTICE 'Tablas: rpf_file_log, rpf_sync_log';
+    RAISE NOTICE 'Schema RPF Intelligence creado correctamente.';
+    RAISE NOTICE 'Tablas: rpf_file_log, rpf_sync_log, rpf_kpi_cobee';
     RAISE NOTICE 'Vistas: v_rpf_pending_files, v_rpf_sync_history';
 END $$;
