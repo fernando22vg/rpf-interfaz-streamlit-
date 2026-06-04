@@ -69,12 +69,32 @@ def get_or_create_kb(session, name: str, description: str) -> str:
 
 
 def clear_kb(session, kb_id: str):
+    """Elimina archivos de la KB Y borra los archivos físicos del servidor."""
     r = session.get(f'{WEBUI_URL}/api/v1/knowledge/{kb_id}', timeout=10)
     for f in (r.json().get('files') or []):
         fid = f.get('id') or f.get('file', {}).get('id')
         if fid:
+            # Desasociar de la KB
             session.delete(f'{WEBUI_URL}/api/v1/knowledge/{kb_id}/file/delete',
                            json={'file_id': fid}, timeout=10)
+            # Borrar el archivo físico para evitar "Duplicate content"
+            session.delete(f'{WEBUI_URL}/api/v1/files/{fid}', timeout=10)
+
+
+def purge_all_files(session):
+    """Borra TODOS los archivos del servidor (limpieza inicial)."""
+    r = session.get(f'{WEBUI_URL}/api/v1/files/', timeout=15)
+    if r.status_code != 200:
+        return
+    files = r.json() if isinstance(r.json(), list) else r.json().get('files', [])
+    deleted = 0
+    for f in files:
+        fid = f.get('id')
+        if fid:
+            session.delete(f'{WEBUI_URL}/api/v1/files/{fid}', timeout=10)
+            deleted += 1
+    if deleted:
+        log.info(f"  Archivos físicos eliminados: {deleted}")
 
 
 def upload_text(session, kb_id: str, filename: str, content: str) -> bool:
@@ -384,6 +404,8 @@ def main():
         log.info("Conectando a Open WebUI...")
         session = get_session()
         log.info("Conectado OK")
+        log.info("Limpiando archivos físicos anteriores (evita duplicados)...")
+        purge_all_files(session)
 
     total_docs = 0
     for kb_key in kbs_to_build:
