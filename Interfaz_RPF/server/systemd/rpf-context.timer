@@ -1,0 +1,10 @@
+[Unit]
+Description=RPF Context Generator — ejecuta cada noche a las 02:00 UTC
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

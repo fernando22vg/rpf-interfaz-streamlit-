@@ -1,0 +1,16 @@
+[Unit]
+Description=RPF Context Generator — genera contexto Markdown para Ollama/Open WebUI
+After=network.target
+
+[Service]
+Type=oneshot
+User=joselozano
+Group=joselozano
+WorkingDirectory=/home/joselozano/rpf-ejecucion
+ExecStart=/usr/bin/python3 /home/joselozano/rpf-ejecucion/generate_context.py
+EnvironmentFile=/home/joselozano/rpf-ejecucion/.env
+
+StandardOutput=journal
+StandardError=journal
+
+SuccessExitStatus=0 1
