@@ -73,7 +73,7 @@ def get_or_create_kb(session: requests.Session) -> str:
 
     data = resp.json()
     # API v0.9.x devuelve {'items': [...], 'total': N}
-    items = data.get('items', data) if isinstance(data, dict) else data
+    items = data.get('items', []) if isinstance(data, dict) else data
     for kb in items:
         if isinstance(kb, dict) and kb.get('name') == KB_NAME:
             log.info(f'Knowledge base existente — id: {kb["id"]}')
@@ -98,7 +98,7 @@ def remove_old_files(session: requests.Session, kb_id: str):
     resp = session.get(f'{WEBUI_URL}/api/v1/knowledge/{kb_id}', timeout=10)
     if resp.status_code != 200:
         return
-    files = resp.json().get('files', [])
+    files = resp.json().get('files') or []
     for f in files:
         fid = f.get('id') or (f.get('file', {}).get('id'))
         if fid:
