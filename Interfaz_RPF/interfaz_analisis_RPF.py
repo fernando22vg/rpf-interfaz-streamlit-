@@ -1411,7 +1411,7 @@ def _save_global_unit_cfg(unit, key, value):
     try:
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)-
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
     except Exception:
         return False
     # Subir a SharePoint siempre que esté disponible (cloud Y local)
@@ -2054,7 +2054,7 @@ with st.sidebar:
         st.warning("Proceso en ejecución — navegación bloqueada.")
     for _grp_name, _grp_ids in [
         ("Setup",    ["modelo_base", "carga_datos", "config_unidades"]),
-        ("Análisis", ["analisis_datos", "analisis_simulacion", "comparativa_real_simu"]),
+        ("Análisis", ["analisis_datos", "analisis_simulacion", "comparativa_real_simu", "kpi_historico"]),
         ("Salida",   ["reporte_tecnico", "config_global"]),
     ]:
         st.markdown(f'<div class="v4-nav-group-label">{_grp_name}</div>', unsafe_allow_html=True)
@@ -6169,7 +6169,7 @@ elif bloque_trabajo == "comparativa_real_simu":
 else:
         st.info("ℹ️ Seleccione una unidad y verifique los archivos en las carpetas correspondientes.")
 
-elif bloque_trabajo == "kpi_historico":
+if bloque_trabajo == "kpi_historico":
     _render_block_header("06", "Histórico RPF",
         "Análisis histórico de cumplimiento RPF por unidad y evento. Datos desde el servidor PostgreSQL.",
         "Análisis", pf_required=False)

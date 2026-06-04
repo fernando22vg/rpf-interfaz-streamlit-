@@ -1,20 +1,35 @@
 """
 bloque_kpi_historico.py — Bloque 06: Análisis Histórico RPF
-Conecta a PostgreSQL del servidor (rpf_intelligence.rpf_kpi_cobee)
-y genera 5 gráficas interactivas con Plotly.
+
+Fuentes de datos (en orden de prioridad):
+  1. PostgreSQL en red local (192.168.0.92) — más actualizado
+  2. rpf_kpi_cobee.csv en SharePoint (03_DATOS GEN) — acceso remoto
+  3. Cache local C:\\Datos Cobee\\03_DATOS GEN\\rpf_kpi_cobee.csv — sin red
 """
 
+import os
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 
-# ─── Conexión PostgreSQL ──────────────────────────────────────────────────────
+# Ruta local del CSV cache
+_CSV_LOCAL = r"C:\Datos Cobee\03_DATOS GEN\rpf_kpi_cobee.csv"
+# Ruta en SharePoint (carpeta relativa dentro del share link)
+_SP_FOLDER = "03_DATOS GEN"
+_SP_FILE   = "rpf_kpi_cobee.csv"
+
+
+# ─── Carga con fallback automático ───────────────────────────────────────────
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _load_data() -> pd.DataFrame:
-    """Carga todos los KPIs desde el servidor. Cachea 5 minutos."""
+def _load_data() -> tuple[pd.DataFrame, str]:
+    """
+    Intenta cargar desde PostgreSQL → SharePoint → cache local.
+    Devuelve (DataFrame, fuente_usada).
+    """
+    # 1. PostgreSQL
     try:
         import psycopg2
         s = st.secrets.get("postgres", {})
@@ -24,14 +39,49 @@ def _load_data() -> pd.DataFrame:
             dbname=s.get("dbname", "rpf_intelligence"),
             user=s.get("user", "n8n"),
             password=s.get("password", ""),
-            connect_timeout=5,
+            connect_timeout=3,
         )
-        df = pd.read_sql("SELECT * FROM rpf_kpi_cobee ORDER BY semestre, evento, unidad", conn)
+        df = pd.read_sql(
+            "SELECT * FROM rpf_kpi_cobee ORDER BY semestre, evento, unidad", conn
+        )
         conn.close()
-        return df
-    except Exception as e:
-        st.error(f"No se pudo conectar a PostgreSQL del servidor: {e}")
-        return pd.DataFrame()
+        if not df.empty:
+            # Guardar cache local para uso offline
+            os.makedirs(os.path.dirname(_CSV_LOCAL), exist_ok=True)
+            df.to_csv(_CSV_LOCAL, index=False)
+            return df, "🟢 PostgreSQL (servidor local)"
+    except Exception:
+        pass
+
+    # 2. SharePoint
+    try:
+        from sharepoint_client import SharePointClient
+        sp_pass = st.secrets.get("SP_PASSWORD", "")
+        if sp_pass:
+            sp = SharePointClient(password=sp_pass)
+            content = sp.download_file_content(f"{_SP_FOLDER}/{_SP_FILE}")
+            if content:
+                import io
+                df = pd.read_csv(io.BytesIO(content))
+                if not df.empty:
+                    os.makedirs(os.path.dirname(_CSV_LOCAL), exist_ok=True)
+                    df.to_csv(_CSV_LOCAL, index=False)
+                    return df, "🔵 SharePoint (nube COBEE)"
+    except Exception:
+        pass
+
+    # 3. Cache local
+    if os.path.exists(_CSV_LOCAL):
+        try:
+            df = pd.read_csv(_CSV_LOCAL)
+            mtime = os.path.getmtime(_CSV_LOCAL)
+            from datetime import datetime
+            fecha = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+            return df, f"🟡 Cache local (actualizado {fecha})"
+        except Exception:
+            pass
+
+    return pd.DataFrame(), ""
 
 
 def _theme():
@@ -373,27 +423,21 @@ def _tab_reservas(df: pd.DataFrame, t: dict):
 def render_bloque_kpi(session_state):
     t = _theme()
 
-    # Cargar datos
-    with st.spinner("Cargando datos históricos RPF desde el servidor..."):
-        df = _load_data()
+    # Cargar datos con fallback automático
+    with st.spinner("Cargando datos históricos RPF..."):
+        df, fuente = _load_data()
 
     if df.empty:
-        st.warning(
-            "No hay datos disponibles. Verifica la conexión al servidor "
-            "(192.168.0.92:5432) y que la tabla `rpf_kpi_cobee` tenga registros.",
-            icon="⚠️",
-        )
-        st.code(
-            "# Agregar en .streamlit/secrets.toml:\n"
-            "[postgres]\n"
-            'host = "192.168.0.92"\n'
-            "port = 5432\n"
-            'dbname = "rpf_intelligence"\n'
-            'user = "n8n"\n'
-            'password = "..."',
-            language="toml",
+        st.error(
+            "No se encontraron datos en ninguna fuente disponible.\n\n"
+            "**Opciones:** conecta a la red local (192.168.0.92) para usar PostgreSQL, "
+            "o asegúrate de que `rpf_kpi_cobee.csv` esté en SharePoint `03_DATOS GEN`.",
+            icon="❌",
         )
         return
+
+    # Indicador de fuente
+    st.caption(f"Fuente de datos: {fuente}")
 
     # Métricas rápidas
     total_ev  = df.groupby(["semestre", "evento"]).ngroups

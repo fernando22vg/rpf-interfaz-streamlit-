@@ -326,6 +326,28 @@ def main():
     size_kb = args.output.stat().st_size / 1024
     log.info(f"Contexto generado: {args.output} ({size_kb:.1f} KB)")
 
+    # Exportar CSV para acceso remoto vía SharePoint
+    _export_csv(args.output.parent / 'rpf_kpi_cobee.csv')
+
+
+def _export_csv(csv_path: Path):
+    """Exporta toda la tabla rpf_kpi_cobee como CSV para uso remoto."""
+    try:
+        import csv as csv_mod
+        conn = get_conn()
+        rows = query(conn, "SELECT * FROM rpf_kpi_cobee ORDER BY semestre, evento, unidad")
+        conn.close()
+        if not rows:
+            return
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv_mod.DictWriter(f, fieldnames=rows[0].keys())
+            writer.writeheader()
+            writer.writerows(rows)
+        log.info(f"CSV exportado: {csv_path} ({len(rows)} registros)")
+    except Exception as e:
+        log.warning(f"No se pudo exportar CSV: {e}")
+
 
 if __name__ == '__main__':
     main()
