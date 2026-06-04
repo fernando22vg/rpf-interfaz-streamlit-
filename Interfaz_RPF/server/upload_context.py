@@ -71,20 +71,26 @@ def get_or_create_kb(session: requests.Session) -> str:
     if resp.status_code != 200:
         raise RuntimeError(f'Error listando knowledge bases: {resp.text[:200]}')
 
-    for kb in resp.json():
-        if kb.get('name') == KB_NAME:
+    data = resp.json()
+    # API v0.9.x devuelve {'items': [...], 'total': N}
+    items = data.get('items', data) if isinstance(data, dict) else data
+    for kb in items:
+        if isinstance(kb, dict) and kb.get('name') == KB_NAME:
             log.info(f'Knowledge base existente — id: {kb["id"]}')
             return kb['id']
 
-    # Crear nuevo
-    resp = session.post(f'{WEBUI_URL}/api/v1/knowledge/create',
-                        json={'name': KB_NAME, 'description': KB_DESC},
-                        timeout=10)
-    if resp.status_code not in (200, 201):
-        raise RuntimeError(f'Error creando knowledge base: {resp.text[:200]}')
-    kb_id = resp.json().get('id')
-    log.info(f'Knowledge base creado — id: {kb_id}')
-    return kb_id
+    # Crear nuevo — probar ambos endpoints según versión
+    for endpoint in ['/api/v1/knowledge/create', '/api/v1/knowledge/']:
+        method = session.post if endpoint.endswith('/') else session.post
+        r = method(f'{WEBUI_URL}{endpoint}',
+                   json={'name': KB_NAME, 'description': KB_DESC},
+                   timeout=10)
+        if r.status_code in (200, 201):
+            kb_id = r.json().get('id')
+            log.info(f'Knowledge base creado — id: {kb_id}')
+            return kb_id
+
+    raise RuntimeError(f'No se pudo crear el knowledge base: {r.text[:200]}')
 
 
 def remove_old_files(session: requests.Session, kb_id: str):
