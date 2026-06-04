@@ -657,8 +657,9 @@ _V4_BLOQUES = [
     {"id": "analisis_datos",        "num": "03", "short": "SCADA",      "label": "Análisis SCADA/EMF",   "icon": "activity", "grupo": "Análisis", "pf": False},
     {"id": "analisis_simulacion",   "num": "04", "short": "Sim",        "label": "Análisis Simulación",  "icon": "chart",    "grupo": "Análisis", "pf": True},
     {"id": "comparativa_real_simu", "num": "05", "short": "Real vs Sim","label": "Real vs Simulación",   "icon": "scale",    "grupo": "Análisis", "pf": True},
-    {"id": "reporte_tecnico",       "num": "06", "short": "Reporte",    "label": "Reporte Técnico",      "icon": "report",   "grupo": "Salida",   "pf": False},
-    {"id": "config_global",         "num": "07", "short": "Config",     "label": "Configuración",        "icon": "sliders",  "grupo": "Salida",   "pf": False},
+    {"id": "kpi_historico",         "num": "06", "short": "KPI",        "label": "Histórico RPF",        "icon": "chart",    "grupo": "Análisis", "pf": False},
+    {"id": "reporte_tecnico",       "num": "07", "short": "Reporte",    "label": "Reporte Técnico",      "icon": "report",   "grupo": "Salida",   "pf": False},
+    {"id": "config_global",         "num": "08", "short": "Config",     "label": "Configuración",        "icon": "sliders",  "grupo": "Salida",   "pf": False},
 ]
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -1410,7 +1411,7 @@ def _save_global_unit_cfg(unit, key, value):
     try:
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
+            json.dump(cfg, f, ensure_ascii=False, indent=2)-
     except Exception:
         return False
     # Subir a SharePoint siempre que esté disponible (cloud Y local)
@@ -6168,8 +6169,15 @@ elif bloque_trabajo == "comparativa_real_simu":
 else:
         st.info("ℹ️ Seleccione una unidad y verifique los archivos en las carpetas correspondientes.")
 
+elif bloque_trabajo == "kpi_historico":
+    _render_block_header("06", "Histórico RPF",
+        "Análisis histórico de cumplimiento RPF por unidad y evento. Datos desde el servidor PostgreSQL.",
+        "Análisis", pf_required=False)
+    from bloque_kpi_historico import render_bloque_kpi
+    render_bloque_kpi(st.session_state)
+
 if bloque_trabajo == "reporte_tecnico":
-    _render_block_header("06", "Reporte Técnico",
+    _render_block_header("07", "Reporte Técnico",
         "Consolida KPIs de SCADA, EMF y simulación. Exporta informe para entrega al CNDC.",
         "Salida", pf_required=False)
     _v4_section_head("Configuración del Reporte", icon="sliders")
