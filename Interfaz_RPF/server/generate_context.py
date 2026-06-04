@@ -294,6 +294,104 @@ def sec_unidades_problematicas(conn) -> str:
     return "\n".join(lines)
 
 
+def sec_patrones_diagnostico(conn) -> str:
+    """Análisis automático de patrones para guiar al LLM en diagnósticos."""
+
+    # Unidades con droop calculado muy diferente al declarado
+    droop_rows = query(conn, """
+        SELECT unidad,
+            ROUND(AVG(droop_inf_pct)::numeric, 2)  AS droop_inf,
+            ROUND(AVG(droop_calc_pct)::numeric, 2) AS droop_calc,
+            ROUND(AVG(droop_calc_pct - droop_inf_pct)::numeric, 2) AS desviacion,
+            COUNT(*) AS n
+        FROM rpf_kpi_cobee
+        WHERE droop_inf_pct IS NOT NULL AND droop_calc_pct IS NOT NULL
+        GROUP BY unidad
+        HAVING ABS(AVG(droop_calc_pct - droop_inf_pct)) > 15
+        ORDER BY ABS(AVG(droop_calc_pct - droop_inf_pct)) DESC
+    """)
+
+    # Eventos con peores nadires de frecuencia
+    worst_freq = query(conn, """
+        SELECT semestre, evento, fecha_evento,
+            ROUND(MIN(f_min_hz)::numeric, 3) AS f_min,
+            COUNT(CASE WHEN aporta_rpf = 'No' THEN 1 END) AS unidades_no_aportaron,
+            COUNT(DISTINCT unidad) AS total_unidades
+        FROM rpf_kpi_cobee
+        GROUP BY semestre, evento, fecha_evento
+        ORDER BY MIN(f_min_hz)
+        LIMIT 5
+    """)
+
+    # Unidades con 100% cumplimiento
+    perfectas = query(conn, """
+        SELECT unidad, COUNT(*) AS eventos
+        FROM rpf_kpi_cobee
+        WHERE aporta_rpf IS NOT NULL
+        GROUP BY unidad
+        HAVING SUM(CASE WHEN aporta_rpf != 'Sí' THEN 1 ELSE 0 END) = 0
+        ORDER BY COUNT(*) DESC
+    """)
+
+    # Correlación: eventos con más no-cumplimiento
+    eventos_criticos = query(conn, """
+        SELECT semestre, evento,
+            COUNT(CASE WHEN aporta_rpf = 'No' THEN 1 END) AS n_no,
+            COUNT(DISTINCT unidad) AS total,
+            ROUND(100.0 * COUNT(CASE WHEN aporta_rpf = 'No' THEN 1 END)
+                / NULLIF(COUNT(DISTINCT unidad), 0), 1) AS pct_no
+        FROM rpf_kpi_cobee
+        WHERE aporta_rpf IS NOT NULL
+        GROUP BY semestre, evento
+        ORDER BY pct_no DESC
+        LIMIT 5
+    """)
+
+    lines = ["## Patrones y Diagnósticos Automáticos\n"]
+    lines.append("Esta sección identifica automáticamente patrones anómalos para facilitar el análisis.\n")
+
+    # Droop desviado
+    if droop_rows:
+        lines.append("### Unidades con Estatismo (Droop) Fuera de Rango\n")
+        lines.append("Unidades donde el droop calculado difiere >15% respecto al declarado — indica posible desajuste del gobernador.\n")
+        lines.append("| Unidad | Droop declarado [%] | Droop calculado [%] | Desviación [pp] | Eventos |")
+        lines.append("|--------|--------------------|--------------------|-----------------|---------|")
+        for r in droop_rows:
+            signo = "↑" if r['desviacion'] > 0 else "↓"
+            lines.append(f"| {r['unidad']} | {r['droop_inf']} | {r['droop_calc']} | {signo}{abs(r['desviacion'])} | {r['n']} |")
+        lines.append("")
+
+    # Eventos críticos
+    if eventos_criticos:
+        lines.append("### Eventos con Mayor Incumplimiento\n")
+        lines.append("| Semestre | Evento | Unidades sin RPF | Total | % Incumplimiento |")
+        lines.append("|----------|--------|-----------------|-------|-----------------|")
+        for r in eventos_criticos:
+            lines.append(f"| {r['semestre']} | {r['evento']} | {r['n_no']} | {r['total']} | {r['pct_no']}% |")
+        lines.append("")
+
+    # Peores nadires
+    if worst_freq:
+        lines.append("### Eventos con Frecuencia Mínima Más Baja (Mayor Riesgo)\n")
+        lines.append("| Semestre | Evento | Fecha | f_min [Hz] | Unidades sin RPF |")
+        lines.append("|----------|--------|-------|-----------|-----------------|")
+        for r in worst_freq:
+            lines.append(
+                f"| {r['semestre']} | {r['evento']} | {r['fecha_evento']} "
+                f"| **{r['f_min']}** | {r['unidades_no_aportaron']}/{r['total_unidades']} |"
+            )
+        lines.append("")
+
+    # Unidades perfectas
+    if perfectas:
+        names = ", ".join(f"**{r['unidad']}** ({r['eventos']} eventos)" for r in perfectas)
+        lines.append(f"### Unidades con 100% de Cumplimiento RPF\n")
+        lines.append(f"Estas unidades aportaron RPF en TODOS sus eventos analizados: {names}\n")
+
+    lines.append("\n---\n")
+    return "\n".join(lines)
+
+
 # ─── Entry point ─────────────────────────────────────────────────────────────
 
 def main():
@@ -314,6 +412,7 @@ def main():
             sec_por_semestre(conn),
             sec_por_unidad(conn),
             sec_unidades_problematicas(conn),
+            sec_patrones_diagnostico(conn),
             sec_por_evento(conn),
         ]
         content = "\n".join(sections)
