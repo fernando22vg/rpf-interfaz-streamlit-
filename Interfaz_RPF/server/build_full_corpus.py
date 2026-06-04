@@ -19,6 +19,7 @@ import os
 import sys
 import re
 import json
+import time
 import argparse
 import logging
 import tempfile
@@ -85,14 +86,24 @@ def upload_text(session, kb_id: str, filename: str, content: str) -> bool:
         with open(tmp, 'rb') as f:
             r = session.post(f'{WEBUI_URL}/api/v1/files/',
                              files={'file': (filename, f, 'text/markdown')},
-                             timeout=60)
+                             timeout=90)
         if r.status_code not in (200, 201):
             log.warning(f"Upload fallido para '{filename}': {r.text[:100]}")
             return False
         file_id = r.json().get('id')
-        r2 = session.post(f'{WEBUI_URL}/api/v1/knowledge/{kb_id}/file/add',
-                          json={'file_id': file_id}, timeout=30)
-        return r2.status_code in (200, 201)
+        # Reintentos con timeout amplio — Open WebUI tarda en crear embeddings
+        for attempt in range(3):
+            try:
+                r2 = session.post(f'{WEBUI_URL}/api/v1/knowledge/{kb_id}/file/add',
+                                  json={'file_id': file_id}, timeout=120)
+                if r2.status_code in (200, 201):
+                    return True
+                log.warning(f"  KB add intento {attempt+1} fallido ({r2.status_code}): {r2.text[:80]}")
+            except Exception as e:
+                log.warning(f"  KB add intento {attempt+1} timeout/error: {e}")
+            if attempt < 2:
+                time.sleep(5)
+        return False
     finally:
         os.unlink(tmp)
 
