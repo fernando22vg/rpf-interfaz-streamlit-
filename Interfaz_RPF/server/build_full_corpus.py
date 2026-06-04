@@ -98,6 +98,9 @@ def purge_all_files(session):
 
 
 def upload_text(session, kb_id: str, filename: str, content: str) -> bool:
+    # Añadir timestamp para evitar "Duplicate content detected" en re-subidas
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')
+    content = content + f'\n<!-- build:{stamp} -->\n'
     with tempfile.NamedTemporaryFile(mode='w', suffix='.md',
                                      encoding='utf-8', delete=False) as tf:
         tf.write(content)
