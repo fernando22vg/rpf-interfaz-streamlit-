@@ -167,7 +167,7 @@ def leer_fecha_evento(semestre, n_evento):
 #   FALLA 02.03.24 HRS 00.56
 #   FALLA 29-06-2025 HRS 14.46
 _PAT_FALLA = re.compile(
-    r'FALLA\s+(\d{2})[.\-](\d{2})[.\-](\d{2,4})\s+HRS\s*(\d{2})\.(\d{2})',
+    r'FALLA\s+(\d{2})[.\-](\d{2})[.\-](\d{2,4})\s+HRS\s*(?:\d\s+)?(\d{2})\.(\d{2})',
     re.IGNORECASE,
 )
 
@@ -261,10 +261,11 @@ def buscar_archivo_datos_cndc(carpeta_falla):
     """
     for fname in sorted(os.listdir(carpeta_falla)):
         lower = fname.lower()
-        if (
+        if fname.startswith('~$'):
+            continue
+        if lower.endswith(('.xlsx', '.xls')) and (
             lower.startswith('datos_')
-            and lower.endswith(('.xlsx', '.xls'))
-            and not fname.startswith('~$')
+            or lower.startswith('datos ')   # ej: "Datos 1sec..xlsx"
         ):
             return os.path.join(carpeta_falla, fname)
     return None
@@ -293,20 +294,33 @@ def leer_datos_formato_cndc_directo(excel_path):
 
     raw = pd.read_excel(excel_path, header=None, engine=engine)
 
-    if raw.shape[0] < 5:
+    if raw.shape[0] < 3:
         raise ValueError(
-            f"El archivo '{os.path.basename(excel_path)}' tiene menos de 5 filas; "
+            f"El archivo '{os.path.basename(excel_path)}' tiene menos de 3 filas; "
             "no parece estar en formato Datos_*."
         )
 
-    # ── Fila 2: códigos cortos ────────────────────────────────────────────────
-    short_codes = raw.iloc[2]
+    # ── Detectar variante de cabecera ─────────────────────────────────────────
+    # Variante A (4 filas): fila0=nombres largos, fila1=vacía, fila2=códigos, fila3=unidades, fila4+=datos
+    # Variante B (2 filas): fila0=códigos, fila1=unidades, fila2+=datos
+    def _row_has_mw(row_idx):
+        return any(str(v).strip().upper() == 'MW' for v in raw.iloc[row_idx])
 
-    # ── Fila 3: unidades (Hz / MW) ────────────────────────────────────────────
-    units_row = raw.iloc[3]
-
-    # ── Datos desde fila 4 ────────────────────────────────────────────────────
-    data = raw.iloc[4:].reset_index(drop=True)
+    if raw.shape[0] >= 4 and _row_has_mw(3):
+        # Variante A — formato clásico con 4 cabeceras
+        short_codes = raw.iloc[2]
+        units_row   = raw.iloc[3]
+        data        = raw.iloc[4:].reset_index(drop=True)
+    elif _row_has_mw(1):
+        # Variante B — formato compacto con 2 cabeceras
+        short_codes = raw.iloc[0]
+        units_row   = raw.iloc[1]
+        data        = raw.iloc[2:].reset_index(drop=True)
+    else:
+        raise ValueError(
+            "No se reconoció el formato del archivo. "
+            "No se encontró una fila con unidades 'MW'."
+        )
 
     # Detectar columna de frecuencia: la primera con unidad 'Hz'
     freq_col_idx = None
