@@ -11,6 +11,7 @@ DATA_DIR="${DATA_ROOT:-/home/joselozano/rpf-proyecto-datos}"
 N8N_URL="${N8N_WEBHOOK:-http://localhost:5678/webhook/rpf-new-file}"
 LOG_FILE="${SYNC_LOG:-/home/joselozano/rpf-ejecucion/logs/sync.log}"
 WATCHER_LOG="$(dirname "$LOG_FILE")/watcher.log"
+EXTRACT_KPI="${EXTRACT_KPI_SCRIPT:-/home/joselozano/rpf-ejecucion/extract_kpi.py}"
 
 mkdir -p "$(dirname "$WATCHER_LOG")"
 
@@ -35,7 +36,9 @@ while IFS= read -r FILEPATH; do
             echo "[$TS] Nuevo archivo: $FILEPATH" | tee -a "$WATCHER_LOG"
 
             # Clasificar tipo de archivo para n8n
-            if echo "$FILEPATH" | grep -q "01_INFO"; then
+            if echo "$FILEPATH" | grep -q "Resultados_COBEE"; then
+                TIPO="resultado"
+            elif echo "$FILEPATH" | grep -q "01_INFO"; then
                 TIPO="evento"
             elif echo "$FILEPATH" | grep -q "02_DATOS"; then
                 TIPO="scada"
@@ -57,6 +60,12 @@ while IFS= read -r FILEPATH; do
                  -d "$PAYLOAD" >> "$WATCHER_LOG" 2>&1
 
             echo "" >> "$WATCHER_LOG"
+
+            # Capa 2: si es tabla_resultados_COBEE, lanzar extractor en background
+            if [ "$FILENAME" = "tabla_resultados_COBEE.xlsx" ]; then
+                echo "[$(date -Iseconds)] [KPI] Lanzando extract_kpi.py para: $FILEPATH" >> "$WATCHER_LOG"
+                python3 "$EXTRACT_KPI" "$FILEPATH" >> "$WATCHER_LOG" 2>&1 &
+            fi
             ;;
     esac
 done
