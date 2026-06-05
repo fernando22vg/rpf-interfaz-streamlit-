@@ -132,9 +132,15 @@ def train(args):
 
     import torch
     from transformers import (AutoModelForCausalLM, AutoTokenizer,
-                              TrainingArguments, BitsAndBytesConfig)
+                              BitsAndBytesConfig)
     from peft import LoraConfig, get_peft_model, TaskType
-    from trl import SFTTrainer
+    import trl as _trl
+    trl_version = tuple(int(x) for x in _trl.__version__.split('.')[:2])
+    if trl_version >= (0, 9):
+        from trl import SFTTrainer, SFTConfig as TrainingArguments
+    else:
+        from trl import SFTTrainer
+        from transformers import TrainingArguments
 
     has_gpu, vram = check_gpu()
     use_4bit = has_gpu and not args.cpu_only
@@ -214,17 +220,18 @@ def train(args):
         batch_size = 1
         log.info("VRAM limitada — batch_size forzado a 1")
 
-    training_args = TrainingArguments(
+    # ── Argumentos de entrenamiento (SFTConfig en TRL>=0.9, TrainingArguments antes)
+    common_kwargs = dict(
         output_dir=str(LORA_OUT_DIR),
         num_train_epochs=args.epochs,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=1,
         gradient_accumulation_steps=GRAD_ACCUM,
-        gradient_checkpointing=True,          # ahorra VRAM significativamente
+        gradient_checkpointing=True,
         optim='paged_adamw_8bit' if use_4bit else 'adamw_torch',
         learning_rate=2e-4,
         lr_scheduler_type='cosine',
-        warmup_ratio=0.05,
+        warmup_steps=10,
         logging_steps=10,
         eval_strategy='epoch',
         save_strategy='epoch',
@@ -233,26 +240,34 @@ def train(args):
         bf16=False,
         max_grad_norm=0.3,
         report_to='none',
-        dataloader_pin_memory=False,          # evita OOM en sistemas con VRAM baja
+        dataloader_pin_memory=False,
     )
+    if trl_version >= (0, 9):
+        # SFTConfig acepta max_seq_length, packing y dataset_text_field
+        training_args = TrainingArguments(
+            **common_kwargs,
+            max_seq_length=MAX_SEQ_LEN,
+            packing=False,
+            dataset_text_field='text',
+        )
+    else:
+        from transformers import TrainingArguments as _TA
+        training_args = _TA(**common_kwargs)
 
     # ── Entrenamiento ──────────────────────────────────────────────────────────
-    # TRL >= 0.9 renombró 'tokenizer' → 'processing_class'
-    import trl as _trl
-    trl_version = tuple(int(x) for x in _trl.__version__.split('.')[:2])
     sft_kwargs = dict(
         model=model,
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
-        dataset_text_field='text',
-        max_seq_length=MAX_SEQ_LEN,
-        packing=False,
     )
     if trl_version >= (0, 9):
         sft_kwargs['processing_class'] = tokenizer
     else:
         sft_kwargs['tokenizer'] = tokenizer
+        sft_kwargs['dataset_text_field'] = 'text'
+        sft_kwargs['max_seq_length'] = MAX_SEQ_LEN
+        sft_kwargs['packing'] = False
 
     trainer = SFTTrainer(**sft_kwargs)
 
