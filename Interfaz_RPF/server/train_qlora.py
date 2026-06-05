@@ -43,8 +43,8 @@ LORA_DROPOUT   = 0.05
 TARGET_MODULES = ['q_proj', 'k_proj', 'v_proj', 'o_proj',
                   'gate_proj', 'up_proj', 'down_proj']
 
-MAX_SEQ_LEN    = 1024   # reducido para VRAM limitada
-GRAD_ACCUM     = 8      # simula batch más grande sin más VRAM
+MAX_SEQ_LEN    = 512    # reducido al mínimo para CPU con poca RAM
+GRAD_ACCUM     = 4      # reducido para CPU
 
 
 def check_gpu():
@@ -167,7 +167,7 @@ def train(args):
     if bnb_config:
         model_kwargs['quantization_config'] = bnb_config
     else:
-        model_kwargs['torch_dtype'] = torch.float32
+        model_kwargs['torch_dtype'] = torch.float16  # float16 usa la mitad de RAM que float32
 
     model = AutoModelForCausalLM.from_pretrained(HF_MODEL, **model_kwargs)
     model.config.use_cache = False  # necesario para entrenamiento con gradient checkpointing
@@ -237,9 +237,11 @@ def train(args):
     )
 
     # ── Entrenamiento ──────────────────────────────────────────────────────────
-    trainer = SFTTrainer(
+    # TRL >= 0.9 renombró 'tokenizer' → 'processing_class'
+    import trl as _trl
+    trl_version = tuple(int(x) for x in _trl.__version__.split('.')[:2])
+    sft_kwargs = dict(
         model=model,
-        tokenizer=tokenizer,
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
@@ -247,6 +249,12 @@ def train(args):
         max_seq_length=MAX_SEQ_LEN,
         packing=False,
     )
+    if trl_version >= (0, 9):
+        sft_kwargs['processing_class'] = tokenizer
+    else:
+        sft_kwargs['tokenizer'] = tokenizer
+
+    trainer = SFTTrainer(**sft_kwargs)
 
     log.info("=" * 50)
     log.info("INICIANDO ENTRENAMIENTO")
