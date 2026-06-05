@@ -410,6 +410,10 @@ def main():
         log.info("Limpiando archivos físicos anteriores (evita duplicados)...")
         purge_all_files(session)
 
+    # Directorio local para guardar corpus en disco (usado por expand_dataset.py)
+    corpus_cache = Path(__file__).parent / 'corpus_cache'
+    corpus_cache.mkdir(exist_ok=True)
+
     total_docs = 0
     for kb_key in kbs_to_build:
         cfg = KB_CONFIG[kb_key]
@@ -439,6 +443,8 @@ def main():
 
         ok = 0
         for fname, content in docs:
+            # Guardar en disco para fine-tuning (expand_dataset.py lo lee)
+            (corpus_cache / fname).write_text(content, encoding='utf-8')
             if upload_text(session, kb_id, fname, content):
                 ok += 1
                 log.info(f"  ✓ {fname} ({len(content)//1024} KB)")

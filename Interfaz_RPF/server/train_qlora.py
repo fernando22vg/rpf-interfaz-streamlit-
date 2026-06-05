@@ -87,7 +87,15 @@ def install_dependencies():
     if missing:
         log.info(f"Instalando dependencias faltantes: {missing}")
         import subprocess
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet'] + missing)
+        # Intentar primero sin --break-system-packages, luego con él
+        result = subprocess.run(
+            [sys.executable, '-m', 'pip', 'install', '--quiet'] + missing,
+            capture_output=True)
+        if result.returncode != 0:
+            log.info("pip normal falló, intentando con --break-system-packages...")
+            subprocess.check_call(
+                [sys.executable, '-m', 'pip', 'install', '--quiet',
+                 '--break-system-packages'] + missing)
         log.info("Dependencias instaladas OK")
 
 
