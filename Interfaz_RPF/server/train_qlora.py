@@ -246,7 +246,7 @@ def train(args):
         # SFTConfig acepta max_seq_length, packing y dataset_text_field
         training_args = TrainingArguments(
             **common_kwargs,
-            max_seq_length=MAX_SEQ_LEN,
+            max_length=MAX_SEQ_LEN,
             packing=False,
             dataset_text_field='text',
         )
