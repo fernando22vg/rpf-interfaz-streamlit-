@@ -31,9 +31,9 @@ RAIZ_DATOS = r"C:\Datos del CNDC\02_DATOS CNDC_RPF"
 # ══════════════════════════════════════════════════════════════
 
 
-# 
+# ─────────────────────────────────────────────────────────────
 # Utilidades
-# 
+# ─────────────────────────────────────────────────────────────
 def separador(titulo="", ancho=62):
     if titulo:
         print(f"\n{'='*ancho}")
@@ -58,9 +58,9 @@ def _float(val, default=0.0):
         return default
 
 
-# 
+# ─────────────────────────────────────────────────────────────
 # Selección interactiva (terminal)
-# 
+# ─────────────────────────────────────────────────────────────
 def elegir(opciones, titulo):
     print(f"\n{titulo}:")
     for i, op in enumerate(opciones, 1):
@@ -87,8 +87,9 @@ def seleccionar_semestre_evento():
         base_ev = os.path.join(RAIZ_RPF, semestre, "Analisis_todos_los_eventos")
     if not os.path.isdir(base_ev):
         raise RuntimeError(f"No existe: {base_ev}")
-    eventos = sorted(d for d in os.listdir(base_ev)
-                     if os.path.isdir(os.path.join(base_ev, d)))
+    eventos = sorted(
+        (d for d in os.listdir(base_ev) if os.path.isdir(os.path.join(base_ev, d))),
+        key=lambda d: int(mm.group(1)) if (mm := re.search(r"(\d+)$", d)) else -1)
     if not eventos:
         raise RuntimeError(f"No hay eventos en {base_ev}")
     evento = elegir(eventos, "Evento")
@@ -99,9 +100,9 @@ def seleccionar_semestre_evento():
     return semestre, evento, n_evento
 
 
-# 
+# ─────────────────────────────────────────────────────────────
 # Leer fecha/hora del evento desde Tabla_Eventos
-# 
+# ─────────────────────────────────────────────────────────────
 def _extraer_datetime_de_fila(fila):
     """
     Recorre las celdas de una fila buscando un valor que pueda ser
@@ -159,9 +160,9 @@ def leer_fecha_evento(semestre, n_evento):
     return None
 
 
-# 
+# ─────────────────────────────────────────────────────────────
 # Buscar carpeta FALLA en 02_DATOS CNDC_RPF
-# 
+# ─────────────────────────────────────────────────────────────
 # Soporta año de 2 o 4 dígitos, separador de fecha punto o guión, y espacio opcional entre HRS y la hora:
 #   FALLA 04.02.2025 HRS21.05
 #   FALLA 02.03.24 HRS 00.56
@@ -224,9 +225,9 @@ def buscar_carpeta_falla(fecha_evento):
     return best_path
 
 
-# 
+# ─────────────────────────────────────────────────────────────
 # Buscar y leer el archivo "1 seg"
-# 
+# ─────────────────────────────────────────────────────────────
 def buscar_archivo_1seg(carpeta_falla):
     patrones = [
         '1 seg.*.xls', '1 seg.*.xlsx',
@@ -250,9 +251,9 @@ def buscar_archivo_1seg(carpeta_falla):
     return None
 
 
-# 
+# ─────────────────────────────────────────────────────────────
 # Buscar y leer archivos "Datos_DDMMYY_HHMM_*.xlsx" (formato CNDC directo)
-# 
+# ─────────────────────────────────────────────────────────────
 def buscar_archivo_datos_cndc(carpeta_falla):
     """
     Busca archivos con el patrón Datos_*.xlsx en la carpeta de falla.
@@ -300,7 +301,7 @@ def leer_datos_formato_cndc_directo(excel_path):
             "no parece estar en formato Datos_*."
         )
 
-    #  Detectar variante de cabecera 
+    # ── Detectar variante de cabecera ─────────────────────────────────────────
     # Variante A (4 filas): fila0=nombres largos, fila1=vacía, fila2=códigos, fila3=unidades, fila4+=datos
     # Variante B (2 filas): fila0=códigos, fila1=unidades, fila2+=datos
     def _row_has_mw(row_idx):
@@ -331,13 +332,13 @@ def leer_datos_formato_cndc_directo(excel_path):
     if freq_col_idx is None:
         freq_col_idx = 2   # fallback: columna C
 
-    #  Tiempo: col 1 (HH:MM:SS como datetime.time o string) 
+    # ── Tiempo: col 1 (HH:MM:SS como datetime.time o string) ─────────────────
     tiempo = data.iloc[:, 1]
 
-    #  Frecuencia 
+    # ── Frecuencia ────────────────────────────────────────────────────────────
     frecuencia = data.iloc[:, freq_col_idx]
 
-    #  Potencias: todas las columnas con unidad 'MW' 
+    # ── Potencias: todas las columnas con unidad 'MW' ─────────────────────────
     unidades = {}
     for i in range(2, len(short_codes)):
         code = str(short_codes.iloc[i]).strip()
@@ -374,10 +375,12 @@ def leer_datos_1seg(excel_path):
     if raw.shape[0] < 3:
         raise ValueError("El archivo tiene menos de 3 filas")
 
+    # Detectar variante de cabecera (mismo criterio que leer_datos_formato_cndc_directo)
     def _row_has_mw(row_idx):
         return any(str(v).strip().upper() == 'MW' for v in raw.iloc[row_idx])
 
     if raw.shape[0] >= 4 and not _row_has_mw(1) and not _row_has_mw(0):
+        # Formato clásico: fila 2 = nombres, fila 3+ = datos
         header_row = raw.iloc[2]
         data       = raw.iloc[3:].reset_index(drop=True)
         tiempo     = data.iloc[:, 1]
@@ -391,6 +394,7 @@ def leer_datos_1seg(excel_path):
         frecuencia = data.iloc[:, 2]
         col_offset = 2
     else:
+        # Fallback: intentar fila 2 como cabecera
         header_row = raw.iloc[2]
         data       = raw.iloc[3:].reset_index(drop=True)
         tiempo     = data.iloc[:, 1]
@@ -406,9 +410,9 @@ def leer_datos_1seg(excel_path):
     return tiempo, frecuencia, unidades
 
 
-# 
+# ─────────────────────────────────────────────────────────────
 # Exportar CSVs
-# 
+# ─────────────────────────────────────────────────────────────
 def exportar_csvs(carpeta_sal, tiempo, frecuencia, unidades):
     os.makedirs(carpeta_sal, exist_ok=True)
 
@@ -435,9 +439,9 @@ def exportar_csvs(carpeta_sal, tiempo, frecuencia, unidades):
     return exportados
 
 
-# 
+# ─────────────────────────────────────────────────────────────
 # Main
-# 
+# ─────────────────────────────────────────────────────────────
 def main():
     separador("ORDENADOR DE DATOS DE EVENTO REAL")
 
@@ -471,12 +475,12 @@ def main():
     archivo_1seg = buscar_archivo_1seg(carpeta_falla)
 
     if archivo_1seg is not None:
-        #  Formato clásico "1 seg" 
+        # ── Formato clásico "1 seg" ───────────────────────────────────────────
         print(f"  Formato  : 1 seg (COBEE/CNDC clasico)")
         print(f"  Archivo  : {os.path.basename(archivo_1seg)}")
         tiempo, frecuencia, unidades = leer_datos_1seg(archivo_1seg)
     else:
-        #  Fallback: formato Datos_DDMMYY_HHMM_*.xlsx 
+        # ── Fallback: formato Datos_DDMMYY_HHMM_*.xlsx ───────────────────────
         print(f"  No se encontro archivo '1 seg.*' — buscando formato Datos_*...")
         archivo_datos = buscar_archivo_datos_cndc(carpeta_falla)
         if archivo_datos is None:

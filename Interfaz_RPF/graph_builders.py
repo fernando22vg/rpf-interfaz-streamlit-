@@ -407,6 +407,53 @@ def add_kpi_markers(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# MARCADOR DE POTENCIA MÁXIMA
+# ─────────────────────────────────────────────────────────────────────────────
+
+def add_pmax_marker(fig, tpmax_plot, p_pmax, f_at_pmax=None,
+                    pot_color=None, freq_color=None, marker_size=None):
+    """Añade marcador de potencia máxima (estrella dorada) sobre la figura.
+
+    Args:
+        fig: Figura go.Figure existente
+        tpmax_plot: Coordenada X ya convertida al sistema de ejes de la figura
+        p_pmax: Valor de potencia en el punto máximo (MW)
+        f_at_pmax: Valor de frecuencia en ese instante (Hz), opcional
+        pot_color: Color del marcador en eje Y2 (potencia)
+        freq_color: Color del marcador en eje Y1 (frecuencia)
+        marker_size: Tamaño base; la estrella usa marker_size+4
+
+    Returns:
+        Figura actualizada (go.Figure)
+    """
+    pot_color  = pot_color  or COLOR_PALETTE.get("power_real",  "#2ca02c")
+    freq_color = freq_color or COLOR_PALETTE.get("freq_real",   "#1f77b4")
+    x_size     = (marker_size or _get_config_value("marker_size", MARKER_SIZES["normal"])) + 2
+
+    # Y2 — potencia: X con el color de la traza al 65 % de opacidad
+    fig.add_trace(go.Scatter(
+        x=[tpmax_plot], y=[p_pmax], mode='markers+text',
+        marker=dict(symbol='x', size=x_size, color=pot_color,
+                    line=dict(color=pot_color, width=2.5)),
+        text=["  P_máx"], textposition="top right",
+        yaxis='y2', showlegend=False, hoverinfo='skip',
+        opacity=0.65,
+        name="P_máxima",
+    ))
+    # Y1 — frecuencia: círculo abierto en el instante de P_máx
+    if f_at_pmax is not None:
+        fig.add_trace(go.Scatter(
+            x=[tpmax_plot], y=[f_at_pmax], mode='markers',
+            marker=dict(symbol='circle-open', size=max(x_size, 9), color=freq_color,
+                        line=dict(color=freq_color, width=2)),
+            yaxis='y', showlegend=False, hoverinfo='skip',
+            opacity=0.65,
+            name="f @ P_máx",
+        ))
+    return fig
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # AÑADIR LÍNEAS DE REFERENCIA
 # ─────────────────────────────────────────────────────────────────────────────
 

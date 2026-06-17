@@ -1,6 +1,6 @@
 """
 sync_watcher.py
-───────────────
+
 Sincronización automática local → SharePoint para modo local (IS_CLOUD=False).
 
 Detecta cambios en RAIZ_RPF (create/modify) mediante watchdog y los sube
@@ -24,11 +24,11 @@ from pathlib import Path
 
 log = logging.getLogger("sync_watcher")
 
-# ── Extensiones que se sincronizan ────────────────────────────────────────────
+#  Extensiones que se sincronizan 
 SYNC_EXTS    = {".xlsx", ".xls", ".json", ".csv", ".txt", ".pdf"}
 IGNORE_PREFX = {"~$", ".tmp", ".lock", "._"}   # prefijos de archivo temporal
 
-# ── Importación opcional de watchdog ─────────────────────────────────────────
+#  Importación opcional de watchdog 
 try:
     from watchdog.observers import Observer
     from watchdog.events import FileSystemEventHandler as _FSHandler
@@ -38,9 +38,9 @@ except ImportError:
     _FSHandler  = object          # placeholder para herencia
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # Handler de eventos del sistema de archivos
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 
 class _SPSyncHandler(_FSHandler):
     """Recibe eventos de watchdog y los encola para upload con debounce."""
@@ -61,7 +61,7 @@ class _SPSyncHandler(_FSHandler):
         )
         self._flush_thread.start()
 
-    # ── Callbacks watchdog ────────────────────────────────────────────────────
+    #  Callbacks watchdog 
 
     def on_created(self, event):
         if not event.is_directory:
@@ -75,7 +75,7 @@ class _SPSyncHandler(_FSHandler):
         if not event.is_directory:
             self._schedule(event.dest_path)
 
-    # ── Lógica interna ────────────────────────────────────────────────────────
+    #  Lógica interna 
 
     def _should_sync(self, path: str) -> bool:
         p = Path(path)
@@ -125,9 +125,9 @@ class _SPSyncHandler(_FSHandler):
         return {**self._stats, "pending": pending}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # Clase pública: SharePointWatcher
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 
 class SharePointWatcher:
     """
@@ -199,9 +199,9 @@ class SharePointWatcher:
                 "last_ts": None, "pending": 0}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # Singleton por proceso (evita múltiples observers en reruns de Streamlit)
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 
 _watcher: SharePointWatcher | None = None
 _watcher_lock = threading.Lock()

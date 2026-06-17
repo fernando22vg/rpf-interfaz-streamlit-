@@ -19,10 +19,13 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
-# ── Rutas y familias ─────────────────────────────────────────────────────────
+import kpi_calc
+
+#  Rutas y familias 
 BASE_DATOS = Path(r"C:\Datos Cobee\03_DATOS GEN")
 
 CONFIG_PATH = Path(__file__).parent / "dsl_config.json"
@@ -74,7 +77,7 @@ _COL_L       = 12  # Fuente HMI
 _COL_R       = 18  # Valor Simulación (fórmula Excel: HMI>PES>MOD — SOLO LECTURA)
 _FILA_INI    = 6
 
-# ── Mapeo col A (nombre de sección Excel) → slot DSL de PowerFactory ─────────
+#  Mapeo col A (nombre de sección Excel) → slot DSL de PowerFactory 
 # Los slots corresponden exactamente a los de DSL_SLOTS en ExtractorDSL_Andritz.py
 _BLOQUE_A_SLOT: dict[str, str] = {
     # Gobernador
@@ -125,7 +128,7 @@ _BLOQUE_A_SLOT: dict[str, str] = {
     "Generador":                                 "GEN NOM",
     "Generación de señales":                     "Signal Gen",
 
-    # ── F2: Reivax RTVX 1000 ─────────────────────────────────────────────────
+    #  F2: Reivax RTVX 1000 
     "GOBERNADOR":                                "GOV",
     "Control velocidad":                         "GOV",
     "Control posición":                          "POS_SIMP",
@@ -193,7 +196,7 @@ def _slot_dsl(bloque_excel: str) -> str:
     return bloque_excel   # sin mapeo conocido: devolver tal cual
 
 
-# ── Helpers de archivos ───────────────────────────────────────────────────────
+#  Helpers de archivos 
 
 def _excel_path(sym: str) -> Path | None:
     """Devuelve la ruta al Excel comparativo o None si no existe."""
@@ -236,7 +239,7 @@ def _nombre_experimento(sym: str, sufijo: str = "") -> str:
     return f"{base}_{sufijo.strip()}" if sufijo.strip() else base
 
 
-# ── Configuración persistente (dsl_config.json) ───────────────────────────────
+#  Configuración persistente (dsl_config.json) 
 
 def _cargar_config() -> dict:
     if CONFIG_PATH.exists():
@@ -257,7 +260,7 @@ def _cfg_unidad(cfg: dict, sym: str) -> dict:
     return cfg.get(sym, {})
 
 
-# ── Lectura del Excel comparativo ─────────────────────────────────────────────
+#  Lectura del Excel comparativo 
 
 def _es_numero(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
@@ -343,7 +346,7 @@ def _leer_comparativo(sym: str) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
-# ── Generación del Excel de staging ──────────────────────────────────────────
+#  Generación del Excel de staging 
 
 def _generar_excel_experimento(sym: str, nombre: str,
                                 params_exp: list[dict]) -> Path:
@@ -404,6 +407,27 @@ def _generar_excel_experimento(sym: str, nombre: str,
     return ruta
 
 
+#  Lectura de curvas exportadas por DatosCurvas_v3.py 
+
+@st.cache_data(show_spinner=False)
+def _leer_curva_experimento(path: str, t_falla: float):
+    """Lee un xlsx exportado por DatosCurvas_v3.py (col. tiempo/frecuencia/potencia).
+
+    Misma lógica que _cached_sim_arrays de interfaz_analisis_RPF.py, usando
+    kpi_calc._robust_col_detect para no duplicar la heurística de columnas.
+    Devuelve (ts_aligned, fs_hz, ps_mw).
+    """
+    df = pd.read_excel(path, engine="calamine").dropna()
+    tc, fc, pc = kpi_calc._robust_col_detect(df)
+    ts_raw = pd.to_numeric(df[tc], errors="coerce").values
+    fs_raw = pd.to_numeric(df[fc], errors="coerce").ffill().values
+    fs_hz  = fs_raw * 50.0 if np.nanmax(fs_raw) < 2.0 else fs_raw
+    ps_mw  = pd.to_numeric(df[pc], errors="coerce").ffill().values
+    valid  = ~np.isnan(ts_raw)
+    ts_raw, fs_hz, ps_mw = ts_raw[valid], fs_hz[valid], ps_mw[valid]
+    return ts_raw - t_falla, fs_hz, ps_mw
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — Parámetros Actuales
 # ══════════════════════════════════════════════════════════════════════════════
@@ -417,7 +441,7 @@ def _tab_parametros_actuales():
 
     cfg = _cargar_config()
 
-    # ── Selector de familia ───────────────────────────────────────────────────
+    #  Selector de familia 
     familia_sel = st.radio(
         "Familia de gobernador",
         options=list(FAMILIAS.keys()),
@@ -428,7 +452,7 @@ def _tab_parametros_actuales():
 
     unidades_familia = [s for s, (f, _) in UNIDADES_DSL.items() if f == familia_sel]
 
-    # ── Selector de unidad ────────────────────────────────────────────────────
+    #  Selector de unidad 
     col_u, col_info = st.columns([3, 2])
     with col_u:
         sym = st.selectbox(
@@ -445,7 +469,7 @@ def _tab_parametros_actuales():
             st.error(f"⚠ Excel comparativo no encontrado para {sym}")
             return
 
-    # ── Cargar datos (invalida caché si el schema no coincide) ───────────────
+    #  Cargar datos (invalida caché si el schema no coincide) 
     cache_key = f"dsl_df_{sym}"
     cached = st.session_state.get(cache_key)
     if cached is None or "slot_dsl" not in cached.columns:
@@ -459,21 +483,27 @@ def _tab_parametros_actuales():
 
     cfg_u = _cfg_unidad(cfg, sym)
 
-    # ── Filtro por slot DSL (composite model) ────────────────────────────────
+    #  Filtro por slot DSL (composite model) 
     # Orden canónico de slots DSL (igual que en ExtractorDSL / CargadorDSL)
     # F1 Andritz + F2 Reivax — slots en orden canónico
     _ORDEN_SLOTS = [
         "GOV", "TUR", "AVR", "PPT", "ROT", "REN", "PSS4B", "Limiters",
         "ATUADOR_SIMP", "POS_SIMP", "CONDUTO_TURBINA", "VHZL",
         "UEL", "OEL", "MEL", "SCL", "DRIVE", "EXCITATRIZ", "PSS_COMP",
-        "Signal Gen", "GEN NOM",
+        "Signal Gen",
     ]
+    # GEN NOM son datos de referencia fijos — no se muestran ni modifican
+    df = df[df["slot_dsl"] != "GEN NOM"].copy()
+
     slots_presentes = [s for s in _ORDEN_SLOTS
                        if s in df["slot_dsl"].values]
     slots_otros = sorted(
         set(df["slot_dsl"].dropna().unique()) - set(_ORDEN_SLOTS)
     )
     slots_opciones = ["(todos)"] + slots_presentes + slots_otros
+
+    if st.session_state.get("dsl_bloque_filtro") not in slots_opciones:
+        st.session_state.pop("dsl_bloque_filtro", None)
 
     slot_filtro = st.pills(
         "Slot DSL (composite model)",
@@ -485,7 +515,7 @@ def _tab_parametros_actuales():
 
     st.divider()
 
-    # ── Tabla interactiva ─────────────────────────────────────────────────────
+    #  Tabla interactiva 
     st.markdown(
         f"**{len(df_vis)} parámetros** — "
         f"col R (Parámetros Actuales) es el punto de partida para experimentos."
@@ -537,7 +567,7 @@ def _tab_parametros_actuales():
         num_rows="fixed",
     )
 
-    # ── Guardar selección ─────────────────────────────────────────────────────
+    #  Guardar selección 
     n_rel = int(edited["Relevante"].sum())
     col_g1, col_g2 = st.columns([2, 1])
     with col_g1:
@@ -561,7 +591,7 @@ def _tab_parametros_actuales():
                     del st.session_state[k]
             st.success("Configuración guardada.")
 
-    # ── Carga completa a PowerFactory (todos los parámetros actuales) ─────────
+    #  Carga completa a PowerFactory (todos los parámetros actuales) 
     st.divider()
     st.markdown("#### Cargar parámetros actuales completos a PowerFactory")
     st.caption(
@@ -627,12 +657,47 @@ def _tab_experimentos():
     familia_sel = st.session_state.get("dsl_familia", "F1")
     unidades_familia = [s for s, (f, _) in UNIDADES_DSL.items() if f == familia_sel]
 
-    col_s, col_ev = st.columns(2)
+    col_s, col_sem, col_ev = st.columns(3)
     with col_s:
         sym = st.selectbox("Unidad", options=unidades_familia, key="dsl_sym_tab2")
+
+    _raiz_dsl = st.session_state.get("cfg_RAIZ") or r"C:\Datos del CNDC\01_INFO CNDC_RPF"
+    try:
+        semestres_dsl = sorted(d for d in os.listdir(_raiz_dsl)
+                               if os.path.isdir(os.path.join(_raiz_dsl, d)))
+    except OSError:
+        semestres_dsl = []
+
+    with col_sem:
+        semestre_sel = st.selectbox(
+            "Semestre", options=semestres_dsl or ["(no encontrado)"],
+            key="dsl_semestre_ref", disabled=not semestres_dsl,
+        )
+
+    eventos_dsl = []
+    if semestres_dsl:
+        _base_ev_dsl = os.path.join(_raiz_dsl, semestre_sel, "Análisis_todos_los_eventos")
+        try:
+            eventos_dsl = sorted(
+                (d for d in os.listdir(_base_ev_dsl) if os.path.isdir(os.path.join(_base_ev_dsl, d))),
+                key=lambda d: int(m.group(1)) if (m := re.search(r"(\d+)$", d)) else -1)
+        except OSError:
+            eventos_dsl = []
+
     with col_ev:
-        evento_ref = st.text_input("Evento de referencia", value="", key="dsl_ev_ref",
-                                   placeholder="ej. Evento_015")
+        evento_sel = st.selectbox(
+            "Evento", options=eventos_dsl or ["(no encontrado)"],
+            key="dsl_evento_ref", disabled=not eventos_dsl,
+        )
+
+    # Convención: "{semestre}::{evento}" — permite a la Tab 4 (Comparar Curvas)
+    # resolver de vuelta la carpeta E0/E1/SCADA del mismo evento.
+    evento_ref = f"{semestre_sel}::{evento_sel}" if semestres_dsl and eventos_dsl else ""
+    if not evento_ref:
+        st.warning(
+            f"No se encontraron semestres/eventos en `{_raiz_dsl}`. "
+            "Verifique la ruta RAIZ en Configuración (Bloque 07)."
+        )
 
     cfg_u = _cfg_unidad(cfg, sym)
     relevantes = {s: d for s, d in cfg_u.items()
@@ -660,7 +725,7 @@ def _tab_experimentos():
     df_base: pd.DataFrame = st.session_state[cache_key]
     base_vals = df_base.set_index("simbolo")["val_actual"].to_dict() if not df_base.empty else {}
 
-    # ── Tabla de variación ────────────────────────────────────────────────────
+    #  Tabla de variación 
     st.markdown("**Ajustar valores para el experimento:**")
 
     valores_exp: dict[str, float] = {}
@@ -701,7 +766,7 @@ def _tab_experimentos():
 
     st.divider()
 
-    # ── Nombre del experimento ────────────────────────────────────────────────
+    #  Nombre del experimento 
     nombre_auto = _nombre_experimento(sym)
     col_n, col_suf = st.columns([1, 2])
     with col_n:
@@ -717,7 +782,7 @@ def _tab_experimentos():
 
     notas = st.text_area("Notas / Observaciones", key="dsl_notas", height=60)
 
-    # ── Acciones ──────────────────────────────────────────────────────────────
+    #  Acciones 
     col_a, col_b, col_c = st.columns(3)
 
     params_lista = [
@@ -780,38 +845,114 @@ def _tab_experimentos():
             except Exception as e:
                 st.error(f"Error al registrar: {e}")
 
-    # ── Panel de KPIs (post-simulación) ──────────────────────────────────────
+    #  Vincular curva extraída + KPIs automáticos (post-simulación) 
     exp_id_actual = st.session_state.get(f"dsl_ultimo_exp_id_{sym}")
     if exp_id_actual and cargado_pf:
         st.divider()
-        st.markdown("#### Registrar KPIs de simulación")
+        st.markdown("#### Vincular curva extraída y calcular KPIs")
         st.caption(
-            "Tras simular en PowerFactory, ingresa los KPIs obtenidos "
-            "o cárgalos desde los archivos de resultados."
+            "Tras simular en PowerFactory, ejecute `DatosCurvas_v3.py` (rama "
+            "*Experimento DSL*) y luego calcule los KPIs aquí con la misma "
+            "metodología CNDC que usan los Bloques 3/4 para E0/E1."
         )
 
-        c1, c2, c3, c4 = st.columns(4)
-        kpis_in = {
-            "f_min":       c1.number_input("f_min (Hz)",      value=49.5,  step=0.01, key="kpi_fmin"),
-            "t_min":       c2.number_input("t_min (s)",       value=10.0,  step=0.1,  key="kpi_tmin"),
-            "rocof":       c3.number_input("ROCOF (Hz/s)",    value=-0.4,  step=0.01, key="kpi_rocof"),
-            "delta_p_pct": c4.number_input("ΔP%",            value=2.0,   step=0.1,  key="kpi_dpp"),
-        }
-        c5, c6, c7, c8 = st.columns(4)
-        kpis_in.update({
-            "delta_f":    c5.number_input("Δf (Hz)",         value=0.5,   step=0.01, key="kpi_df"),
-            "f_delta_t":  c6.number_input("f_Δt (Hz)",       value=49.7,  step=0.01, key="kpi_fdt"),
-            "delta_p":    c7.number_input("ΔP (MW)",         value=5.0,   step=0.1,  key="kpi_dp"),
-            "aporta_rpf": c8.checkbox("✅ Aporta RPF",                               key="kpi_rpf"),
-        })
+        _carpeta_default = str(_exp_dir(sym) / nombre_final / "Datos Curvas")
+        col_tf, col_dt = st.columns(2)
+        with col_tf:
+            t_falla_exp = st.number_input(
+                "t₀ falla [s]", min_value=0.0, max_value=300.0, step=0.5,
+                value=5.0, key="dsl_exp_t_falla",
+            )
+        with col_dt:
+            dt_exp = st.number_input(
+                "Δt evaluación [s]", min_value=1, max_value=120, step=1,
+                value=35, key="dsl_exp_dt",
+            )
 
-        if st.button("💾 Guardar KPIs", key="dsl_guardar_kpis", type="primary"):
-            try:
-                import dsl_db
-                dsl_db.registrar_kpis(exp_id_actual, kpis_in)
-                st.success(f"KPIs guardados para experimento {exp_id_actual}.")
-            except Exception as e:
-                st.error(f"Error al guardar KPIs: {e}")
+        carpeta_curvas = st.text_input(
+            "Carpeta `Datos Curvas` del experimento",
+            value=_carpeta_default, key="dsl_carpeta_curvas",
+        )
+
+        if st.button("📈 Calcular KPIs desde curva", key="dsl_calc_kpis", type="primary"):
+            if not evento_ref or "::" not in evento_ref:
+                st.error("Seleccione un Semestre/Evento válido arriba antes de calcular KPIs.")
+            elif not os.path.isdir(carpeta_curvas):
+                st.error(f"La carpeta `{carpeta_curvas}` no existe. Ejecute `DatosCurvas_v3.py` primero.")
+            else:
+                _archivo_unidad = os.path.join(carpeta_curvas, f"F.P. {sym}.xlsx")
+                if not os.path.isfile(_archivo_unidad):
+                    _archivo_unidad = os.path.join(carpeta_curvas, f"F.P. {sym}.ALL.xlsx")
+                if not os.path.isfile(_archivo_unidad):
+                    st.error(
+                        f"No se encontró `F.P. {sym}.xlsx` en `{carpeta_curvas}`. "
+                        "Verifique que ejecutó `DatosCurvas_v3.py` apuntando a este experimento."
+                    )
+                else:
+                    try:
+                        ts_e, fs_e, ps_e = _leer_curva_experimento(_archivo_unidad, t_falla_exp)
+
+                        _, _evento_part = evento_ref.split("::", 1)
+                        _m_ev = re.search(r"(\d+)", _evento_part)
+                        _n_ev = _m_ev.group(1) if _m_ev else "0"
+                        _ev_path = os.path.join(
+                            _raiz_dsl, semestre_sel, "Análisis_todos_los_eventos", _evento_part
+                        )
+                        _loc_gen_path = st.session_state.get("cfg_LOC_NAMES_GEN_PATH") or ""
+
+                        _pm = kpi_calc._load_pmax_cargado(_ev_path, _n_ev)
+                        _tm = kpi_calc._load_tech_map(_loc_gen_path)
+                        pm_v, tk, _ = kpi_calc._get_pmax_from_cargado(sym, _pm, _tm)
+                        rp_v = float(kpi_calc._get_rp_default(tk, _loc_gen_path)) / 100.0
+
+                        kpis_calc = kpi_calc._cndc_kpis(ts_e, fs_e, ps_e, pm_v, rp_v, dt_exp)
+                        rocof_calc = kpi_calc._calcular_rocof(ts_e, fs_e, 3.0)
+
+                        if kpis_calc is None:
+                            st.error("No se pudieron calcular KPIs — verifique el contenido de la curva.")
+                        else:
+                            kpis_out = {
+                                "f0": kpis_calc["f0"], "f_min": kpis_calc["f_min"],
+                                "t_min": kpis_calc["t_min"], "delta_f": kpis_calc["delta_f"],
+                                "f_delta_t": kpis_calc["f_dt"], "p0": kpis_calc["p0"],
+                                "p_max": pm_v, "p_delta_t": kpis_calc["p_dt"],
+                                "rocof": rocof_calc, "delta_p": kpis_calc["dp"],
+                                "delta_p_pct": kpis_calc["dp_pct"], "aporta_rpf": kpis_calc["aporta"],
+                            }
+                            import dsl_db
+                            dsl_db.registrar_kpis(exp_id_actual, kpis_out)
+                            dsl_db.vincular_curva(exp_id_actual, carpeta_curvas)
+                            st.success(
+                                f"KPIs calculados y guardados — f_min={kpis_calc['f_min']:.4f} Hz, "
+                                f"ROCOF={rocof_calc:.4f} Hz/s, ΔP%={kpis_calc['dp_pct']:.2f}%."
+                            )
+                    except Exception as e:
+                        st.error(f"Error al calcular KPIs desde la curva: {e}")
+
+        with st.expander("✏️ Editar KPIs manualmente (respaldo)"):
+            st.caption("Usar solo si la curva todavía no está disponible o la detección de columnas falla.")
+            c1, c2, c3, c4 = st.columns(4)
+            kpis_in = {
+                "f_min":       c1.number_input("f_min (Hz)",      value=49.5,  step=0.01, key="kpi_fmin"),
+                "t_min":       c2.number_input("t_min (s)",       value=10.0,  step=0.1,  key="kpi_tmin"),
+                "rocof":       c3.number_input("ROCOF (Hz/s)",    value=-0.4,  step=0.01, key="kpi_rocof"),
+                "delta_p_pct": c4.number_input("ΔP%",            value=2.0,   step=0.1,  key="kpi_dpp"),
+            }
+            c5, c6, c7, c8 = st.columns(4)
+            kpis_in.update({
+                "delta_f":    c5.number_input("Δf (Hz)",         value=0.5,   step=0.01, key="kpi_df"),
+                "f_delta_t":  c6.number_input("f_Δt (Hz)",       value=49.7,  step=0.01, key="kpi_fdt"),
+                "delta_p":    c7.number_input("ΔP (MW)",         value=5.0,   step=0.1,  key="kpi_dp"),
+                "aporta_rpf": c8.checkbox("✅ Aporta RPF",                               key="kpi_rpf"),
+            })
+
+            if st.button("💾 Guardar KPIs manuales", key="dsl_guardar_kpis"):
+                try:
+                    import dsl_db
+                    dsl_db.registrar_kpis(exp_id_actual, kpis_in)
+                    st.success(f"KPIs guardados para experimento {exp_id_actual}.")
+                except Exception as e:
+                    st.error(f"Error al guardar KPIs: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -825,7 +966,7 @@ def _tab_historial():
         "Exporta en formato listo para entrenamiento de modelos IA."
     )
 
-    # ── Filtros ───────────────────────────────────────────────────────────────
+    #  Filtros 
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     with col_f1:
         filtro_fam = st.selectbox("Familia", ["(todas)"] + list(FAMILIAS.keys()),
@@ -846,7 +987,7 @@ def _tab_historial():
         if st.button("🔄 Recargar", key="hist_reload", use_container_width=True):
             st.session_state.pop("hist_df_cache", None)
 
-    # ── Cargar experimentos ───────────────────────────────────────────────────
+    #  Cargar experimentos 
     if "hist_df_cache" not in st.session_state:
         try:
             import dsl_db
@@ -868,7 +1009,7 @@ def _tab_historial():
         st.info("No hay experimentos registrados con los filtros seleccionados.")
         return
 
-    # ── Tabla resumen ─────────────────────────────────────────────────────────
+    #  Tabla resumen 
     st.markdown(f"**{len(df_hist)} experimentos**")
 
     col_map = {
@@ -893,7 +1034,7 @@ def _tab_historial():
     if sel and sel.selection and sel.selection.get("rows"):
         ids_sel = [int(df_hist.iloc[i]["id"]) for i in sel.selection["rows"]]
 
-    # ── Comparación ───────────────────────────────────────────────────────────
+    #  Comparación 
     if len(ids_sel) >= 2:
         st.divider()
         st.markdown(f"#### Comparación de {len(ids_sel)} experimentos")
@@ -932,7 +1073,7 @@ def _tab_historial():
             st.markdown("**KPIs:**")
             st.dataframe(kpi_rows, use_container_width=True, hide_index=True)
 
-    # ── Exportar para IA ──────────────────────────────────────────────────────
+    #  Exportar para IA 
     st.divider()
     col_exp1, col_exp2 = st.columns(2)
     with col_exp1:
@@ -968,25 +1109,324 @@ def _tab_historial():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — Comparar Curvas
+# ══════════════════════════════════════════════════════════════════════════════
+# Replica la UI de la pestaña "Comparativa E0 vs E1" del Bloque 4 de
+# interfaz_analisis_RPF.py (mismo toggle de auto-escala, mismo expander de
+# Opciones de Ejes, mismo patrón de overlay con líneas discontinuas y misma
+# tabla de KPIs apilada) — solo cambian las fuentes de las curvas, que ahora
+# incluyen experimentos DSL además de E0/E1/SCADA/EMF.
+
+_COMP_PALETTE = [
+    ("#E45756", "#54A24B"),
+    ("#4C78A8", "#F58518"),
+    ("#B279A2", "#FF9DA6"),
+    ("#9D755D", "#BAB0AC"),
+    ("#72B7B2", "#EECA3B"),
+]
+
+
+def _df_safe_local(df):
+    """Convierte columnas object con tipos mixtos a str para evitar ArrowTypeError."""
+    out = df.copy()
+    for col in out.columns:
+        if out[col].dtype == object:
+            out[col] = out[col].astype(str)
+    return out
+
+
+def _tab_comparar_curvas():
+    st.caption(
+        "Superpone curvas de experimentos DSL contra las simulaciones E0 (CNDC) / "
+        "E1 (COBEE) y SCADA/EMF reales del mismo evento. Permite ver tanto la "
+        "unidad bajo prueba como el efecto sistémico (frecuencia SIN, otras unidades)."
+    )
+
+    familia_sel = st.session_state.get("dsl_familia", "F1")
+    unidades_familia = [s for s, (f, _) in UNIDADES_DSL.items() if f == familia_sel]
+
+    col_s, col_sem, col_ev = st.columns(3)
+    with col_s:
+        sym_ref = st.selectbox("Unidad de referencia", options=unidades_familia, key="dsl_comp_sym")
+
+    _raiz_dsl = st.session_state.get("cfg_RAIZ") or r"C:\Datos del CNDC\01_INFO CNDC_RPF"
+    try:
+        semestres_dsl = sorted(d for d in os.listdir(_raiz_dsl)
+                               if os.path.isdir(os.path.join(_raiz_dsl, d)))
+    except OSError:
+        semestres_dsl = []
+
+    with col_sem:
+        semestre_sel = st.selectbox(
+            "Semestre", options=semestres_dsl or ["(no encontrado)"],
+            key="dsl_comp_semestre", disabled=not semestres_dsl,
+        )
+
+    eventos_dsl = []
+    if semestres_dsl:
+        _base_ev_dsl = os.path.join(_raiz_dsl, semestre_sel, "Análisis_todos_los_eventos")
+        try:
+            eventos_dsl = sorted(
+                (d for d in os.listdir(_base_ev_dsl) if os.path.isdir(os.path.join(_base_ev_dsl, d))),
+                key=lambda d: int(m.group(1)) if (m := re.search(r"(\d+)$", d)) else -1)
+        except OSError:
+            eventos_dsl = []
+
+    with col_ev:
+        evento_sel = st.selectbox(
+            "Evento", options=eventos_dsl or ["(no encontrado)"],
+            key="dsl_comp_evento", disabled=not eventos_dsl,
+        )
+
+    if not (semestres_dsl and eventos_dsl):
+        st.warning(f"No se encontraron semestres/eventos en `{_raiz_dsl}`.")
+        return
+
+    m_ev = re.search(r"(\d+)", evento_sel)
+    n_ev = m_ev.group(1) if m_ev else "0"
+    ev_path = os.path.join(_raiz_dsl, semestre_sel, "Análisis_todos_los_eventos", evento_sel)
+    dir0 = os.path.join(ev_path, f"E{n_ev}.0", "Datos Curvas")
+    dir1 = os.path.join(ev_path, f"E{n_ev}.1", "Datos Curvas")
+    dir_scada = os.path.join(ev_path, "Graficas Registro 1SEG COBEE")
+    dir_emf = os.path.join(ev_path, "Resultados_COBEE")
+
+    if not os.path.isdir(dir0) and not os.path.isdir(dir1):
+        st.warning(
+            f"Faltan carpetas: `E{n_ev}.0/Datos Curvas`, `E{n_ev}.1/Datos Curvas`. "
+            "Ejecute `DatosCurvas_v3.py` en PowerFactory."
+        )
+
+    evento_ref_actual = f"{semestre_sel}::{evento_sel}"
+    df_exp = pd.DataFrame()
+    try:
+        import dsl_db
+        df_exp = dsl_db.listar_experimentos(sym=sym_ref)
+        if not df_exp.empty:
+            df_exp = df_exp[
+                (df_exp.get("evento_ref") == evento_ref_actual)
+                & df_exp.get("carpeta_curvas").notna()
+            ]
+    except Exception as e:
+        st.info(f"No se pudieron cargar experimentos vinculados: {e}")
+
+    #  Páginas disponibles (unión de archivos .xlsx en E0/E1/experimentos) 
+    paginas = set()
+    for d in (dir0, dir1):
+        if os.path.isdir(d):
+            paginas.update(os.path.splitext(f)[0] for f in os.listdir(d)
+                           if f.endswith(".xlsx") and not f.startswith("~$"))
+    for _, exp_row in df_exp.iterrows():
+        _carp = exp_row.get("carpeta_curvas")
+        if _carp and os.path.isdir(_carp):
+            paginas.update(os.path.splitext(f)[0] for f in os.listdir(_carp)
+                           if f.endswith(".xlsx") and not f.startswith("~$"))
+
+    if not paginas:
+        st.info("ℹ️ No hay páginas disponibles para esta unidad/evento todavía.")
+        return
+
+    paginas_ord = sorted(paginas)
+    pagina_default = f"F.P. {sym_ref}" if f"F.P. {sym_ref}" in paginas else paginas_ord[0]
+    pagina_sel = st.selectbox(
+        "Página/variable a comparar", options=paginas_ord,
+        index=paginas_ord.index(pagina_default), key="dsl_comp_pagina",
+        help="F. Barras SIN / F.slack = frecuencia de sistema; F.P. {unidad} = unidad específica.",
+    )
+
+    #  Fuentes candidatas para esa página 
+    fuentes = {}
+    f0 = os.path.join(dir0, f"{pagina_sel}.xlsx")
+    if os.path.isfile(f0):
+        fuentes[f"E{n_ev}.0 (CNDC)"] = f0
+    f1 = os.path.join(dir1, f"{pagina_sel}.xlsx")
+    if os.path.isfile(f1):
+        fuentes[f"E{n_ev}.1 (COBEE)"] = f1
+    f_sc = os.path.join(dir_scada, f"{pagina_sel}.xlsx")
+    if os.path.isfile(f_sc):
+        fuentes["SCADA 1SEG"] = f_sc
+    f_emf = os.path.join(dir_emf, f"{pagina_sel}.xlsx")
+    if os.path.isfile(f_emf):
+        fuentes["EMF"] = f_emf
+    for _, exp_row in df_exp.iterrows():
+        _carp = exp_row.get("carpeta_curvas")
+        if not _carp:
+            continue
+        _f = os.path.join(_carp, f"{pagina_sel}.xlsx")
+        if os.path.isfile(_f):
+            fuentes[f"EXP-{exp_row['id']} {exp_row['nombre']}"] = _f
+
+    if not fuentes:
+        st.warning(f"No hay archivos `{pagina_sel}.xlsx` disponibles para ninguna fuente.")
+        return
+
+    seleccion = st.multiselect(
+        "Curvas a superponer", options=list(fuentes.keys()),
+        default=list(fuentes.keys())[:2], key="dsl_comp_multisel",
+    )
+    if not seleccion:
+        st.info("ℹ️ Seleccione al menos una curva.")
+        return
+
+    #  Opciones de ejes (mismo patrón que Bloque 3/4 de interfaz_analisis_RPF.py) 
+    auto_sc = st.toggle("Auto-escala (Plotly)", value=True, key="dsl_comp_auto_toggle")
+    with st.expander("Opciones de Ejes"):
+        _cx1, _cx2, _cx3 = st.columns(3)
+        xmin_w = _cx1.number_input("X Min (s)", value=-10.0, key="dsl_comp_xmin")
+        xmax_w = _cx1.number_input("X Max (s)", value=100.0, key="dsl_comp_xmax")
+        y1min_w = _cx2.number_input("Y1 Min (Hz)", value=49.0, key="dsl_comp_y1min")
+        y1max_w = _cx2.number_input("Y1 Max (Hz)", value=51.0, key="dsl_comp_y1max")
+        y2min_w = _cx3.number_input("Y2 Min (MW)", value=0.0, key="dsl_comp_y2min")
+        y2max_w = _cx3.number_input("Y2 Max (MW)", value=200.0, key="dsl_comp_y2max")
+
+    col_tf, col_dt = st.columns(2)
+    with col_tf:
+        t_falla_comp = st.number_input(
+            "t₀ falla [s]", min_value=0.0, max_value=300.0, step=0.5,
+            value=5.0, key="dsl_comp_t_falla",
+        )
+    with col_dt:
+        dt_comp = st.number_input(
+            "Δt evaluación [s]", min_value=1, max_value=120, step=1,
+            value=35, key="dsl_comp_dt",
+        )
+
+    #  Cargar curvas seleccionadas 
+    curvas_cargadas = {}
+    for nombre_fuente in seleccion:
+        try:
+            curvas_cargadas[nombre_fuente] = _leer_curva_experimento(
+                fuentes[nombre_fuente], t_falla_comp
+            )
+        except Exception as e:
+            st.warning(f"No se pudo leer `{nombre_fuente}`: {e}")
+
+    if not curvas_cargadas:
+        st.warning("Ninguna curva pudo cargarse.")
+        return
+
+    import graph_builders
+    import plotly.graph_objects as go
+
+    nombres_cargadas = list(curvas_cargadas.keys())
+    ts0, fs0, ps0 = curvas_cargadas[nombres_cargadas[0]]
+    fig = graph_builders.create_dual_axis_timeseries(
+        t_data=ts0, freq_data=fs0, pot_data=ps0,
+        title=f"Comparativa — {pagina_sel}",
+        freq_label=f"Frecuencia {nombres_cargadas[0]} (Hz)",
+        pot_label=f"Potencia {nombres_cargadas[0]} (MW)",
+        freq_color=_COMP_PALETTE[0][0], pot_color=_COMP_PALETTE[0][1],
+        line_width=2, template="plotly_white", height=520,
+        legend_position="bottom_center",
+        x_range=None if auto_sc else [xmin_w, xmax_w],
+        y1_range=None if auto_sc else [y1min_w, y1max_w],
+        y2_range=None if auto_sc else [y2min_w, y2max_w],
+    )
+
+    for i, nombre_fuente in enumerate(nombres_cargadas[1:], start=1):
+        ts_ov, fs_ov, ps_ov = curvas_cargadas[nombre_fuente]
+        cf, cp = _COMP_PALETTE[i % len(_COMP_PALETTE)]
+        fig.add_trace(go.Scatter(
+            x=ts_ov, y=fs_ov, name=f"Frecuencia {nombre_fuente} (Hz)",
+            line=dict(color=cf, dash="dash", width=2), yaxis="y",
+        ))
+        fig.add_trace(go.Scatter(
+            x=ts_ov, y=ps_ov, name=f"Potencia {nombre_fuente} (MW)",
+            line=dict(color=cp, dash="dash", width=2), yaxis="y2",
+        ))
+
+    fig = graph_builders.add_reference_lines(
+        fig, t_fault_abs=0.0, t_eval_abs=dt_comp, show_hhmmss=False,
+        eval_line_label=f"t₀+Δt ({dt_comp} s)",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    #  Tabla de KPIs apilada (igual patrón que Bloque 4) 
+    st.markdown("**Comparativa de KPIs**")
+    kpi_rows = []
+    _pm_cache, _tm_cache = None, None
+    _loc_gen_path = st.session_state.get("cfg_LOC_NAMES_GEN_PATH") or ""
+
+    for nombre_fuente, (ts, fs, ps) in curvas_cargadas.items():
+        _kpi_guardado = None
+        if nombre_fuente.startswith("EXP-") and pagina_sel == f"F.P. {sym_ref}":
+            try:
+                _eid = int(nombre_fuente.split(" ", 1)[0].replace("EXP-", ""))
+                _row = df_exp[df_exp["id"] == _eid]
+                if not _row.empty and pd.notna(_row.iloc[0].get("f_min")):
+                    _kpi_guardado = _row.iloc[0]
+            except Exception:
+                pass
+
+        if _kpi_guardado is not None:
+            kpi_rows.append({
+                "Fuente": nombre_fuente,
+                "f_min": _kpi_guardado["f_min"], "t_min": _kpi_guardado["t_min"],
+                "delta_f": _kpi_guardado["delta_f"], "rocof": _kpi_guardado["rocof"],
+                "dp_pct": _kpi_guardado["delta_p_pct"], "aporta": _kpi_guardado["aporta_rpf"],
+            })
+        else:
+            if _pm_cache is None:
+                _pm_cache = kpi_calc._load_pmax_cargado(ev_path, n_ev)
+                _tm_cache = kpi_calc._load_tech_map(_loc_gen_path)
+            pm_v, tk, _ = kpi_calc._get_pmax_from_cargado(sym_ref, _pm_cache, _tm_cache)
+            rp_v = float(kpi_calc._get_rp_default(tk, _loc_gen_path)) / 100.0
+            _k = kpi_calc._cndc_kpis(ts, fs, ps, pm_v, rp_v, dt_comp)
+            _rocof = kpi_calc._calcular_rocof(ts, fs, 3.0)
+            if _k:
+                kpi_rows.append({
+                    "Fuente": nombre_fuente,
+                    "f_min": _k["f_min"], "t_min": _k["t_min"], "delta_f": _k["delta_f"],
+                    "rocof": _rocof, "dp_pct": _k["dp_pct"], "aporta": _k["aporta"],
+                })
+
+    if kpi_rows:
+        st.dataframe(_df_safe_local(pd.DataFrame(kpi_rows)), hide_index=True, use_container_width=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # PUNTO DE ENTRADA PRINCIPAL
 # ══════════════════════════════════════════════════════════════════════════════
+
+def _tab_bar(tab_defs: list, block_key: str) -> str:
+    """Barra de tabs con botones nativos — igual que _v4_tab_bar en el interfaz principal."""
+    sk  = f"v4_tab_{block_key}"
+    ids = [td["id"] for td in tab_defs]
+    if sk not in st.session_state or st.session_state[sk] not in ids:
+        st.session_state[sk] = ids[0]
+    active = st.session_state[sk]
+
+    cols = st.columns(len(tab_defs))
+    for td, col in zip(tab_defs, cols):
+        with col:
+            if st.button(
+                td["label"],
+                key=f"{sk}_{td['id']}",
+                type="primary" if td["id"] == active else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state[sk] = td["id"]
+                st.rerun()
+
+    return active
+
 
 def render_bloque_dsl(session_state=None):
     """Renderiza el bloque completo. Llamar desde interfaz_analisis_RPF.py."""
 
     st.markdown("### ⚙ Gestión de Parámetros DSL — Optimización")
 
-    tab1, tab2, tab3 = st.tabs([
-        "📋 Parámetros Actuales",
-        "🧪 Experimentos",
-        "📊 Historial / Comparación",
-    ])
+    active_tab = _tab_bar([
+        {"id": "params",  "label": "Parámetros Actuales"},
+        {"id": "exp",     "label": "Experimentos"},
+        {"id": "hist",    "label": "Historial / Comparación"},
+        {"id": "comp",    "label": "Comparar Curvas"},
+    ], "b02_dsl")
 
-    with tab1:
+    if active_tab == "params":
         _tab_parametros_actuales()
-
-    with tab2:
+    elif active_tab == "exp":
         _tab_experimentos()
-
-    with tab3:
+    elif active_tab == "hist":
         _tab_historial()
+    elif active_tab == "comp":
+        _tab_comparar_curvas()

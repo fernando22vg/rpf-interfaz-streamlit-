@@ -315,9 +315,10 @@ DEFAULT_GRAPH_CONFIG = {
     
     # Marcadores KPI
     "marker_size": MARKER_SIZES["normal"],
-    "show_initial": True,      # ○ f₀, P₀
-    "show_nadir": True,         # × f_min
-    "show_dt_eval": True,       # ● f_Δt, P_Δt
+    "show_initial": True,       # ○ f₀, P₀
+    "show_nadir": True,          # × f_min
+    "show_dt_eval": True,        # ● f_Δt, P_Δt
+    "show_pmax_marker": True,    # × P_máxima (post-nadir hasta t₀+Δt)
     
     # Líneas de referencia
     "show_deadband": True,

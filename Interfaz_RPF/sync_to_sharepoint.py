@@ -1,6 +1,6 @@
 """
 sync_to_sharepoint.py
-─────────────────────
+
 Sincroniza carpetas locales → SharePoint bajo demanda.
 
 Ejecución:
@@ -24,10 +24,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # CONFIGURACIÓN DE CARPETAS A SINCRONIZAR
 # Editar sync_config.json para personalizar. Este script lo crea si no existe.
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 _CONFIG_FILE    = Path(__file__).parent / "sync_config.json"
 _MANIFEST_FILE  = Path(__file__).parent / ".sync_manifest.json"  # registro de lo ya subido
 
@@ -74,9 +74,9 @@ DEFAULT_CONFIG = {
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # UTILIDADES
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 
 def _load_config() -> dict:
     """Carga sync_config.json. Lo crea con valores por defecto si no existe."""
@@ -165,9 +165,9 @@ def detectar_eliminados(carpeta: dict, sp_raiz_path: str,
     return eliminados
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # LÓGICA DE SINCRONIZACIÓN
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 
 def sync_carpeta(carpeta: dict, sp_raiz_path: str, ext_filter: list[str],
                  manifest: dict, dry_run: bool, forzar: bool,
@@ -195,7 +195,7 @@ def sync_carpeta(carpeta: dict, sp_raiz_path: str, ext_filter: list[str],
     print(f"     Local : {local_root}")
     print(f"     SP    : {sp_folder_raiz}")
 
-    # ── 1. Subir archivos nuevos o modificados ────────────────────────────────
+    #  1. Subir archivos nuevos o modificados 
     for archivo in sorted(archivos):
         clave  = str(archivo)
         mtime  = _mtime(archivo)
@@ -223,7 +223,7 @@ def sync_carpeta(carpeta: dict, sp_raiz_path: str, ext_filter: list[str],
             stats["errores"] += 1
             print(f"     ✘  {rel_str}  —  {exc}")
 
-    # ── 2. Detectar y borrar archivos eliminados localmente ───────────────────
+    #  2. Detectar y borrar archivos eliminados localmente 
     eliminados = detectar_eliminados(carpeta, sp_raiz_path, ext_filter, manifest)
 
     if eliminados:
@@ -270,7 +270,7 @@ def run(filtro_nombre: str | None = None, dry_run: bool = False,
         print("  [Sin --borrar: se avisa de eliminados pero NO se borran de SP]")
     print("=" * 62)
 
-    # ── Cargar configuración ──────────────────────────────────────────────────
+    #  Cargar configuración 
     cfg      = _load_config()
     ext_list = cfg.get("extensiones", DEFAULT_EXTENSIONS)
     carpetas = [c for c in cfg["carpetas"] if c.get("activa", False)]
@@ -286,7 +286,7 @@ def run(filtro_nombre: str | None = None, dry_run: bool = False,
         print("       Edite el archivo y ponga 'activa': true en las que quiera sincronizar.")
         sys.exit(0)
 
-    # ── Conectar a SharePoint ─────────────────────────────────────────────────
+    #  Conectar a SharePoint 
     print("\nConectando a SharePoint…")
     try:
         # Necesitamos st.secrets — si no hay Streamlit, leer secrets.toml directo
@@ -300,7 +300,7 @@ def run(filtro_nombre: str | None = None, dry_run: bool = False,
         print(f"  [ERROR] No se pudo conectar a SharePoint:\n  {exc}")
         sys.exit(1)
 
-    # ── Sincronizar cada carpeta ──────────────────────────────────────────────
+    #  Sincronizar cada carpeta 
     manifest   = _load_manifest()
     totales    = {"subidos": 0, "omitidos": 0, "borrados": 0, "errores": 0}
     t_inicio   = time.time()
@@ -313,7 +313,7 @@ def run(filtro_nombre: str | None = None, dry_run: bool = False,
     if not dry_run:
         _save_manifest(manifest)
 
-    # ── Resumen ───────────────────────────────────────────────────────────────
+    #  Resumen 
     elapsed = time.time() - t_inicio
     print("\n" + "=" * 62)
     print(f"  RESUMEN — {elapsed:.1f} s")
@@ -327,9 +327,9 @@ def run(filtro_nombre: str | None = None, dry_run: bool = False,
         sys.exit(1)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # INYECCIÓN DE SECRETS (para correr fuera de Streamlit)
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 
 def _inject_secrets():
     """
@@ -379,9 +379,9 @@ def _inject_secrets():
         sys.modules["streamlit"].secrets = _FakeSecrets(secrets)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # ENTRY POINT
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

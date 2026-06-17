@@ -1,0 +1,16 @@
+{
+  "RAIZ": "C:\\Datos del CNDC\\01_INFO CNDC_RPF",
+  "PF_BASE": "C:\\Program Files\\DIgSILENT\\PowerFactory 2025 SP2",
+  "LOC_GEN_PATH": "C:\\Datos del CNDC\\DATOS EXTRAIDOS DE DIGSILENT\\Designacion de loc_name\\loc_names_gen.xlsx",
+  "LOC_CAR_PATH": "C:\\Datos del CNDC\\DATOS EXTRAIDOS DE DIGSILENT\\Designacion de loc_name\\loc_name_cargas.xlsx",
+  "LOC_XFO_PATH": "C:\\Datos del CNDC\\DATOS EXTRAIDOS DE DIGSILENT\\Designacion de loc_name\\loc_names_xfo.xlsx",
+  "PF_PROYECTO": "PMP_NOV25_OCT29_31102025(1)",
+  "CASO_BASE": "CNDC",
+  "modo_disparo": "1",
+  "guardar_escenario": true,
+  "excluir_slack": [],
+  "xfo_pf": 1.0,
+  "excluir_eventos": [
+    {"semestre": "2024 sem2", "evento": "Evento 1"}
+  ]
+}

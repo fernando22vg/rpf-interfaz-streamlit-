@@ -47,21 +47,27 @@ if not IS_CLOUD:
 else:
     _WATCHER_MOD_OK = False
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # MÓDULOS DE GRÁFICAS ESTÁNDARES
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 from graph_config import DEFAULT_GRAPH_CONFIG
 from graph_builders import (
     create_dual_axis_timeseries,
     create_comparison_chart,
     add_kpi_markers,
+    add_pmax_marker,
     add_reference_lines,
     apply_standard_layout,
 )
+from kpi_calc import (
+    _load_tech_map, _load_pmax_cargado, _get_pmax, _get_pmax_from_cargado, _get_rp_default,
+    _rp_cfg_path, _load_rp_cfg, _cndc_kpis, _calcular_rocof,
+    _is_frequency_column, _robust_col_detect, _find_pmax_time,
+)
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # EXCEL STYLES (for formatted exports)
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -131,9 +137,9 @@ def _buscar_archivo_unidad(unit_name, file_list):
     return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # CONFIGURACIÓN DE PÁGINA
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 st.set_page_config(
     page_title="Analisis RPF",
     page_icon="⚡",  # fallback; el favicon SVG real se inyecta via components.html
@@ -141,9 +147,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # UI V4 — DESIGN TOKENS + HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 
 _V4_TOKENS = {
     "light": {
@@ -196,7 +202,7 @@ def _v4_t() -> dict:
     """Devuelve el dict de tokens del tema activo (light / dark)."""
     return _V4_TOKENS[st.session_state.get("ui_theme", "light")]
 
-# ── CSS template (plain str, no f-string) — avoids Python 3.12 C-tokenizer bug
+#  CSS template (plain str, no f-string) — avoids Python 3.12 C-tokenizer bug
 # that fires when inspect.getsource() processes f-strings with subscript exprs.
 # Use .format(**_v4_t()) at call time; {{ }} = literal CSS braces.
 _V4_CSS_TEMPLATE = (
@@ -680,7 +686,7 @@ def _load_event_header_info(ev_path: str, n_evento: str, raiz: str, semestre: st
     disparo_units: list  = []
     p_desc_mw: float     = 0.0
 
-    # ── Fuente primaria: datos_cargados_Ev{n}*.xlsx ──────────────────────────
+    #  Fuente primaria: datos_cargados_Ev{n}*.xlsx 
     # Preferir el archivo SIN sufijo _ajustado (tiene Resumen_Cargado con Disparo)
     _found_primary = False
     if ev_path and os.path.isdir(ev_path):
@@ -735,7 +741,12 @@ def _load_event_header_info(ev_path: str, n_evento: str, raiz: str, semestre: st
                                     pass
 
                     for _nm in _raw_names:
-                        _mw = _pgini_map.get(_nm.upper(), 0.0)
+                        # El nombre CNDC puede traer prefijo "CC" (ej. "CCERI30")
+                        # que no existe en loc_name PF (sym_ERI30 -> ERI30).
+                        _nm_clean = _re.sub(r"^CC([A-Z])", r"\1", _nm)
+                        _mw = _pgini_map.get(
+                            _nm.upper(), _pgini_map.get(_nm_clean.upper(), 0.0)
+                        )
                         disparo_units.append((_nm, _mw))
 
                 if fecha_str or disparo_units or p_desc_mw > 0:
@@ -744,7 +755,7 @@ def _load_event_header_info(ev_path: str, n_evento: str, raiz: str, semestre: st
             except Exception:
                 continue
 
-    # ── Fallback: condiciones_iniciales_*.xlsx + Tabla_Eventos_*.xlsx ────────
+    #  Fallback: condiciones_iniciales_*.xlsx + Tabla_Eventos_*.xlsx 
     if not _found_primary and ev_path and os.path.isdir(ev_path):
         _ci_files = sorted(
             _glob.glob(os.path.join(ev_path, "condiciones_iniciales_*.xlsx")),
@@ -830,7 +841,7 @@ def _build_topbar_html() -> str:
     ev         = st.session_state.get("evento_global")  or "—"
     ev_path    = st.session_state.get("ev_path_global") or ""
     n_ev       = st.session_state.get("n_evento_global") or ""
-    raiz       = st.session_state.get("cfg_RAIZ") or ""
+    raiz       = st.session_state.get("cfg_RAIZ", _cfg.get("RAIZ", ""))
     mode_cls   = "local" if not IS_CLOUD else "cloud"
     mode_label = "Local + PF" if not IS_CLOUD else "Nube"
     mode_icon  = _v4_icon("server", 13) if not IS_CLOUD else _v4_icon("cloud", 13)
@@ -1036,9 +1047,9 @@ def _render_unit_ctx_bar(available_units: list, loc_gen_path: str = ""):
         _cur = available_units[0]
         st.session_state.global_selected_unit = _cur
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # CONSTANTES GLOBALÉS
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 CARPETA_COBEE_EMF = "Resultados_COBEE" # Output folder for ExtractorResultadosCNDC.py
 CARPETA_DATOS_CURVAS = "Datos Curvas" # Output folder for DatosCurvas_v3.py
 CARPETA_COSTO_MARGINAL = "Costo Marginal STI" # Subcarpeta para archivos postot/td_
@@ -1048,16 +1059,13 @@ COBEE_UNITS_INTERES = {
     "ZON01", "TIQ01", "BOT01", "BOT02", "BOT03",
     "CUT01", "CUT02", "CUT03", "CUT04", "CUT05",
     "SRO01", "SRO02", "SAI01", "CHU01", "CHU02",
-    "HAR01", "HAR02", "CAH01", "CAH02", "HUA01",
+    "HAR01", "HAR02", "CAH01", "CAH02", "HUA01", "HUA02",
     "ANG03", "CRB01",
 }
 
-# Heurísticas para identificar columnas de frecuencia
-FREQ_MIN_HZ, FREQ_MAX_HZ, FREQ_RANGE_MAX_HZ = 45.0, 55.0, 10.0
-
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # CONFIGURACIÓN DE RUTAS — cargada desde archivo JSON (persistente)
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 _CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_rutas.json")
 
 _DEFAULTS_CONFIG = {
@@ -1090,7 +1098,7 @@ def _guardar_config(cfg: dict):
 
 _cfg = _cargar_config()
 
-# ── Config vars — desde session_state (actualizado por Bloque 07) o desde archivo ──
+#  Config vars — desde session_state (actualizado por Bloque 07) o desde archivo 
 # Siempre disponibles en todos los bloques aunque el Bloque 07 no esté activo.
 RAIZ               = st.session_state.get("cfg_RAIZ",               _cfg.get("RAIZ", ""))
 RAIZ_DATOS         = st.session_state.get("cfg_RAIZ_DATOS",         _cfg.get("RAIZ_DATOS", ""))
@@ -1099,14 +1107,15 @@ LOC_NAMES_GEN_PATH = st.session_state.get("cfg_LOC_NAMES_GEN_PATH", _cfg.get("LO
 LOC_CAR_PATH       = st.session_state.get("cfg_LOC_CAR_PATH",       _cfg.get("LOC_CAR_PATH", ""))
 LOC_XFO_PATH       = st.session_state.get("cfg_LOC_XFO_PATH",       _cfg.get("LOC_XFO_PATH", ""))
 PF_PROYECTO        = st.session_state.get("cfg_PF_PROYECTO",        _cfg.get("PF_PROYECTO", ""))
+PF_PROYECTO_2      = "PMP_NOV25_OCT29_31102025(2)"   # Proyecto fijo para Tab 4 — no configurable
 CASO_BASE          = st.session_state.get("cfg_CASO_BASE",          _cfg.get("CASO_BASE", ""))
 EXCLUIR_SLACK      = st.session_state.get("cfg_EXCLUIR_SLACK",      _cfg.get("EXCLUIR_SLACK", ""))
 XFO_PF             = float(st.session_state.get("cfg_XFO_PF",       _cfg.get("XFO_PF", 1.0)))
 show_hhmmss        = st.session_state.get("global_show_hhmmss",     False)
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # FUNCIONES DE ANÁLISIS RPF — compartidas entre bloques 2, 3 y 4
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 
 def _to_plotly_time(t_val, show_hhmmss):
     """Convierte segundos a Datetime para que Plotly los maneje correctamente."""
@@ -1182,102 +1191,8 @@ def _parse_to_seconds(series):
         
     return result.fillna(0.0)
 
-@st.cache_data
-def _load_tech_map(path):
-    """Carga P_max y Tecnología por loc_name desde Detalle_PF de loc_names_gen.xlsx."""
-    try:
-        df = pd.read_excel(path, sheet_name="Detalle_PF", engine="calamine")
-        # Columna de potencia
-        pot_cols = [c for c in df.columns if any(kw in c.lower() for kw in ['p_max', 'p nom', 'potencia'])]
-        col_p = pot_cols[0] if pot_cols else 'P nom. (MW)'
-        # Columna de tecnología
-        tec_cols = [c for c in df.columns if any(kw in str(c).lower() for kw in ['tecnol', 'tipo', 'technology', 'tech'])]
-        result = df.set_index('loc_name PF')[[col_p]].rename(columns={col_p: 'P_max (MW)'})
-        if tec_cols:
-            result['Tecnología'] = df.set_index('loc_name PF')[tec_cols[0]].values
-        else:
-            # Todas las unidades COBEE son hidroeléctricas — valor por defecto
-            result['Tecnología'] = 'Hidroeléctrica'
-        return result.to_dict('index')
-    except Exception:
-        return {}
-
-
-@st.cache_data
-def _load_pmax_cargado(ev_path, n_evento):
-    """Lee Pmax_MW de pgini_GEN_FINAL del Excel de cargado PF.
-
-    Siempre usa pgini_GEN_FINAL (la Pmax no cambia con el ajuste post-LF).
-    Devuelve dict {loc_name_pf: pmax_mw}.
-    """
-    import glob as _glob
-    candidates = sorted(
-        _glob.glob(os.path.join(ev_path, f"datos_cargados_Ev{n_evento}*.xlsx")),
-        key=os.path.getmtime, reverse=True,
-    )
-    for path in candidates:
-        try:
-            xl = pd.ExcelFile(path, engine="calamine")
-            # Pmax_MW es fija — leer siempre de pgini_GEN_FINAL (no ajustado)
-            if "pgini_GEN_FINAL" not in xl.sheet_names:
-                continue
-            df = xl.parse("pgini_GEN_FINAL")
-            if "loc_name PF" not in df.columns or "Pmax_MW" not in df.columns:
-                continue
-            df["loc_name PF"] = df["loc_name PF"].astype(str).str.strip()
-            result = {}
-            for _, row in df.iterrows():
-                try:
-                    v = float(row["Pmax_MW"])
-                    if v > 0:
-                        result[row["loc_name PF"]] = v
-                except (ValueError, TypeError):
-                    pass
-            if result:
-                return result
-        except Exception:
-            continue
-    return {}
-
-def _resolver_unit_key(name, lookup_dict):
-    """Versión optimizada de resolución de claves."""
-    # Normalizar nombre: quitar extensión y prefijo sym_
-    bare_name = os.path.splitext(name)[0].replace("sym_", "").upper()
-    
-    # Búsqueda rápida por set de candidatos
-    candidates = {bare_name, f"SYM_{bare_name}", bare_name.lower(), f"sym_{bare_name.lower()}"}
-    for c in candidates:
-        if c in lookup_dict: return c, True
-
-    # Búsqueda por sub-cadena (TIQ -> sym_TIQ01)
-    for key in lookup_dict:
-        k_norm = key.replace("sym_", "").replace("SYM_", "").upper()
-        if bare_name in k_norm or k_norm in bare_name:
-            return key, True
-            
-    # Fallback fuzzy (solo si lo anterior falla)
-    return bare_name, False
-
-
-def _get_pmax(tdat):
-    """Extrae P_max de un registro de tech_map."""
-    v = tdat.get('P_max (MW)', 100.0)
-    try:
-        v = float(v)
-        return v if v > 0 else 100.0
-    except Exception:
-        return 100.0
-
-
-def _get_pmax_from_cargado(unit_name, pmax_cargado, tech_map, fallback=100.0):
-    """Obtiene P_max buscando primero en datos_cargados y luego en tech_map."""
-    tk, found = _resolver_unit_key(unit_name, pmax_cargado)
-    if found:
-        return pmax_cargado[tk], tk, "datos_cargados"
-    tk, found = _resolver_unit_key(unit_name, tech_map)
-    if found:
-        return _get_pmax(tech_map[tk]), tk, "loc_names_gen"
-    return fallback, os.path.splitext(unit_name)[0], None
+_load_tech_map = st.cache_data(_load_tech_map)
+_load_pmax_cargado = st.cache_data(_load_pmax_cargado)
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -1296,11 +1211,21 @@ def get_event_units(ev_path=None, n_evento=None):
     def _is_valid_unit(name):
         name_up = name.upper()
         return not any(p.upper() in name_up for p in BLACKLIST)
-    
+
+    def _normalizar_codigo_unidad(name):
+        """Algunas centrales con una sola unidad exportan el codigo sin el
+        sufijo numerico (TIQ, SAI, ZON) mientras que el catalogo de interes
+        (COBEE_UNITS_INTERES) usa el codigo completo (TIQ01, SAI01, ZON01).
+        Sin esto, esas unidades quedan invisibles en todos los eventos."""
+        return name if re.search(r"\d+$", name) else f"{name}01"
+
     def _clean_list(d, p):
         files = _listar_archivos_cache(d, p)
         # Extraer nombre, quitar sym_ para unificar, y filtrar por blacklist
-        names = {os.path.splitext(f)[0].replace("sym_", "").replace("SYM_", "") for f in files}
+        names = {
+            _normalizar_codigo_unidad(os.path.splitext(f)[0].replace("sym_", "").replace("SYM_", ""))
+            for f in files
+        }
         return {n for n in names if _is_valid_unit(n)}
 
     def _clean_list_emf(d, p, min_power_mw=1.0):
@@ -1308,7 +1233,7 @@ def get_event_units(ev_path=None, n_evento=None):
         files = _listar_archivos_cache(d, p)
         valid = set()
         for f in files:
-            name = os.path.splitext(f)[0].replace("sym_", "").replace("SYM_", "")
+            name = _normalizar_codigo_unidad(os.path.splitext(f)[0].replace("sym_", "").replace("SYM_", ""))
             if not _is_valid_unit(name):
                 continue
             try:
@@ -1337,30 +1262,12 @@ def get_event_units(ev_path=None, n_evento=None):
 
 
 
-def _rp_cfg_path(loc_gen_path):
-    return os.path.join(os.path.dirname(loc_gen_path), "estatismo_config.json")
-
-def _load_rp_cfg(loc_gen_path):
-    p = _rp_cfg_path(loc_gen_path)
-    try:
-        if os.path.isfile(p):
-            with open(p, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return {}
-
 def _save_rp_cfg(loc_gen_path, loc_key, droop_pct):
     p = _rp_cfg_path(loc_gen_path)
     cfg = _load_rp_cfg(loc_gen_path)
     cfg[loc_key] = round(float(droop_pct), 3)
     with open(p, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
-
-def _get_rp_default(loc_key, loc_gen_path, fallback=10.0):
-    cfg = _load_rp_cfg(loc_gen_path)
-    v = cfg.get(loc_key, cfg.get(loc_key.replace("sym_", ""), None))
-    return float(v) if v is not None else fallback
 
 def _event_cfg_path(ev_path):
     return os.path.join(ev_path, "event_config.json")
@@ -1478,8 +1385,21 @@ def _save_event_cfg(ev_path, key, value):
     return True
 
 # Definición de categorías de configuración para sincronización inteligente
-_SHARED_EVENT_KEYS = {"y_f_min", "y_f_max", "scada_t0_s", "emf_t0_s", "t_sim_falla", "delta_t_cndc", "y_auto"}
-_UNIT_GLOBAL_KEYS  = {"y_p_min", "y_p_max"}
+# X-axis: compartido por bloque/evento (todas las unidades ven el mismo zoom temporal)
+# Frecuencia: compartida en todos los bloques para el mismo evento
+# Potencia: por-unidad por-bloque en el evento (las unidades son independientes)
+_SHARED_EVENT_KEYS = {
+    "y_f_min", "y_f_max", "scada_t0_s", "emf_t0_s", "t_sim_falla", "delta_t_cndc", "y_auto",
+    # Rangos X por bloque (compartido entre todas las unidades del mismo bloque+evento)
+    "scada_xmin", "scada_xmax",
+    "emf_xmin",   "emf_xmax",
+    "sim0_xmin",  "sim0_xmax",
+    "sim1_xmin",  "sim1_xmax",
+    "simc_xmin",  "simc_xmax",
+    "comp_xmin",  "comp_xmax",
+    "b5_xmin",    "b5_xmax",
+}
+_UNIT_GLOBAL_KEYS: set = set()  # Potencia ahora es por-unidad-por-bloque en evento config
 
 def _get_unit_cfg(ev_path, unit, key, default):
     """Recupera configuración. Tiempos y escalas de frecuencia son compartidos por evento."""
@@ -1509,83 +1429,260 @@ def _save_unit_cfg(ev_path, unit, key, value):
     return _save_event_cfg(ev_path, "units", cfg["units"])
 
 def _sync_rpf_y_axis(key_to_update, widget_key):
-    """Sincroniza los límites de ejes Y en todas las pestañas de análisis (Bloques 3, 4 y 5)."""
+    """Sincroniza frecuencia y auto-escala en todos los bloques. La potencia NO se sincroniza — es por-bloque."""
     if not st.session_state.get("global_selected_unit"): return
     val = st.session_state.get(widget_key)
     if val is None: return
-    
+
+    # Potencia es independiente por bloque — no se sincroniza globalmente
+    if key_to_update in ("y_p_min", "y_p_max"):
+        return
+
     st.session_state[f"b3_sync_{key_to_update}"] = val
 
-    # Lista completa de prefijos de widgets en todos los bloques para sincronización cruzada
-    # Bloque 3: sc (SCADA), emf (EMF), comp (Comparativa)
-    # Bloque 4: sim0 (E0), sim1 (E1), simc (Comparativa Simu)
-    # Bloque 5: val (Validación)
-    sync_prefixes = ["b2_sc", "b2_emf", "b3_comp", "b3_sim0", "b3_sim1", "b3_simc", "b4_val"]
-    for pfx in sync_prefixes:
-        target_key = f"{pfx}_{key_to_update}"
-        if target_key in st.session_state:
-            st.session_state[target_key] = val
+    # Sincronizar frecuencia y auto-escala entre todos los bloques
+    _freq_auto_prefixes = ["b2_sc", "b2_emf", "b3_comp", "b3_sim0", "b3_sim1", "b3_simc", "b4_val",
+                           "scada", "emf", "sim0", "sim1", "simc", "comp", "b5"]
+    for pfx in _freq_auto_prefixes:
+        for sfx in (f"_{key_to_update}", f"_fmin" if key_to_update == "y_f_min" else "",
+                    f"_fmax" if key_to_update == "y_f_max" else "",
+                    f"_auto" if key_to_update == "y_auto" else ""):
+            tk = f"{pfx}{sfx}" if sfx else None
+            if tk and tk in st.session_state:
+                st.session_state[tk] = val
 
     _save_unit_cfg(st.session_state.ev_path_global, st.session_state.global_selected_unit, key_to_update, val)
 
 def _sync_session_scale_config(ev_path, unit_name):
+    """Carga y sincroniza configuración de escala desde archivo. Potencia NO se sincroniza globalmente."""
     if not unit_name or not ev_path:
         return
 
-    # 1. Cargar compartidos (Prioridad Evento)
-    y_f_min = _get_unit_cfg(ev_path, unit_name, "y_f_min", 49.0)
-    y_f_max = _get_unit_cfg(ev_path, unit_name, "y_f_max", 51.0)
-    y_auto  = _get_unit_cfg(ev_path, unit_name, "y_auto", True)
+    # Compartidos por evento (frecuencia, tiempos, auto)
+    y_f_min  = _get_unit_cfg(ev_path, unit_name, "y_f_min",  49.0)
+    y_f_max  = _get_unit_cfg(ev_path, unit_name, "y_f_max",  51.0)
+    y_auto   = _get_unit_cfg(ev_path, unit_name, "y_auto",   True)
     t0_scada = _get_unit_cfg(ev_path, unit_name, "scada_t0_s", None)
-    t0_emf = _get_unit_cfg(ev_path, unit_name, "emf_t0_s", None)
-    t0_sim = _get_unit_cfg(ev_path, unit_name, "t_sim_falla", 5.0)
-    dt_cndc = _get_unit_cfg(ev_path, unit_name, "delta_t_cndc", 35)
+    t0_emf   = _get_unit_cfg(ev_path, unit_name, "emf_t0_s",  None)
+    t0_sim   = _get_unit_cfg(ev_path, unit_name, "t_sim_falla", 5.0)
+    dt_cndc  = _get_unit_cfg(ev_path, unit_name, "delta_t_cndc", 35)
 
-    # 2. Cargar específicos (Unidad)
-    y_p_min = _get_unit_cfg(ev_path, unit_name, "y_p_min", 0.0)
-    y_p_max = _get_unit_cfg(ev_path, unit_name, "y_p_max", 200.0)
-
-    # 3. Sincronizar Session State Global
+    # Sincronizar Session State (solo frecuencia y auto)
     st.session_state.b3_sync_y_f_min = float(y_f_min)
     st.session_state.b3_sync_y_f_max = float(y_f_max)
-    st.session_state.b3_sync_y_p_min = float(y_p_min)
-    st.session_state.b3_sync_y_p_max = float(y_p_max)
     st.session_state.b3_sync_y_auto  = bool(y_auto)
-    
-    # Sincronizar t0 en los widgets
+
+    # t0 y dt en widgets
     if t0_scada is not None: st.session_state.b2_sc_t_falla = float(t0_scada)
-    if t0_emf is not None: st.session_state.b2_emf_t_falla = float(t0_emf)
-    st.session_state.b3_t_falla = float(t0_sim)
-    st.session_state.b3_dt = int(dt_cndc)
+    if t0_emf   is not None: st.session_state.b2_emf_t_falla = float(t0_emf)
+    st.session_state.b3_t_falla      = float(t0_sim)
+    st.session_state.b3_dt           = int(dt_cndc)
     st.session_state.b4_delta_t_cndc = int(dt_cndc)
 
-    # 4. Actualizar llaves de widgets para todos los bloques
-    prefixes = ["b2_sc", "b2_emf", "b3_comp", "b3_sim0", "b3_sim1", "b3_simc", "b4_val"]
-    for pfx in prefixes:
+    # Propagar frecuencia y auto a todos los prefijos de widgets
+    _all_pfx = ["b2_sc", "b2_emf", "b3_comp", "b3_sim0", "b3_sim1", "b3_simc", "b4_val",
+                "scada", "emf", "sim0", "sim1", "simc", "comp", "b5"]
+    for pfx in _all_pfx:
         st.session_state[f"{pfx}_y_f_min"] = st.session_state.b3_sync_y_f_min
         st.session_state[f"{pfx}_y_f_max"] = st.session_state.b3_sync_y_f_max
-        st.session_state[f"{pfx}_y_p_min"] = st.session_state.b3_sync_y_p_min
-        st.session_state[f"{pfx}_y_p_max"] = st.session_state.b3_sync_y_p_max
-        st.session_state[f"{pfx}_y_auto"] = st.session_state.b3_sync_y_auto
-        # Unificar llaves de simulación
-        if f"{pfx}_y1min" in st.session_state: st.session_state[f"{pfx}_y1min"] = st.session_state.b3_sync_y_f_min
-        if f"{pfx}_y1max" in st.session_state: st.session_state[f"{pfx}_y1max"] = st.session_state.b3_sync_y_f_max
-        if f"{pfx}_y2min" in st.session_state: st.session_state[f"{pfx}_y2min"] = st.session_state.b3_sync_y_p_min
-        if f"{pfx}_y2max" in st.session_state: st.session_state[f"{pfx}_y2max"] = st.session_state.b3_sync_y_p_max
+        st.session_state[f"{pfx}_y_auto"]  = st.session_state.b3_sync_y_auto
+        st.session_state[f"{pfx}_fmin"]    = st.session_state.b3_sync_y_f_min
+        st.session_state[f"{pfx}_fmax"]    = st.session_state.b3_sync_y_f_max
+        st.session_state[f"{pfx}_auto"]    = st.session_state.b3_sync_y_auto
+        if f"{pfx}_y1min" in st.session_state: st.session_state[f"{pfx}_y1min"] = float(y_f_min)
+        if f"{pfx}_y1max" in st.session_state: st.session_state[f"{pfx}_y1max"] = float(y_f_max)
 
-    # 5. Sincronizar llaves de ejes X (específicos por tab pero persistentes)
-    st.session_state.b2_sc_xaxis_min = float(_get_unit_cfg(ev_path, unit_name, "b3_tab_scada_xmin", 0.0))
-    st.session_state.b2_sc_xaxis_max = float(_get_unit_cfg(ev_path, unit_name, "b3_tab_scada_xmax", 100.0))
-    st.session_state.b2_emf_xaxis_min = float(_get_unit_cfg(ev_path, unit_name, "b3_tab_emf_xmin", 0.0))
-    st.session_state.b2_emf_xaxis_max = float(_get_unit_cfg(ev_path, unit_name, "b3_tab_emf_xmax", 100.0))
-    st.session_state.b3_comp_xmin = float(_get_unit_cfg(ev_path, unit_name, "b3_tab_comp_xmin", -10.0))
-    st.session_state.b3_comp_xmax = float(_get_unit_cfg(ev_path, unit_name, "b3_tab_comp_xmax", 100.0))
-    st.session_state.b3_sim0_xmin = float(_get_unit_cfg(ev_path, unit_name, "sim0_xmin", 0.0))
-    st.session_state.b3_sim0_xmax = float(_get_unit_cfg(ev_path, unit_name, "sim0_xmax", 100.0))
-    st.session_state.b3_sim1_xmin = float(_get_unit_cfg(ev_path, unit_name, "sim1_xmin", 0.0))
-    st.session_state.b3_sim1_xmax = float(_get_unit_cfg(ev_path, unit_name, "sim1_xmax", 100.0))
-    st.session_state.b3_simc_xmin = float(_get_unit_cfg(ev_path, unit_name, "simcomp_xmin", -10.0))
-    st.session_state.b3_simc_xmax = float(_get_unit_cfg(ev_path, unit_name, "simcomp_xmax", 100.0))
+
+def _on_freq_range_change(widget_key):
+    """Obsoleto — mantenido por compatibilidad."""
+    pass
+
+
+def _sync_freq_input(widget_key, which):
+    """Sincroniza un number_input de frecuencia con b3_sync y propaga a todos los bloques."""
+    val = st.session_state.get(widget_key)
+    if val is None:
+        return
+    f = float(val)
+    if which == "min":
+        st.session_state["b3_sync_y_f_min"] = f
+        for _pfx in ("scada", "emf", "sim0", "sim1", "simc", "comp", "b5"):
+            _k = f"{_pfx}_fmin_inp"
+            if _k != widget_key:
+                st.session_state[_k] = f
+    else:
+        st.session_state["b3_sync_y_f_max"] = f
+        for _pfx in ("scada", "emf", "sim0", "sim1", "simc", "comp", "b5"):
+            _k = f"{_pfx}_fmax_inp"
+            if _k != widget_key:
+                st.session_state[_k] = f
+
+
+def _compute_auto_p_range(traces, x_min, x_max, pad_pct=0.10, min_pad=5.0):
+    """Rango Y2 ajustado a los datos de potencia visibles en [x_min, x_max].
+
+    traces: iterable de (t_arr, p_arr).
+    Retorna [p_lo, p_hi] o None si no hay datos finitos en la ventana.
+    """
+    all_p = []
+    for t_arr, p_arr in traces:
+        t_a = np.asarray(t_arr, dtype=float).ravel()
+        p_a = np.asarray(p_arr, dtype=float).ravel()
+        n = min(len(t_a), len(p_a))
+        if n == 0:
+            continue
+        mask = (t_a[:n] >= x_min) & (t_a[:n] <= x_max) & np.isfinite(p_a[:n])
+        if mask.any():
+            all_p.append(p_a[:n][mask])
+    if not all_p:
+        return None
+    vals = np.concatenate(all_p)
+    lo, hi = float(vals.min()), float(vals.max())
+    pad = max((hi - lo) * pad_pct, min_pad)
+    return [max(0.0, lo - pad), hi + pad]
+
+
+def _cb_p_auto_changed(block_key, ev_path, sel_unit):
+    """Persiste el estado del toggle auto-escala al cambiar."""
+    _save_unit_cfg(ev_path, sel_unit, f"{block_key}_p_auto",
+                   bool(st.session_state.get(f"{block_key}_p_auto", True)))
+
+
+def _cb_p_inp_changed(ev_path, sel_unit, cfg_key, widget_key):
+    """Persiste P mín/P máx al JSON de config cada vez que el usuario cambia el valor."""
+    val = st.session_state.get(widget_key)
+    if val is not None:
+        _save_unit_cfg(ev_path, sel_unit, cfg_key, float(val))
+
+
+def _render_axis_controls(block_key, ev_path, sel_unit, x_def_min, x_def_max,
+                           p_def_max=200.0, traces=None,
+                           auto_col=None, popover_col=None):
+    """
+    Controles de escala con entradas numéricas en columna izquierda, gráfico en columna derecha.
+
+    Crea internamente st.columns([1, 3]) y devuelve la columna derecha para el gráfico.
+
+    Persistencia:
+    - Eje X     : nivel evento/bloque — compartido para TODAS las unidades del bloque.
+    - Frecuencia: nivel evento global — compartida entre TODOS los bloques.
+    - Potencia  : nivel unidad/bloque en evento — independiente por unidad.
+
+    traces: list of (t_arr, p_arr) para auto-escala de potencia.
+
+    Retorna: (x_min, x_max, f_min, f_max, p_min, p_max, auto_p, chart_col)
+    """
+    _k = block_key
+
+    # Detectar cambio de unidad: si la unidad es distinta a la del render anterior,
+    # limpiar las claves de session state de P para este bloque, para que los widgets
+    # carguen los valores desde el config JSON de la nueva unidad (no del anterior).
+    _last_unit_key = f"{_k}_last_unit"
+    if st.session_state.get(_last_unit_key) != sel_unit:
+        for _sk in (f"{_k}_p_auto", f"{_k}_pmin_inp", f"{_k}_pmax_inp"):
+            st.session_state.pop(_sk, None)
+        st.session_state[_last_unit_key] = sel_unit
+
+    # Valores persistidos en config
+    _x_min = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_xmin", x_def_min))
+    _x_max = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_xmax", x_def_max))
+    _f_min = float(st.session_state.get("b3_sync_y_f_min", 49.0))
+    _f_max = float(st.session_state.get("b3_sync_y_f_max", 51.0))
+    _p_min = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_p_min", 0.0))
+    _p_max = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_p_max", p_def_max))
+    # _p_auto: leer desde config (persiste entre unidades/bloques);
+    # session state toma precedencia si el widget ya fue renderizado en esta sesión.
+    _p_auto_cfg = bool(_get_unit_cfg(ev_path, sel_unit, f"{_k}_p_auto", True))
+    _p_auto = bool(st.session_state.get(f"{_k}_p_auto", _p_auto_cfg))
+
+    # Valores actuales de X desde widgets (para auto-P reactivo)
+    _cur_xmin = float(st.session_state.get(f"{_k}_xmin_inp", _x_min))
+    _cur_xmax = float(st.session_state.get(f"{_k}_xmax_inp", _x_max))
+
+    # Auto-P: calcular rango y pre-cargar en session state antes de renderizar inputs
+    if _p_auto and traces:
+        _ap = _compute_auto_p_range(traces, _cur_xmin, _cur_xmax)
+        if _ap:
+            st.session_state[f"{_k}_pmin_inp"] = round(_ap[0], 2)
+            st.session_state[f"{_k}_pmax_inp"] = round(_ap[1], 2)
+            _p_min, _p_max = _ap[0], _ap[1]
+
+    _p_min = float(st.session_state.get(f"{_k}_pmin_inp", _p_min))
+    _p_max = float(st.session_state.get(f"{_k}_pmax_inp", _p_max))
+
+    # Columnas: [controles | gráfico]
+    _ctrl_col, _chart_col = st.columns([1, 3])
+
+    with _ctrl_col:
+        st.markdown("**📐 Controles de ejes**")
+
+        auto_w = st.toggle(
+            "Auto-escala Potencia", value=_p_auto, key=f"{_k}_p_auto",
+            help="Calcula el rango de potencia a partir de los datos visibles en la ventana X",
+            on_change=_cb_p_auto_changed, args=(_k, ev_path, sel_unit),
+        )
+
+        # ── Eje X ────────────────────────────────────────────────────
+        st.caption("**Eje X (s)** — compartido para el bloque")
+        _cx1, _cx2 = st.columns(2)
+        x_min_w = _cx1.number_input(
+            "X Mín", value=_x_min, step=1.0, format="%.1f", key=f"{_k}_xmin_inp",
+        )
+        x_max_w = _cx2.number_input(
+            "X Máx", value=_x_max, step=1.0, format="%.1f", key=f"{_k}_xmax_inp",
+        )
+
+        # ── Frecuencia ───────────────────────────────────────────────
+        st.caption("**Frecuencia (Hz)** — compartida entre bloques")
+        _cf1, _cf2 = st.columns(2)
+        f_min_w = _cf1.number_input(
+            "F Mín", value=_f_min, step=0.05, format="%.3f", key=f"{_k}_fmin_inp",
+            on_change=_sync_freq_input, args=(f"{_k}_fmin_inp", "min"),
+        )
+        f_max_w = _cf2.number_input(
+            "F Máx", value=_f_max, step=0.05, format="%.3f", key=f"{_k}_fmax_inp",
+            on_change=_sync_freq_input, args=(f"{_k}_fmax_inp", "max"),
+        )
+
+        # ── Potencia (deshabilitada cuando auto) ─────────────────────
+        _p_caption = f"**Potencia (MW)** — {sel_unit or 'unidad'}"
+        st.caption(_p_caption + (" *(auto)*" if (auto_w and traces) else ""))
+        _cp1, _cp2 = st.columns(2)
+        p_min_w = _cp1.number_input(
+            "P Mín", value=_p_min, step=0.5, format="%.2f",
+            key=f"{_k}_pmin_inp", disabled=bool(auto_w and traces),
+            on_change=_cb_p_inp_changed,
+            args=(ev_path, sel_unit, f"{_k}_p_min", f"{_k}_pmin_inp"),
+        )
+        p_max_w = _cp2.number_input(
+            "P Máx", value=_p_max, step=0.5, format="%.2f",
+            key=f"{_k}_pmax_inp", disabled=bool(auto_w and traces),
+            on_change=_cb_p_inp_changed,
+            args=(ev_path, sel_unit, f"{_k}_p_max", f"{_k}_pmax_inp"),
+        )
+
+        # ── Botones ──────────────────────────────────────────────────
+        st.divider()
+        _b1, _b2 = st.columns(2)
+        if _b1.button("🔄 Reset", key=f"{_k}_reset", use_container_width=True):
+            for _rk in (f"{_k}_xmin_inp", f"{_k}_xmax_inp",
+                        f"{_k}_fmin_inp", f"{_k}_fmax_inp",
+                        f"{_k}_pmin_inp", f"{_k}_pmax_inp"):
+                st.session_state.pop(_rk, None)
+            _save_unit_cfg(ev_path, sel_unit, f"{_k}_xmin", x_def_min)
+            _save_unit_cfg(ev_path, sel_unit, f"{_k}_xmax", x_def_max)
+            _save_unit_cfg(ev_path, sel_unit, f"{_k}_p_min", 0.0)
+            _save_unit_cfg(ev_path, sel_unit, f"{_k}_p_max", p_def_max)
+            st.rerun()
+        if _b2.button("💾 Guardar", key=f"{_k}_save", use_container_width=True):
+            _save_unit_cfg(ev_path, sel_unit, f"{_k}_xmin", x_min_w)
+            _save_unit_cfg(ev_path, sel_unit, f"{_k}_xmax", x_max_w)
+            _save_unit_cfg(ev_path, sel_unit, f"{_k}_p_min", p_min_w)
+            _save_unit_cfg(ev_path, sel_unit, f"{_k}_p_max", p_max_w)
+            st.toast(f"✅ Escala '{_k}' guardada")
+
+    return x_min_w, x_max_w, f_min_w, f_max_w, p_min_w, p_max_w, auto_w, _chart_col
+
 
 def _widget_pmax_rp(loc_key, loc_gen_path, extra_cols=None, key_prefix=""):
     """
@@ -1650,80 +1747,10 @@ def _detectar_inicio_falla(freq_array, umbral_dfdt=-0.02, ventana_suavizado=5):
     return int(candidatos[0] + 1) if len(candidatos) > 0 else 0
 
 
-def _cndc_kpis(t_arr, freq_arr, pot_arr, p_max, rp, delta_t, f_nom=50.0):
-    """KPIs según metodología oficial CNDC RPF.
-
-    Puntos: t₀ (f₀, P₀), nadir (f_min, t_min), t₀+Δt (f_Δt, P_Δt).
-    ΔP = P_Δt − P₀ ; ΔP% = ΔP/P_max×100 ; Aporta si ΔP% ≥ 1.5 %.
-    Droop = (Δf'/f_nom) / (ΔP/P_max) × 100, con banda muerta ±25 mHz.
-    """
-    if len(freq_arr) == 0 or p_max <= 0:
-        return None
-    # nanargmin: ignora NaN en t_arr (pueden quedar por filas no numéricas en la fuente)
-    _abs_t = np.abs(t_arr.astype(float))
-    if np.all(np.isnan(_abs_t)):
-        return None
-    idx_t0 = int(np.nanargmin(_abs_t))
-    f0 = float(freq_arr[idx_t0])
-    p0 = float(pot_arr[idx_t0])
-    mask_post = t_arr >= 0
-    if not np.any(mask_post):
-        return None
-    t_post, f_post = t_arr[mask_post], freq_arr[mask_post]
-    idx_nadir = np.argmin(f_post)
-    f_min = float(f_post[idx_nadir])
-    t_min = float(t_post[idx_nadir])
-    delta_f = f0 - f_min
-    # Paso 2: Puntos de evaluación (t0 + Delta_t)
-    idx_dt = np.argmin(np.abs(t_arr - delta_t))
-    f_dt = float(freq_arr[idx_dt])
-    p_dt = float(pot_arr[idx_dt])
-
-    # Paso 3: Cálculo del aporte
-    dp = p_dt - p0
-    dp_pct = (dp / p_max) * 100
-    r_inic = p_max - p0
-    r_inic_pct = (r_inic / p_max) * 100
-    
-    # Paso 4: Cálculo del Droop (Estatismo) con banda muerta de 25mHz
-    # f_ref = 49.975 si f0 > 49.975 (considera banda muerta)
-    f_ref = 49.975 if f0 > 49.975 else f0
-    df_prime = f_ref - f_dt
-    droop_calc = (df_prime / f_nom) / (dp / p_max) * 100 if abs(dp) > 0.001 else float('nan')
-
-    return {
-        'f0': round(f0, 4), 'p0': round(p0, 3),
-        'f_min': round(f_min, 4), 't_min': round(t_min, 1), 'delta_f': round(delta_f, 4),
-        'f_dt': round(f_dt, 4), 'p_dt': round(p_dt, 3), 't_dt': int(delta_t),
-        'r_inic': round(r_inic, 3), 'r_inic_pct': round(r_inic_pct, 2),
-        'dp': round(dp, 3), 'dp_pct': round(dp_pct, 2),
-        'droop_calc': round(droop_calc, 2) if droop_calc == droop_calc else '—',
-        'droop_nom': round(float(rp) * 100, 1),
-        'aporta': dp_pct >= 1.5,
-    }
-
-
-def _calcular_rocof(t_arr, f_arr, ventana_s=3.0):
-    """ROCOF [Hz/s] por regresión lineal en la ventana [0, ventana_s] post-falla."""
-    mask = (t_arr >= 0) & (t_arr <= ventana_s)
-    if np.sum(mask) < 2:
-        return float('nan')
-    t_w, f_w = t_arr[mask], f_arr[mask]
-    valid = np.isfinite(t_w) & np.isfinite(f_w)
-    t_w, f_w = t_w[valid], f_w[valid]
-    if len(t_w) < 2 or np.ptp(t_w) == 0:
-        return float('nan')
-    try:
-        coeffs = np.polyfit(t_w - t_w[0], f_w, 1)
-        return round(float(coeffs[0]), 4)
-    except np.linalg.LinAlgError:
-        return float('nan')
-
-
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # PIPELINES CACHEADOS — Evitan re-leer el mismo Excel en B3, B4 y B5
 # @st.cache_data hashea los argumentos: mismo fichero + mismos params → hit de caché
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 
 @st.cache_data(show_spinner=False)
 def _cached_sim_arrays(file_path: str, t_falla: float):
@@ -1745,7 +1772,8 @@ def _cached_sim_arrays(file_path: str, t_falla: float):
 @st.cache_data(show_spinner=False)
 def _cached_real_arrays(file_path: str, umbral_dfdt: float, ventana: int):
     """Lee, parsea y detecta la falla en datos reales (SCADA 1SEG o EMF).
-    Devuelve (tr_aligned, fr_arr, pr_arr, idx_falla).
+    Devuelve (tr_aligned, fr_arr, pr_arr, idx_falla, t_f_auto).
+    t_f_auto es el t₀ auto-detectado en segundos normalizados (desde inicio del archivo).
     Cacheado por (ruta, umbral, ventana): cualquier bloque que use el mismo fichero
     con los mismos parámetros de detección obtiene el resultado sin releer el disco."""
     df = pd.read_excel(file_path, engine="calamine").dropna()
@@ -1758,7 +1786,7 @@ def _cached_real_arrays(file_path: str, umbral_dfdt: float, ventana: int):
     pr_arr  = pd.to_numeric(df[_pr_col], errors="coerce").ffill().values
     idx_f   = _detectar_inicio_falla(fr_arr, umbral_dfdt, ventana)
     t_f     = float(tr_norm.iloc[idx_f])
-    return (tr_norm - t_f).values, fr_arr, pr_arr, idx_f
+    return (tr_norm - t_f).values, fr_arr, pr_arr, idx_f, t_f
 
 
 def _add_marker(fig, t, y, label, symbol, color, yaxis='y', size=12):
@@ -1855,23 +1883,43 @@ def _mostrar_tabla_cndc(kpi, p_max, delta_t, fuente="Valor", rocof=None):
     if rocof is not None and rocof == rocof:
         rows.append(("Paso 2: ROCOF (df/dt inicial) [Hz/s]", f"{rocof:.4f}"))
     _df_t = _df_safe(pd.DataFrame(rows, columns=["Parámetro", fuente]))
-    def _col_ap(row):
-        styles = [''] * len(row)
-        if row["Parámetro"] == "Aporta a la RPF":
-            for i in range(1, len(row)):
-                v = str(row.iloc[i])
-                styles[i] = 'background-color:#d4edda' if '✅' in v else 'background-color:#f8d7da'
-        return styles
-    # Tabla KPI: ancho fijo por column_config, centrada via CSS
-    st.dataframe(
-        _df_t.style.apply(_col_ap, axis=1),
-        use_container_width=False,
-        hide_index=True,
-        column_config={
-            "Parámetro": st.column_config.TextColumn("Parámetro", width=260),
-            fuente:       st.column_config.TextColumn(fuente,      width=110),
-        },
-    )
+
+    # Tabla KPI: HTML puro — sin scrollbars, centrada en la página
+    _th_style  = ("padding:7px 14px;text-align:left;font-weight:600;"
+                  "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
+    _td_p_style = ("padding:6px 14px;border-bottom:1px solid #e0e0e0;"
+                   "font-size:12px;white-space:nowrap;min-width:240px;")
+    _td_v_style = ("padding:6px 14px;border-bottom:1px solid #e0e0e0;"
+                   "font-size:12px;text-align:right;white-space:nowrap;min-width:100px;")
+
+    _html_rows = ""
+    for _, _row in _df_t.iterrows():
+        _param = str(_row["Parámetro"])
+        _val   = str(_row[fuente])
+        _row_bg = ""
+        if "Aporta" in _param:
+            _row_bg = "background-color:#d4edda;" if "✅" in _val else "background-color:#f8d7da;"
+        _html_rows += (
+            f'<tr style="{_row_bg}">'
+            f'<td style="{_td_p_style}{_row_bg}">{_param}</td>'
+            f'<td style="{_td_v_style}{_row_bg}">{_val}</td>'
+            f'</tr>'
+        )
+
+    _html_table = f"""
+    <div style="display:flex;justify-content:center;margin:8px 0 4px 0;">
+      <table style="border-collapse:collapse;border:1px solid #d0d0d0;border-radius:6px;overflow:hidden;">
+        <thead>
+          <tr>
+            <th style="{_th_style}">Parámetro</th>
+            <th style="{_th_style}text-align:right;">{fuente}</th>
+          </tr>
+        </thead>
+        <tbody>{_html_rows}</tbody>
+      </table>
+    </div>
+    """
+    st.markdown(_html_table, unsafe_allow_html=True)
 
     # Export button for KPI table
     if st.button(f"⬇️ Descargar KPIs a Excel ({fuente})", key=f"dl_kpis_{fuente.replace(' ', '_')}"):
@@ -1887,9 +1935,126 @@ def _mostrar_tabla_cndc(kpi, p_max, delta_t, fuente="Valor", rocof=None):
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+def _mostrar_tabla_cndc_duo(kpi1, p_max, delta_t1, fuente1, rocof=None,
+                             kpi2=None, delta_t2=None, fuente2=None):
+    """Tabla CNDC con evaluación en t₀+Δt y, opcionalmente, en P_máxima — ambas columnas lado a lado."""
+    if not kpi1:
+        st.warning("No se pudieron calcular KPIs.")
+        return
+
+    has_col2 = kpi2 is not None and delta_t2 is not None
+
+    def _vals_from(kpi, roc):
+        v = [
+            f"{p_max:.2f}",
+            f"{kpi['f0']:.4f}",
+            f"{kpi['p0']:.3f}",
+            f"{kpi['f_min']:.4f}",
+            f"{kpi['t_min']:.1f}",
+            f"{kpi['delta_f']:.4f}",
+            f"{kpi['f_dt']:.4f}",
+            f"{kpi['p_dt']:.3f}",
+            f"{kpi['r_inic']:.3f}",
+            f"{kpi['r_inic_pct']:.2f}",
+            f"{kpi['dp']:.3f}",
+            f"{kpi['dp_pct']:.2f}",
+            "✅ Sí" if kpi['aporta'] else "❌ No",
+            f"{kpi['droop_nom']:.1f}",
+            str(kpi['droop_calc']),
+        ]
+        if roc is not None and roc == roc:
+            v.append(f"{roc:.4f}")
+        return v
+
+    _LABELS = [
+        "Potencia Efectiva (P_max) [MW]",
+        "Paso 2: f₀ (Inicio evento) [Hz]",
+        "Paso 2: P₀ (Inicio evento) [MW]",
+        "Paso 2: f_min (Nadir) [Hz]",
+        "Paso 2: t_min (Nadir) [s]",
+        "Δf (f₀ − f_min) [Hz]",
+        "Paso 2: f_Δt [Hz]",
+        "Paso 2: P_Δt [MW]",
+        "Paso 3: Reserva Inicial (R_inic) [MW]",
+        "Paso 3: Reserva Inicial (R_inic) [%]",
+        "Paso 3: Potencia entregada (ΔP) [MW]",
+        "Paso 3: Aporte Porcentual (ΔP%) [%]",
+        "¿Aporta a la RPF? (ΔP% ≥ 1.5%)",
+        "Estatismo (Droop) Nominal [%]",
+        "Paso 4: Estatismo (Droop) Calculado [%]",
+    ]
+    if rocof is not None and rocof == rocof:
+        _LABELS.append("Paso 2: ROCOF (df/dt inicial) [Hz/s]")
+
+    vals1 = _vals_from(kpi1, rocof)
+    vals2 = _vals_from(kpi2, None) if has_col2 else []
+
+    _hdr1 = (f"{fuente1}"
+             f"<br><small style='font-weight:400;opacity:0.85;'>t₀+{int(delta_t1)}s</small>")
+    _hdr2 = (f"{fuente2}"
+             f"<br><small style='font-weight:400;opacity:0.85;'>t = {delta_t2:.1f}s</small>") if has_col2 else ""
+
+    _th_p = ("padding:7px 14px;text-align:left;font-weight:600;"
+             "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
+    _th_v = ("padding:7px 12px;text-align:right;font-weight:600;"
+             "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;min-width:120px;")
+    _td_p = "padding:6px 14px;border-bottom:1px solid #e0e0e0;font-size:12px;white-space:nowrap;"
+    _td_v = ("padding:6px 12px;border-bottom:1px solid #e0e0e0;"
+             "font-size:12px;text-align:right;white-space:nowrap;min-width:120px;")
+
+    hdr = (f'<th style="{_th_p}">Parámetro</th>'
+           f'<th style="{_th_v}">{_hdr1}</th>')
+    if has_col2:
+        hdr += f'<th style="{_th_v}">{_hdr2}</th>'
+
+    body = ""
+    for i, lbl in enumerate(_LABELS):
+        v1 = vals1[i] if i < len(vals1) else "—"
+        v2 = vals2[i] if has_col2 and i < len(vals2) else "—"
+        is_aporta = "Aporta" in lbl
+        bg1 = bg2 = ""
+        if is_aporta:
+            bg1 = "background:#d4edda;color:#155724;" if "✅" in v1 else "background:#f8d7da;color:#721c24;"
+            if has_col2:
+                bg2 = "background:#d4edda;color:#155724;" if "✅" in v2 else "background:#f8d7da;color:#721c24;"
+        cells = (f'<td style="{_td_p}{bg1}">{lbl}</td>'
+                 f'<td style="{_td_v}{bg1}">{v1}</td>')
+        if has_col2:
+            cells += f'<td style="{_td_v}{bg2}">{v2}</td>'
+        body += f'<tr>{cells}</tr>'
+
+    html = (
+        '<div style="display:flex;justify-content:center;margin:8px 0 4px 0;">'
+        '<table style="border-collapse:collapse;border:1px solid #d0d0d0;border-radius:6px;overflow:hidden;">'
+        f'<thead><tr>{hdr}</tr></thead>'
+        f'<tbody>{body}</tbody>'
+        '</table></div>'
+    )
+    st.markdown(html, unsafe_allow_html=True)
+
+    _df_t = pd.DataFrame({"Parámetro": _LABELS, fuente1: vals1[:len(_LABELS)]})
+    if has_col2:
+        _v2_pad = (vals2 + ["—"] * len(_LABELS))[:len(_LABELS)]
+        _df_t[fuente2] = _v2_pad
+    _key = f"dl_kpis_{fuente1.replace(' ', '_')}"
+    if st.button(f"⬇️ Descargar KPIs a Excel ({fuente1})", key=_key):
+        excel_data = _apply_excel_formatting(
+            _df_t,
+            sheet_name=f"KPIs_{fuente1.replace(' ', '_')}",
+            kpi_col=fuente1,
+            kpi_ok_val="✅ Sí",
+            kpi_error_val="❌ No"
+        )
+        st.download_button(
+            f"Descargar {fuente1} KPIs", excel_data,
+            file_name=f"kpis_{fuente1.replace(' ', '_')}_Ev{st.session_state.n_evento_global}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+
+# 
 # INICIALIZAR SESSION STATE
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 if "global_selected_unit" not in st.session_state:
     st.session_state.global_selected_unit = None
 if "active_block" not in st.session_state:
@@ -1928,7 +2093,20 @@ if "pf_log_file" not in st.session_state:
     st.session_state.pf_log_file = None
 if "pf_saved_log" not in st.session_state:
     st.session_state.pf_saved_log = None
-# ── Tab 1: extracción CNDC ────────────────────────────────────────────────────
+#  Tab 4: PowerFactory proyecto (2) — estados independientes
+if "pf2_running" not in st.session_state:
+    st.session_state.pf2_running = False
+if "pf2_return_code" not in st.session_state:
+    st.session_state.pf2_return_code = None
+if "pf2_waiting_close" not in st.session_state:
+    st.session_state.pf2_waiting_close = False
+if "pf2_status_file" not in st.session_state:
+    st.session_state.pf2_status_file = None
+if "pf2_log_file" not in st.session_state:
+    st.session_state.pf2_log_file = None
+if "pf2_saved_log" not in st.session_state:
+    st.session_state.pf2_saved_log = None
+#  Tab 1: extracción CNDC
 if "ext_running" not in st.session_state:
     st.session_state.ext_running = False
 if "ext_status_file" not in st.session_state:
@@ -1939,7 +2117,7 @@ if "ext_log_file" not in st.session_state:
     st.session_state.ext_log_file = None
 if "ext_saved_log" not in st.session_state:
     st.session_state.ext_saved_log = None
-# ── Tab 1b: CondInicialesPF ───────────────────────────────────────────────────
+#  Tab 1b: CondInicialesPF 
 if "ci_running" not in st.session_state:
     st.session_state.ci_running = False
 if "ci_status_file" not in st.session_state:
@@ -1950,7 +2128,7 @@ if "ci_log_file" not in st.session_state:
     st.session_state.ci_log_file = None
 if "ci_saved_log" not in st.session_state:
     st.session_state.ci_saved_log = None
-# ── Bloque 0: DatsoGENBUSLNE (extracción modelo base) ────────────────────────
+#  Bloque 0: DatsoGENBUSLNE (extracción modelo base) 
 if "mod_running" not in st.session_state:
     st.session_state.mod_running = False
 if "mod_status_file" not in st.session_state:
@@ -1961,14 +2139,14 @@ if "mod_log_file" not in st.session_state:
     st.session_state.mod_log_file = None
 if "mod_saved_log" not in st.session_state:
     st.session_state.mod_saved_log = None
-# ── Bloque 0: scripts adicionales de modelo base ─────────────────────────────
+#  Bloque 0: scripts adicionales de modelo base 
 for _pfx in ("gen", "lne", "xfo", "sht", "car"):
     if f"{_pfx}_running"     not in st.session_state: st.session_state[f"{_pfx}_running"]     = False
     if f"{_pfx}_status_file" not in st.session_state: st.session_state[f"{_pfx}_status_file"] = None
     if f"{_pfx}_return_code" not in st.session_state: st.session_state[f"{_pfx}_return_code"] = None
     if f"{_pfx}_log_file"    not in st.session_state: st.session_state[f"{_pfx}_log_file"]    = None
     if f"{_pfx}_saved_log"   not in st.session_state: st.session_state[f"{_pfx}_saved_log"]   = None
-# ── Tab 2: OrdenadorDatosEvento (SCADA) ──────────────────────────────────────
+#  Tab 2: OrdenadorDatosEvento (SCADA) 
 if "scada_running" not in st.session_state:
     st.session_state.scada_running = False
 if "scada_status_file" not in st.session_state:
@@ -1979,7 +2157,7 @@ if "scada_log_file" not in st.session_state:
     st.session_state.scada_log_file = None
 if "scada_saved_log" not in st.session_state:
     st.session_state.scada_saved_log = None
-# ── Tab 3: ExtractorResultadosCNDC (EMF) ─────────────────────────────────────
+#  Tab 3: ExtractorResultadosCNDC (EMF) 
 if "emf_running" not in st.session_state:
     st.session_state.emf_running = False
 if "emf_status_file" not in st.session_state:
@@ -1990,7 +2168,7 @@ if "emf_log_file" not in st.session_state:
     st.session_state.emf_log_file = None
 if "emf_saved_log" not in st.session_state:
     st.session_state.emf_saved_log = None
-# ── Bloque 3: Análisis de datos ──────────────────────────────────────────────
+#  Bloque 3: Análisis de datos 
 if "b2_scada_df" not in st.session_state:
     st.session_state.b2_scada_df = None
 if "b2_emf_df" not in st.session_state:
@@ -2024,10 +2202,10 @@ if "b4_sim_zip_bytes" not in st.session_state: st.session_state.b4_sim_zip_bytes
 if "b4_sim_zip_name" not in st.session_state: st.session_state.b4_sim_zip_name = ""
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # SIDEBAR — Solo apariencia y selector de evento
 # Navegación: usar el stepper (clickeable) en la zona superior de la página
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 with st.sidebar:
     st.markdown('<div style="padding:6px 4px 4px 4px;font-size:13px;font-weight:700">⚡ RPF Analysis</div>', unsafe_allow_html=True)
     st.markdown('<div class="v4-nav-group-label">Apariencia</div>', unsafe_allow_html=True)
@@ -2043,9 +2221,9 @@ with st.sidebar:
         st.rerun()
     st.markdown("---")
 
-    # ─── NAVEGACIÓN DE BLOQUES ────────────────────────────────────────────────
+    #  NAVEGACIÓN DE BLOQUES 
     _any_running_nav = (
-        st.session_state.get("pf_running") or st.session_state.get("mod_running")
+        st.session_state.get("pf_running") or st.session_state.get("pf2_running") or st.session_state.get("mod_running")
         or any(st.session_state.get(f"{_p}_running") for _p in ("gen", "lne", "xfo", "sht", "car"))
         or st.session_state.get("ext_running") or st.session_state.get("ci_running")
         or st.session_state.get("scada_running") or st.session_state.get("emf_running")
@@ -2075,37 +2253,6 @@ with st.sidebar:
 
 bloque_trabajo = st.session_state.active_block
 
-# Helper para identificar columnas de frecuencia
-def _is_frequency_column(col_name, series_data):
-    # Check by name
-    if "frecuencia" in col_name.lower() or "freq" in col_name.lower() or "hz" in col_name.lower() or "m:f" in col_name.lower():
-        return True
-    # Check by value range (assuming 50Hz system)
-    if len(series_data) > 1:
-        numeric = pd.to_numeric(series_data, errors='coerce').dropna()
-        if len(numeric) > 1:
-            min_val = numeric.min()
-            max_val = numeric.max()
-            if FREQ_MIN_HZ <= min_val <= FREQ_MAX_HZ and FREQ_MIN_HZ <= max_val <= FREQ_MAX_HZ and (max_val - min_val) < FREQ_RANGE_MAX_HZ:
-                return True
-    return False
-
-
-def _robust_col_detect(df):
-    """Detecta columnas de tiempo, frecuencia y potencia en DataFrames de simulación."""
-    cols = df.columns.tolist()
-    tc = cols[0]  # Usualmente la primera es el tiempo
-
-    # Buscar frecuencia
-    fc_cands = [c for c in cols[1:] if _is_frequency_column(c, df[c])]
-    fc_col = fc_cands[0] if fc_cands else cols[1]
-
-    # Buscar potencia (lo que no sea tiempo ni frecuencia)
-    pc_cands = [c for c in cols[1:] if c != fc_col]
-    pc_col = pc_cands[0] if pc_cands else (cols[2] if len(cols) > 2 else fc_col)
-
-    return tc, fc_col, pc_col
-
 def _short_col_name(col):
     """Extrae el nombre corto de columnas con ruta completa de PowerFactory.
     Ejemplo: '\\user\\Prj\\SIN.ElmNet\\sym_ZON01.ElmSym' → 'sym_ZON01'
@@ -2120,12 +2267,12 @@ def _short_col_name(col):
 
 
 with st.sidebar:
-    # ─── SELECCIÓN DE EVENTO ──────────────────────────────────────────────────
-    st.markdown('<div class="v4-nav-group-label">Evento</div>', unsafe_allow_html=True)
+    #  SELECCIÓN DE EVENTO 
     _raiz = st.session_state.get("cfg_RAIZ", _cfg.get("RAIZ", ""))
+    st.markdown('<div class="v4-nav-group-label">Evento</div>', unsafe_allow_html=True)
 
     if IS_CLOUD:
-        # ── Modo nube: datos desde SharePoint ────────────────────────────────
+        #  Modo nube: datos desde SharePoint 
         if not _SP_OK:
             st.error(f"❌ No se pudo conectar a SharePoint: {_SP_ERR_MSG}")
             st.session_state.semestre_global = None
@@ -2205,7 +2352,7 @@ with st.sidebar:
                 st.session_state.evento_global = None
 
     else:
-        # ── Modo local: rutas de Windows ─────────────────────────────────────
+        #  Modo local: rutas de Windows 
         if os.path.isdir(_raiz):
             semestres = sorted(
                 d for d in os.listdir(_raiz)
@@ -2230,8 +2377,8 @@ with st.sidebar:
             base_ev = os.path.join(_raiz, st.session_state.semestre_global, "Análisis_todos_los_eventos")
             if os.path.isdir(base_ev):
                 eventos = sorted(
-                    d for d in os.listdir(base_ev)
-                    if os.path.isdir(os.path.join(base_ev, d))
+                    (d for d in os.listdir(base_ev) if os.path.isdir(os.path.join(base_ev, d))),
+                    key=lambda d: int(m.group(1)) if (m := re.search(r"(\d+)$", d)) else -1
                 )
                 if eventos:
                     idx_ev = 0
@@ -2271,9 +2418,9 @@ with st.sidebar:
     st.markdown("---")
     st.caption("⚙️ Rutas y config en Bloque 07")
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # TÍTULO PRINCIPAL
-# ─────────────────────────────────────────────────────────────────────────────
+# 
 # En modo nube, sobreescribir todas las rutas locales con las rutas temporales descargadas
 if IS_CLOUD and _SP_OK:
     RAIZ       = str(_sp.TMP_RAIZ)
@@ -2288,7 +2435,7 @@ if IS_CLOUD and _SP_OK:
     LOC_CAR_PATH       = os.path.join(_loc_dir, "loc_name_cargas.xlsx")
     LOC_XFO_PATH       = os.path.join(_loc_dir, "loc_names_xfo.xlsx")
 
-# ─── PRE-INICIALIZAR UNIDAD ANTES DEL TOPBAR ─────────────────────────────────
+#  PRE-INICIALIZAR UNIDAD ANTES DEL TOPBAR 
 # global_selected_unit se setea en _render_unit_ctx_bar(), que corre DESPUÉS del topbar.
 # Para que el pill de unidad aparezca desde el primer render, lo inicializamos aquí.
 if (bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_real_simu"]
@@ -2303,8 +2450,8 @@ if (bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_rea
     except Exception:
         pass
 
-# ─── CHROME: CSS + todos los elementos fijos en un solo st.markdown ──────────
-_IN_ANALYSIS = bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_real_simu"]
+#  CHROME: CSS + todos los elementos fijos en un solo st.markdown 
+_IN_ANALYSIS = bloque_trabajo in ["analisis_datos", "analisis_simulacion", "comparativa_real_simu", "reporte_tecnico"]
 
 # CSS condicional inline
 _extra_css = ""
@@ -2335,7 +2482,7 @@ st.markdown(               # un solo element-container para todo el chrome visib
     unsafe_allow_html=True,
 )
 
-# ─── JS: favicon SVG + ajuste dinámico del layout con sidebar ────────────────
+#  JS: favicon SVG + ajuste dinámico del layout con sidebar 
 # st.markdown bloquea <script> — se usa components.html (iframe mismo origen)
 # window.parent accede al documento principal desde el iframe
 import streamlit.components.v1 as _v1_cmp
@@ -2345,7 +2492,7 @@ _v1_cmp.html(
   var P=window.parent;
   if(!P)return;
 
-  // ── 1. Favicon SVG (rayo sobre gradiente azul/cyan) ─────────────────────
+  //  1. Favicon SVG (rayo sobre gradiente azul/cyan) 
   // Para usar logo COBEE: reemplazar el SVG por <img> o cambiar el href por
   // la URL/data-URI del logo PNG/SVG de COBEE.
   (function(){
@@ -2365,7 +2512,7 @@ _v1_cmp.html(
     lk.href=href;
   })();
 
-  // ── 2. Ajuste dinámico stMain cuando sidebar se abre/cierra ─────────────
+  //  2. Ajuste dinámico stMain cuando sidebar se abre/cierra 
   function adj(){
     var sb=P.document.querySelector("section[data-testid='stSidebar']");
     var mn=P.document.querySelector("section[data-testid='stMain']");
@@ -2395,20 +2542,20 @@ _v1_cmp.html(
     height=0,
 )
 
-# ─── SINCRONIZACIÓN Y SELECTOR DE UNIDAD (Bloques 3, 4, 5) ──────────────────
+#  SELECTOR DE UNIDAD (solo Bloques 3, 4, 5) 
 if _IN_ANALYSIS:
+    # Validar unidad actual
     _available_units = get_event_units(st.session_state.ev_path_global, st.session_state.n_evento_global)
     if _available_units:
-        # Validar unidad actual
         _render_unit_ctx_bar(_available_units, LOC_NAMES_GEN_PATH)
         # Sincronizar config de escala si cambió evento/unidad
         if st.session_state.global_selected_unit and st.session_state.ev_path_global:
             if (st.session_state.get("b3_last_unit") != st.session_state.global_selected_unit or
-                st.session_state.get("b3_last_event_path") != st.session_state.ev_path_global):
+                    st.session_state.get("b3_last_event_path") != st.session_state.ev_path_global):
                 _sync_session_scale_config(st.session_state.ev_path_global, st.session_state.global_selected_unit)
                 st.session_state.b3_last_unit = st.session_state.global_selected_unit
                 st.session_state.b3_last_event_path = st.session_state.ev_path_global
-        # ── Selector de unidad fijo en unit-bar (marcador + JS fallback) ───────
+        #  Selector de unidad fijo en unit-bar (marcador + JS fallback) 
         st.markdown(
             '<div class="v4-unit-select-marker"></div>'
             '<script>(function(){'
@@ -2446,9 +2593,7 @@ if _IN_ANALYSIS:
         _tb_cur = st.session_state.get("global_selected_unit")
         _tb_idx = _available_units.index(_tb_cur) if _tb_cur in _available_units else 0
         _tb_sel = st.selectbox(
-            "Unidad activa",
-            _available_units,
-            index=_tb_idx,
+            "Unidad activa", _available_units, index=_tb_idx,
             key="topbar_unit_sel",
             format_func=lambda u: u.replace("sym_", ""),
             label_visibility="collapsed",
@@ -2656,9 +2801,9 @@ if bloque_trabajo == "modelo_base":
                         key="dl_mod_log",
                     )
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # 
     # HELPER compartido para lanzar/monitorizar scripts de modelo base
-    # ─────────────────────────────────────────────────────────────────────────
+    # 
     def _bloque_script(pfx, runner_name, params_dict, log_name, any_other_running):
         """Lanza runner, muestra log en vivo y resultado final.
         pfx            : prefijo de session_state (gen, lne, xfo, sht, car)
@@ -2775,9 +2920,9 @@ if bloque_trabajo == "modelo_base":
                                            file_name=os.path.basename(_saved) if _saved else f"log_{log_name}.txt",
                                            mime="text/plain", key=f"dl_{pfx}_log")
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # 
     # SECCION: scripts adicionales del modelo base
-    # ─────────────────────────────────────────────────────────────────────────
+    # 
     _loc_designacion = os.path.join(_datos_extraidos_dir, "Designacion de loc_name")
     _any_mod_running = st.session_state.mod_running or any(
         st.session_state.get(f"{_p}_running") for _p in ("gen","lne","xfo","sht","car"))
@@ -2786,7 +2931,7 @@ if bloque_trabajo == "modelo_base":
     _v4_section_head("Scripts de Mapeo y Catálogo", icon="database")
     st.caption("Ejecutar en orden después de actualizar `DatosSINdigsilent.xlsx`.")
 
-    # ── 2. loc_namesGEN ───────────────────────────────────────────────────────
+    #  2. loc_namesGEN 
     with st.expander("2️⃣ Mapeo Generadores CNDC → PF  (`loc_namesGEN`)", expanded=False):
         st.caption("Genera `loc_names_gen.xlsx` con el mapeo de unidades CNDC a loc_names de PowerFactory.")
         _gen_datos_sin = st.text_input(
@@ -2827,7 +2972,7 @@ if bloque_trabajo == "modelo_base":
             any_other_running=_any_mod_running,
         )
 
-    # ── 3. loc_namesLineas ────────────────────────────────────────────────────
+    #  3. loc_namesLineas 
     with st.expander("3️⃣ Catálogo de Líneas PF  (`loc_namesLineas`)", expanded=False):
         st.caption("Genera `loc_names_lineas.xlsx` con loc_names y nombre descriptivo de cada línea.")
         _bloque_script(
@@ -2841,7 +2986,7 @@ if bloque_trabajo == "modelo_base":
             any_other_running=_any_mod_running,
         )
 
-    # ── 4. loc_names_xfo ─────────────────────────────────────────────────────
+    #  4. loc_names_xfo 
     with st.expander("4️⃣ Loc-names de Transformadores  (`loc_names_xfo`)", expanded=False):
         st.caption("Genera `loc_names_xfo.xlsx` con barras HV/LV de cada transformador.")
         _xfo_topologia = st.text_input(
@@ -2862,7 +3007,7 @@ if bloque_trabajo == "modelo_base":
             any_other_running=_any_mod_running,
         )
 
-    # ── 5. InventarioShunts ───────────────────────────────────────────────────
+    #  5. InventarioShunts 
     with st.expander("5️⃣ Inventario de Shunts y Compensadores  (`InventarioShunts_PF`)", expanded=False):
         st.caption("Conecta a PowerFactory y genera el inventario de shunts del caso base.")
         _sht_tap = st.checkbox(
@@ -2884,7 +3029,7 @@ if bloque_trabajo == "modelo_base":
             any_other_running=_any_mod_running,
         )
 
-    # ── 6. MapeoRetirosSTI ────────────────────────────────────────────────────
+    #  6. MapeoRetirosSTI 
     with st.expander("6️⃣ Mapeo de Cargas → Distribuidores  (`MapeoRetirosSTI_v6`)", expanded=False):
         st.caption("Genera `loc_name_cargas.xlsx` mapeando cargas PF a distribuidores/CNR usando el instructivo CNDC.")
         _car_deener = st.text_input(
@@ -2937,7 +3082,7 @@ elif bloque_trabajo == "config_global": # type: ignore
         {"id": "graficas", "label": "🎨 Config. Gráficas"},
     ], "b07")
 
-    # ─── TAB 1: CONFIGURACIÓN SIMULACIÓN ────────────────────────────────────
+    #  TAB 1: CONFIGURACIÓN SIMULACIÓN 
     if _b7_tab == "sim":
         _v4_section_head("Rutas del Proyecto", "Directorios y parámetros usados por los módulos de análisis.", "database")
         c1, c2 = st.columns(2)
@@ -3011,7 +3156,7 @@ elif bloque_trabajo == "config_global": # type: ignore
             elif not _SP_OK:
                 st.caption("☁ SharePoint no disponible — sync desactivado")
 
-    # ─── TAB 2: CONFIGURACIÓN UNIDADES ──────────────────────────────────────
+    #  TAB 2: CONFIGURACIÓN UNIDADES 
     elif _b7_tab == "unidades":
         _v4_section_head("Inventario de Unidades COBEE",
             "P_max, droop y tecnología de las 23 unidades. Independiente del evento.", "sliders")
@@ -3074,7 +3219,7 @@ elif bloque_trabajo == "config_global": # type: ignore
                     st.markdown(f"**Editando:** `{_u_to_edit}`")
                     _widget_pmax_rp(_u_to_edit, LOC_NAMES_GEN_PATH, key_prefix="cfg_edit")
 
-    # ─── TAB 3: CONFIGURACIÓN GRÁFICAS ──────────────────────────────────────
+    #  TAB 3: CONFIGURACIÓN GRÁFICAS 
     elif _b7_tab == "graficas":
         _v4_section_head("Colores y Estilo",
             "Personalice paleta, grosor de línea y plantillas Plotly.", "palette")
@@ -3105,6 +3250,12 @@ elif bloque_trabajo == "config_global": # type: ignore
         with mc2:
             st.session_state.graph_config["show_dt_eval"] = st.toggle("Mostrar t₀+35s (f_Δt, P_Δt)", value=st.session_state.graph_config["show_dt_eval"])
             st.session_state.graph_config["show_deadband"] = st.toggle("Mostrar Banda Muerta (±25mHz)", value=st.session_state.graph_config["show_deadband"])
+            st.session_state.graph_config.setdefault("show_pmax_marker", True)
+            st.session_state.graph_config["show_pmax_marker"] = st.toggle(
+                "Mostrar P_máxima en gráfico (×/○)",
+                value=st.session_state.graph_config["show_pmax_marker"],
+                help="Marca con × la potencia máxima en [t_nadir, t₀+Δt] y con ○ la frecuencia en ese instante",
+            )
 
 elif bloque_trabajo == "carga_datos":
     _render_block_header("01", "Carga de Datos",
@@ -3116,11 +3267,12 @@ elif bloque_trabajo == "carga_datos":
     ev_path = st.session_state.ev_path_global
     n_evento = st.session_state.n_evento_global
 
-    # ── Tab bar persistente ───────────────────────────────────────────────────
+    #  Tab bar persistente 
     _b1_tab = _v4_tab_bar([
         {"id": "ext",  "icon": "download", "label": "1 · Extracción CNDC"},
         {"id": "cond", "icon": "database", "label": "2 · Condiciones Iniciales"},
-        {"id": "pf",   "icon": "server",   "label": "3 · PowerFactory"},
+        {"id": "pf",   "icon": "server",   "label": "3 · PF Proyecto (1)"},
+        {"id": "pf2",  "icon": "server",   "label": "4 · PF Proyecto (2)"},
     ], "b01")
 
     # ═════════════════════════════════════════════════════════════════════════════
@@ -3641,12 +3793,14 @@ elif bloque_trabajo == "carga_datos":
     # TAB 3: POWERFACTORY
     # ═════════════════════════════════════════════════════════════════════════════
     elif _b1_tab == "pf":
-        _v4_section_head("Carga en PowerFactory",
-            "Carga condiciones iniciales en el modelo PF y ejecuta el flujo de trabajo RMS.",
+        _v4_section_head("Carga en PowerFactory — Proyecto (1)",
+            "Carga condiciones iniciales en el modelo PF (proyecto configurable) y ejecuta el flujo de trabajo RMS.",
             "server")
 
         if semestre and evento:
-            # ─── SECCIÓN — ARCHIVOS DE ENTRADA ──────────────────────────────────────
+            st.text_input("Proyecto PowerFactory (configurable en Bloque 8)", value=PF_PROYECTO, disabled=True, key="pf1_proyecto_display")
+
+            #  SECCIÓN — ARCHIVOS DE ENTRADA
             _v4_section_head("Archivos de Entrada", icon="database")
 
             ci_files    = glob.glob(os.path.join(ev_path, "condiciones_iniciales_*.xlsx"))
@@ -3698,7 +3852,7 @@ elif bloque_trabajo == "carga_datos":
             ])
             st.dataframe(tabla_archivos, use_container_width=False, hide_index=True)
 
-            # ─── SECCIÓN 3 — VISTA PREVIA DE CONDICIONES INICIALES ───────────────
+            #  SECCIÓN 3 — VISTA PREVIA DE CONDICIONES INICIALES 
             if ci_files:
                 st.header("3 · Vista Previa de Condiciones Iniciales")
                 ci_path = ci_files[0]
@@ -3749,7 +3903,7 @@ elif bloque_trabajo == "carga_datos":
                 info_ci  = {}
                 st.info("💡 Use el **módulo 2** para generar las condiciones iniciales.")
 
-            # ─── SECCIÓN 4 — OPCIONES DE EJECUCIÓN ───────────────────────────────
+            #  SECCIÓN 4 — OPCIONES DE EJECUCIÓN 
             if ci_files:
                 st.header("4 · Opciones de Ejecución")
 
@@ -3781,7 +3935,7 @@ elif bloque_trabajo == "carga_datos":
                     else:
                         st.caption("p_desc no encontrado en Tabla_Eventos")
 
-                    # ── Identificar unidades del disparo desde el Excel CI ─────
+                    #  Identificar unidades del disparo desde el Excel CI 
                     _disp_units = [] # type: ignore
                     if df_pgini is not None and info_ci:
                         _disparo_str = info_ci.get("Disparo", "")
@@ -3826,7 +3980,7 @@ elif bloque_trabajo == "carga_datos":
 
                     pgini_manual = {}
 
-                    # ── Tabla de valores y entradas según opción ────────────── # type: ignore
+                    #  Tabla de valores y entradas según opción  # type: ignore
                     if _disp_units:
                         def _dif_badge(dif):
                             if abs(dif) < 1.0:
@@ -3889,7 +4043,7 @@ elif bloque_trabajo == "carga_datos":
 
                     ajustar_post_lf = st.checkbox(
                         "Activar ajuste post-LF  (AJUSTAR_POST_LF)",
-                        value=False, # type: ignore
+                        value=True, # type: ignore
                         help=(
                             "Si está activo, el script iterará para que la potencia real "
                             "de la slack coincida con su P0_medido, redistribuyendo el "
@@ -3907,7 +4061,7 @@ elif bloque_trabajo == "carga_datos":
                         ),
                     )
 
-            # ─── SECCIÓN 5 — EJECUCIÓN ───────────────────────────────────────────
+            #  SECCIÓN 5 — EJECUCIÓN 
             st.header("5 · Ejecución")
 
             _can_run = bool(ci_files)
@@ -3955,6 +4109,7 @@ elif bloque_trabajo == "carga_datos":
                     "excluir_slack":   [s.strip() for s in EXCLUIR_SLACK.split(",") if s.strip()],
                     "xfo_pf":          XFO_PF,
                     "keep_pf_open":    True,
+                    "ev_suffix":       ".1",
                 }
 
                 _params_path = os.path.join(ev_path, "_streamlit_params.json")
@@ -4032,7 +4187,7 @@ elif bloque_trabajo == "carga_datos":
                 ).start()
                 st.rerun()
 
-            # ── Estado de ejecución + botón "Cerrar PF" ──────────────────────────
+            #  Estado de ejecución + botón "Cerrar PF" 
             _flag_waiting  = os.path.join(ev_path, "_pf_waiting.flag")
             _flag_continue = os.path.join(ev_path, "_pf_continue.flag")
             _status_file   = st.session_state.get("pf_status_file") or os.path.join(ev_path, "_pf_status.txt")
@@ -4101,7 +4256,7 @@ elif bloque_trabajo == "carga_datos":
                     st.error(f"❌ Código de error {_rc} (0x{_rc & 0xFFFFFFFF:08X}).")
 
                 _post_files = sorted(
-                    glob.glob(os.path.join(ev_path, f"datos_cargados_Ev{n_evento}*.xlsx"))
+                    glob.glob(os.path.join(ev_path, f"datos_cargados_Ev{n_evento}.1*.xlsx"))
                 )
                 if _post_files:
                     st.success(
@@ -4111,7 +4266,7 @@ elif bloque_trabajo == "carga_datos":
                 else:
                     st.info("ℹ️ No se encontró archivo de resultados.")
 
-                # ── Log de la ejecución ───────────────────────────────────────
+                #  Log de la ejecución 
                 _saved_log   = st.session_state.get("pf_saved_log")
                 _log_content = _leer_log(_saved_log) if _saved_log and os.path.isfile(_saved_log) else _leer_log(_log_live)
                 if _log_content:
@@ -4161,11 +4316,12 @@ elif bloque_trabajo == "carga_datos":
                                 key="dl_prev_log_pf",
                             )
 
-            # ─── SECCIÓN 6 — RESULTADOS ──────────────────────────────────────────
-            st.header("6 · Resultados")
+            #  SECCIÓN 6 — RESULTADOS
+            st.header("6 · Resultados — Proyecto (1)")
+            st.caption(f"Archivos con nomenclatura `Ev{n_evento}.1` correspondientes al proyecto `{PF_PROYECTO}`")
 
             _result_files = sorted(
-                glob.glob(os.path.join(ev_path, f"datos_cargados_Ev{n_evento}*.xlsx"))
+                glob.glob(os.path.join(ev_path, f"datos_cargados_Ev{n_evento}.1*.xlsx"))
             )
 
             if not _result_files:
@@ -4295,7 +4451,665 @@ elif bloque_trabajo == "carga_datos":
                         st.error(f"Error al leer `{_rf_name}`: {_e}")
         else:
             st.warning("👈 Seleccione Semestre y Evento en la barra lateral para habilitar el bloque de carga.")
-    
+
+    # ═════════════════════════════════════════════════════════════════════════════
+    # TAB 4: POWERFACTORY — PROYECTO (2) PERMANENTE
+    # ═════════════════════════════════════════════════════════════════════════════
+    elif _b1_tab == "pf2":
+        _v4_section_head("Carga en PowerFactory — Proyecto (2) Permanente",
+            f"Carga condiciones iniciales en el proyecto fijo `{PF_PROYECTO_2}` (no configurable) y ejecuta el flujo de trabajo RMS.",
+            "server")
+
+        if semestre and evento:
+            st.text_input("Proyecto PowerFactory (fijo — no modificable)", value=PF_PROYECTO_2, disabled=True, key="pf2_proyecto_display")
+
+            #  SECCIÓN — ARCHIVOS DE ENTRADA
+            _v4_section_head("Archivos de Entrada", icon="database")
+
+            ci_files    = glob.glob(os.path.join(ev_path, "condiciones_iniciales_*.xlsx"))
+            dsim_files  = glob.glob(os.path.join(ev_path, "datos_simulacion_*_2daopcion.xlsx"))
+            tabla_files = glob.glob(os.path.join(RAIZ, semestre, "Tabla_Eventos_*.xlsx"))
+            xfo_ok      = os.path.isfile(LOC_XFO_PATH)
+
+            costo_marginal_dir   = os.path.join(ev_path, CARPETA_COSTO_MARGINAL)
+            costo_marginal_files = []
+            if os.path.isdir(costo_marginal_dir):
+                costo_marginal_files = (glob.glob(os.path.join(costo_marginal_dir, "postot*.xlsx")) or
+                                        glob.glob(os.path.join(costo_marginal_dir, "td_*.xlsx")))
+            costo_marginal_found = bool(costo_marginal_files)
+
+            def _estado2(found):
+                return "✅ OK" if found else "❌ Falta"
+
+            tabla_archivos2 = pd.DataFrame([
+                {
+                    "Estado": _estado2(ci_files),
+                    "Archivo": os.path.basename(ci_files[0]) if ci_files else "condiciones_iniciales_*.xlsx",
+                    "Descripción": "Condiciones iniciales (generadores + cargas)",
+                    "Carpeta": os.path.dirname(ci_files[0]) if ci_files else ev_path,
+                },
+                {
+                    "Estado": _estado2(dsim_files),
+                    "Archivo": os.path.basename(dsim_files[0]) if dsim_files else "datos_simulacion_*_2daopcion.xlsx",
+                    "Descripción": "Pdem del evento (celda B8)",
+                    "Carpeta": ev_path,
+                },
+                {
+                    "Estado": _estado2(tabla_files),
+                    "Archivo": os.path.basename(tabla_files[0]) if tabla_files else "Tabla_Eventos_*.xlsx",
+                    "Descripción": "p_desc del disparo (potencia desconectada)",
+                    "Carpeta": os.path.join(RAIZ, semestre),
+                },
+                {
+                    "Estado": _estado2(xfo_ok),
+                    "Archivo": os.path.basename(LOC_XFO_PATH),
+                    "Descripción": "Capacidad de transformadores (restricción de cargas)",
+                    "Carpeta": os.path.dirname(LOC_XFO_PATH),
+                },
+                {
+                    "Estado": _estado2(costo_marginal_found),
+                    "Archivo": os.path.basename(costo_marginal_files[0]) if costo_marginal_files else "postot*.xlsx o td_*.xlsx",
+                    "Descripción": "Costo Marginal STI (retiros CNDC nodal)",
+                    "Carpeta": os.path.dirname(LOC_XFO_PATH),
+                },
+            ])
+            st.dataframe(tabla_archivos2, use_container_width=False, hide_index=True)
+
+            #  SECCIÓN 3 — VISTA PREVIA DE CONDICIONES INICIALES
+            if ci_files:
+                st.header("3 · Vista Previa de Condiciones Iniciales")
+                ci_path = ci_files[0]
+
+                try:
+                    xl_ci_prev2 = pd.ExcelFile(ci_path, engine="calamine")
+                    df_res_ci2  = xl_ci_prev2.parse("Resumen")
+                    df_pgini2   = xl_ci_prev2.parse("pgini_GEN")
+                    df_plini2   = xl_ci_prev2.parse("plini_CAR")
+
+                    info_ci2 = dict(
+                        zip(
+                            df_res_ci2.iloc[:, 0].astype(str).str.strip(),
+                            df_res_ci2.iloc[:, 1].astype(str).str.strip(),
+                        )
+                    )
+
+                    pgen_ci2 = df_pgini2["pgini_MW"].sum() if "pgini_MW" in df_pgini2.columns else 0.0
+                    pdem_ci2 = df_plini2["plini_MW"].sum() if "plini_MW" in df_plini2.columns else 0.0
+
+                    k1b, k2b, k3b, k4b = st.columns(4)
+                    k1b.metric("Generadores", len(df_pgini2))
+                    k2b.metric("Cargas", len(df_plini2))
+                    k3b.metric("Pgen Excel (MW)", f"{pgen_ci2:.1f}")
+                    k4b.metric("Pdem Excel (MW)", f"{pdem_ci2:.1f}")
+
+                    ia2, ib2 = st.columns(2)
+                    with ia2:
+                        st.info(f"**Fecha y hora:** {info_ci2.get('Fecha y hora', '—')}")
+                        st.info(f"**Disparo:** {info_ci2.get('Disparo', '—')}")
+                    with ib2:
+                        st.info(f"**Hora generación:** {info_ci2.get('Hora evento (gen)', '—')}")
+                        st.info(f"**Hora cargas:** {info_ci2.get('Hora Po (cargas)', '—')}")
+
+                    with st.expander("📋 Generadores (pgini_GEN) — primeras 30 filas"):
+                        st.dataframe(df_pgini2.head(30), use_container_width=False, hide_index=True)
+
+                    with st.expander("📋 Cargas (plini_CAR) — primeras 30 filas"):
+                        st.dataframe(df_plini2.head(30), use_container_width=False, hide_index=True)
+
+                except Exception as _e2:
+                    st.error(f"Error al leer condiciones_iniciales: {_e2}")
+                    df_pgini2 = None
+                    info_ci2  = {}
+            else:
+                st.warning("No se encontró `condiciones_iniciales_*.xlsx`. Primero genere las condiciones iniciales.")
+                df_pgini2 = None
+                info_ci2  = {}
+                st.info("💡 Use el **módulo 2** para generar las condiciones iniciales.")
+
+            #  SECCIÓN 4 — OPCIONES DE EJECUCIÓN
+            if ci_files:
+                st.header("4 · Opciones de Ejecución")
+
+                col_opt_a2, col_opt_b2 = st.columns(2)
+
+                with col_opt_a2:
+                    _v4_section_head("Potencia del disparo", icon="bolt")
+
+                    p_desc_ui2 = 0.0
+                    if tabla_files:
+                        try:
+                            import openpyxl as _opx2
+                            _wb2 = _opx2.load_workbook(tabla_files[0], data_only=True)
+                            _sh2 = _wb2.active
+                            for _fila2 in _sh2.iter_rows(min_row=3, values_only=True):
+                                if _fila2[0] is None:
+                                    continue
+                                try:
+                                    if int(_fila2[0]) == int(n_evento):
+                                        p_desc_ui2 = float(_fila2[3]) if _fila2[3] else 0.0
+                                        break
+                                except (ValueError, TypeError):
+                                    pass
+                        except Exception:
+                            pass
+
+                    if p_desc_ui2 > 0:
+                        st.metric("p_desc registrado (MW)", f"{p_desc_ui2:.2f}")
+                    else:
+                        st.caption("p_desc no encontrado en Tabla_Eventos")
+
+                    _disp_units2 = []
+                    if df_pgini2 is not None and info_ci2:
+                        _disparo_str2   = info_ci2.get("Disparo", "")
+                        _disp_str_clean2 = re.sub(r"\by\b", ",", _disparo_str2, flags=re.IGNORECASE)
+                        _sti_disp2 = {x.strip() for x in _disp_str_clean2.split(",") if x.strip() and x.strip() != "nan"}
+
+                        def _sti_de_ui2(loc_name):
+                            s = re.sub(r"\(\d+\)$", "", str(loc_name).strip())
+                            for _pref in ("sym_", "WT_", "PV-", "PV_", "sta_"):
+                                if s.lower().startswith(_pref.lower()):
+                                    s = s[len(_pref):]
+                                    break
+                            s = re.sub(r"_EQ$", "", s, flags=re.IGNORECASE)
+                            s = re.sub(r"_II$", "", s, flags=re.IGNORECASE)
+                            s = re.sub(r"^LOD_", "", s, flags=re.IGNORECASE)
+                            return s.strip()
+
+                        for _, _row2 in df_pgini2.iterrows():
+                            _loc2 = str(_row2.get("loc_name PF", "")).strip()
+                            if _sti_de_ui2(_loc2) in _sti_disp2:
+                                _disp_units2.append({"loc": _loc2, "pgini_actual": float(_row2.get("pgini_MW", 0.0))})
+
+                    def _preview_prop_pdesc2(units, p_desc):
+                        suma = sum(u["pgini_actual"] for u in units)
+                        if suma <= 0 or p_desc <= 0:
+                            n = len(units) or 1
+                            return {u["loc"]: round(p_desc / n, 2) for u in units}
+                        return {u["loc"]: round(u["pgini_actual"] * p_desc / suma, 2) for u in units}
+
+                    modo_disparo2 = st.radio(
+                        "Modo de asignación al disparo:",
+                        options=["1", "2", "3"],
+                        format_func=lambda x: {
+                            "1": "Mantener valores actuales (proporcional)  <- DEFAULT",
+                            "2": "Ingreso manual por unidad",
+                            "3": "Distribuir p_desc proporcional a pgini actual (respeta Pmax)",
+                        }[x],
+                        index=0,
+                        key="modo_disparo_pf2",
+                    )
+
+                    pgini_manual2 = {}
+
+                    if _disp_units2:
+                        def _dif_badge2(dif):
+                            if abs(dif) < 1.0:
+                                st.success(f"Diferencia con p_desc: {dif:+.2f} MW ✓")
+                            elif abs(dif) < 5.0:
+                                st.warning(f"Diferencia con p_desc: {dif:+.2f} MW")
+                            else:
+                                st.error(f"Diferencia con p_desc: {dif:+.2f} MW")
+
+                        if modo_disparo2 == "1":
+                            _rows1b = [{"Unidad": u["loc"], "pgini asignado (MW)": round(u["pgini_actual"], 2)} for u in _disp_units2]
+                            _suma1b = sum(u["pgini_actual"] for u in _disp_units2)
+                            _rows1b.append({"Unidad": "SUMA", "pgini asignado (MW)": round(_suma1b, 2)})
+                            st.dataframe(pd.DataFrame(_rows1b), hide_index=True, use_container_width=False)
+                            if p_desc_ui2 > 0:
+                                _dif_badge2(_suma1b - p_desc_ui2)
+
+                        elif modo_disparo2 == "2":
+                            st.caption("Ingrese la potencia para cada unidad:")
+                            _suma2b = 0.0
+                            for _u2 in _disp_units2:
+                                _saved_manual2 = _get_unit_cfg(ev_path, _u2['loc'], "manual_pgini2", float(_u2["pgini_actual"]))
+                                _val2b = st.number_input(
+                                    f"{_u2['loc']}  (actual: {_u2['pgini_actual']:.2f} MW)",
+                                    value=float(_saved_manual2),
+                                    min_value=0.0,
+                                    step=1.0,
+                                    format="%.2f",
+                                    key=f"pgini2_manual_{_u2['loc']}",
+                                )
+                                pgini_manual2[_u2["loc"]] = _val2b
+                                _suma2b += _val2b
+
+                            if st.button("💾 Guardar potencias manuales", key="save_manual_pgini_btn_pf2", use_container_width=True):
+                                for _loc_m2, _val_m2 in pgini_manual2.items():
+                                    _save_unit_cfg(ev_path, _loc_m2, "manual_pgini2", _val_m2)
+                                st.toast(f"Potencias manuales guardadas para el evento {n_evento} (Proyecto 2)", icon="✅")
+
+                            st.markdown(f"**Suma:** `{_suma2b:.2f} MW`")
+                            if p_desc_ui2 > 0:
+                                _dif_badge2(_suma2b - p_desc_ui2)
+
+                        elif modo_disparo2 == "3":
+                            _prev3b = _preview_prop_pdesc2(_disp_units2, p_desc_ui2) if p_desc_ui2 > 0 else {u["loc"]: u["pgini_actual"] for u in _disp_units2}
+                            _rows3b = [{"Unidad": loc, "pgini asignado (MW)": val} for loc, val in _prev3b.items()]
+                            _suma3b = sum(_prev3b.values())
+                            _rows3b.append({"Unidad": "SUMA", "pgini asignado (MW)": round(_suma3b, 2)})
+                            st.dataframe(pd.DataFrame(_rows3b), hide_index=True, use_container_width=False)
+                            if p_desc_ui2 > 0:
+                                _dif3b = _suma3b - p_desc_ui2
+                                if abs(_dif3b) < 0.1:
+                                    st.success(f"Diferencia con p_desc: {_dif3b:+.2f} MW ✓")
+                                else:
+                                    st.caption(f"Diferencia: {_dif3b:+.2f} MW (aproximado — sin restricción Pmax)")
+                    else:
+                        st.caption("No se identificaron unidades del disparo en las condiciones iniciales.")
+
+                with col_opt_b2:
+                    _v4_section_head("Post Load Flow", icon="activity")
+
+                    ajustar_post_lf2 = st.checkbox(
+                        "Activar ajuste post-LF  (AJUSTAR_POST_LF)",
+                        value=True,
+                        help=(
+                            "Si está activo, el script iterará para que la potencia real "
+                            "de la slack coincida con su P0_medido, redistribuyendo el "
+                            "delta entre unidades CNDC_proporcional."
+                        ),
+                        key="ajustar_post_lf_pf2",
+                    )
+
+                    guardar_escenario2 = st.checkbox(
+                        "Guardar escenario de operación al finalizar",
+                        value=True,
+                        help=(
+                            "Llama a escenario.Save() en PowerFactory al terminar la carga, "
+                            "guardando pgini/plini y el resultado del Load Flow en el "
+                            "IntScenario creado para este evento."
+                        ),
+                        key="guardar_escenario_pf2",
+                    )
+
+            #  SECCIÓN 5 — EJECUCIÓN
+            st.header("5 · Ejecución")
+
+            _can_run2 = bool(ci_files)
+            if not _can_run2:
+                st.error("❌ No se puede ejecutar: falta `condiciones_iniciales_*.xlsx`.")
+
+            col_btn2, col_reset2, col_nota2 = st.columns([1.2, 1.2, 2.6])
+            with col_btn2:
+                run_btn2 = st.button(
+                    "Ejecutar en PowerFactory (2)",
+                    disabled=IS_CLOUD or not _can_run2 or st.session_state.pf2_running,
+                    type="primary",
+                    use_container_width=True,
+                    key="run_pf2_btn",
+                )
+            with col_reset2:
+                if st.button("🔄 Liberar Licencia", help="Cierra procesos colgados de PowerFactory y limpia el estado", key="liberar_pf2_btn"):
+                    with st.spinner("Limpiando procesos..."):
+                        _kill_powerfactory()
+                        st.session_state.pf2_running = False
+                        st.session_state.pf2_return_code = None
+                        st.session_state.pf2_waiting_close = False
+                        st.toast("Licencia liberada y procesos terminados", icon="🧹")
+                        time.sleep(1)
+                        st.rerun()
+            with col_nota2:
+                st.info(
+                    f"Cargará en el proyecto fijo `{PF_PROYECTO_2}`. "
+                    "PowerFactory debe estar instalado en esta máquina. "
+                    "El proceso puede tardar varios minutos."
+                )
+
+            if run_btn2 and ci_files:
+                _params2 = {
+                    "semestre":        semestre,
+                    "evento":          evento,
+                    "RAIZ":            RAIZ,
+                    "PF_BASE":         PF_BASE,
+                    "LOC_XFO_PATH":    LOC_XFO_PATH,
+                    "LOC_GEN_PATH":    LOC_NAMES_GEN_PATH,
+                    "PF_PROYECTO":     PF_PROYECTO_2,
+                    "CASO_BASE":       CASO_BASE,
+                    "modo_disparo":    modo_disparo2 if 'modo_disparo2' in locals() else "1",
+                    "pgini_manual":    pgini_manual2 if 'pgini_manual2' in locals() else {},
+                    "ajustar_post_lf":   ajustar_post_lf2  if 'ajustar_post_lf2'  in locals() else False,
+                    "guardar_escenario": guardar_escenario2 if 'guardar_escenario2' in locals() else True,
+                    "excluir_slack":   [s.strip() for s in EXCLUIR_SLACK.split(",") if s.strip()],
+                    "xfo_pf":          XFO_PF,
+                    "keep_pf_open":    True,
+                    "ev_suffix":       ".2",
+                }
+
+                _params2_path = os.path.join(ev_path, "_streamlit_params2.json")
+                with open(_params2_path, "w", encoding="utf-8") as _fp2:
+                    json.dump(_params2, _fp2, ensure_ascii=False, indent=2)
+
+                _runner_path2 = os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "runners", "CargaCondIniciales_PF_run.py",
+                )
+                if not os.path.isfile(_runner_path2):
+                    if not IS_CLOUD:
+                        st.error(f"No se encontró el runner: `{_runner_path2}`")
+                    st.stop()
+
+                for _old_flag2 in ("_pf2_waiting.flag", "_pf2_continue.flag"):
+                    _fp_flag2 = os.path.join(ev_path, _old_flag2)
+                    if os.path.exists(_fp_flag2):
+                        os.remove(_fp_flag2)
+
+                _status_file2 = os.path.join(ev_path, "_pf2_status.txt")
+                if os.path.exists(_status_file2):
+                    try:
+                        os.remove(_status_file2)
+                    except OSError:
+                        pass
+
+                _log_file2 = os.path.join(ev_path, "_pf2_log.txt")
+                if os.path.exists(_log_file2):
+                    try:
+                        os.remove(_log_file2)
+                    except OSError:
+                        pass
+
+                st.session_state.pf2_return_code   = None
+                st.session_state.pf2_waiting_close  = False
+                st.session_state.pf2_running        = True
+                st.session_state.pf2_status_file    = _status_file2
+                st.session_state.pf2_log_file       = _log_file2
+
+                def _pf2_thread_fn(runner, params_path, env_vars, status_file, log_file):
+                    """Ejecuta el subprocess de PF proyecto (2) capturando stdout+stderr al log."""
+                    rc = -1
+                    try:
+                        proc = subprocess.Popen(
+                            [sys.executable, runner, params_path],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            encoding="utf-8",
+                            errors="replace",
+                            env=env_vars,
+                        )
+                        with open(log_file, "w", encoding="utf-8") as _lf2:
+                            for _line2 in proc.stdout:
+                                _lf2.write(_line2)
+                                _lf2.flush()
+                        rc = proc.wait()
+                    except Exception as _exc2:
+                        try:
+                            with open(log_file, "a", encoding="utf-8") as _lf2:
+                                _lf2.write(f"\n[ERROR] {_exc2}\n")
+                        except OSError:
+                            pass
+                    finally:
+                        with open(status_file, "w", encoding="utf-8") as _sf2:
+                            _sf2.write(str(rc))
+
+                _env2 = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+                threading.Thread(
+                    target=_pf2_thread_fn,
+                    args=(_runner_path2, _params2_path, _env2, _status_file2, _log_file2),
+                    daemon=True,
+                ).start()
+                st.rerun()
+
+            #  Estado de ejecución + botón "Cerrar PF"
+            _flag_waiting2  = os.path.join(ev_path, "_pf2_waiting.flag")
+            _flag_continue2 = os.path.join(ev_path, "_pf2_continue.flag")
+            _status_file2   = st.session_state.get("pf2_status_file") or os.path.join(ev_path, "_pf2_status.txt")
+            _log_live2      = st.session_state.get("pf2_log_file") or os.path.join(ev_path, "_pf2_log.txt")
+
+            def _leer_log2(path):
+                try:
+                    return open(path, encoding="utf-8", errors="replace").read()
+                except OSError:
+                    return ""
+
+            def _guardar_log_final2(log_path, ev_path_, n_evento_):
+                contenido = _leer_log2(log_path)
+                if not contenido:
+                    return None
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                dest = os.path.join(ev_path_, f"log_PF2_Ev{n_evento_}_{ts}.txt")
+                try:
+                    with open(dest, "w", encoding="utf-8") as _f2:
+                        _f2.write(contenido)
+                    return dest
+                except OSError:
+                    return None
+
+            if st.session_state.pf2_running:
+                if _status_file2 and os.path.exists(_status_file2):
+                    try:
+                        _rc_text2 = open(_status_file2, encoding="utf-8").read().strip()
+                        st.session_state.pf2_return_code = int(_rc_text2)
+                    except (OSError, ValueError):
+                        st.session_state.pf2_return_code = -1
+                    st.session_state.pf2_running = False
+                    st.session_state.pf2_waiting_close = False
+                    st.rerun()
+                else:
+                    if os.path.exists(_flag_waiting2):
+                        st.session_state.pf2_waiting_close = True
+
+                    if st.session_state.pf2_waiting_close:
+                        st.success("Datos cargados en PowerFactory (2). DIgSILENT permanece abierto.")
+                        if st.button("🔒 Cerrar PowerFactory (2)", type="primary", use_container_width=True, key="cerrar_pf2_btn"):
+                            with open(_flag_continue2, "w") as _fc2:
+                                _fc2.write("continue")
+                            st.info("Señal enviada — cerrando PowerFactory...")
+                            st.session_state.pf2_waiting_close = False
+                            time.sleep(1)
+                            st.rerun()
+                    else:
+                        st.info("⏳ Carga en PowerFactory (2) en curso...")
+                        _monitor_process_fragment(_log_live2, _status_file2)
+
+            elif st.session_state.pf2_return_code is not None:
+                _rc2 = st.session_state.pf2_return_code
+                if _rc2 == 0:
+                    st.success("Ejecución completada correctamente.")
+                elif _rc2 in (-1073741819, 3221225477):
+                    st.warning(
+                        "⚠️ PowerFactory se cerró abruptamente (ACCESS_VIOLATION 0xC0000005). "
+                        "Revise la **Sección 6** — si el archivo `datos_cargados_Ev*.2.xlsx` existe, "
+                        "los datos **sí fueron cargados** antes del crash."
+                    )
+                else:
+                    st.error(f"❌ Código de error {_rc2} (0x{_rc2 & 0xFFFFFFFF:08X}).")
+
+                _post_files2 = sorted(
+                    glob.glob(os.path.join(ev_path, f"datos_cargados_Ev{n_evento}.2*.xlsx"))
+                )
+                if _post_files2:
+                    st.success(
+                        f"`{os.path.basename(_post_files2[0])}` encontrado — "
+                        "datos cargados correctamente. Ver **Sección 6**."
+                    )
+                else:
+                    st.info("ℹ️ No se encontró archivo de resultados.")
+
+                _saved_log2   = st.session_state.get("pf2_saved_log")
+                _log_content2 = _leer_log2(_saved_log2) if _saved_log2 and os.path.isfile(_saved_log2) else _leer_log2(_log_live2)
+                if _log_content2:
+                    with st.expander("📋 Log de ejecución PowerFactory (2)", expanded=(_rc2 != 0)):
+                        st.code(_log_content2, language="")
+                        _lc1b, _lc2b = st.columns(2)
+                        with _lc1b:
+                            if not (_saved_log2 and os.path.isfile(_saved_log2)):
+                                if st.button("💾 Guardar log", key="pf2_save_log"):
+                                    _dest2 = _guardar_log_final2(_log_live2, ev_path, n_evento)
+                                    if _dest2:
+                                        st.session_state.pf2_saved_log = _dest2
+                                        st.success(f"Guardado en: `{_dest2}`")
+                                    else:
+                                        st.error("No se pudo guardar el log.")
+                            else:
+                                st.caption(f"💾 Guardado en: `{_saved_log2}`")
+                        with _lc2b:
+                            st.download_button(
+                                "⬇️ Descargar log",
+                                data=_log_content2.encode("utf-8"),
+                                file_name=os.path.basename(_saved_log2) if _saved_log2 else f"log_PF2_Ev{n_evento}.txt",
+                                mime="text/plain",
+                                key="dl_log_pf2",
+                            )
+
+            if st.session_state.pf2_return_code is None and not st.session_state.pf2_running:
+                _prev_logs2 = sorted(
+                    glob.glob(os.path.join(ev_path, f"log_PF2_Ev{n_evento}_*.txt")),
+                    reverse=True,
+                )
+                if _prev_logs2:
+                    with st.expander(f"📋 Logs guardados de ejecuciones anteriores ({len(_prev_logs2)})"):
+                        _sel_log2 = st.selectbox(
+                            "Seleccionar log",
+                            _prev_logs2,
+                            format_func=os.path.basename,
+                            key="sel_prev_log_pf2",
+                        )
+                        if _sel_log2:
+                            st.code(_leer_log2(_sel_log2), language="")
+                            st.download_button(
+                                "⬇️ Descargar",
+                                data=_leer_log2(_sel_log2).encode("utf-8"),
+                                file_name=os.path.basename(_sel_log2),
+                                mime="text/plain",
+                                key="dl_prev_log_pf2",
+                            )
+
+            #  SECCIÓN 6 — RESULTADOS
+            st.header("6 · Resultados — Proyecto (2)")
+            st.caption(f"Archivos con nomenclatura `Ev{n_evento}.2` correspondientes al proyecto fijo `{PF_PROYECTO_2}`")
+
+            _result_files2 = sorted(
+                glob.glob(os.path.join(ev_path, f"datos_cargados_Ev{n_evento}.2*.xlsx"))
+            )
+
+            if not _result_files2:
+                st.info("Aún no hay archivos de resultados. Ejecute el programa primero.")
+            else:
+                for _rf2 in _result_files2:
+                    _rf_name2 = os.path.basename(_rf2)
+                    _v4_section_head(_rf_name2, icon="chart")
+
+                    try:
+                        _is_ajustado2 = "ajustado" in _rf_name2
+                        _sheet_res2 = "Resumen_Ajustado" if _is_ajustado2 else "Resumen_Cargado"
+                        _sheet_gen2 = "pgini_GEN_AJUSTADO" if _is_ajustado2 else "pgini_GEN_FINAL"
+                        _sheet_car2 = "plini_CAR_FINAL"
+
+                        _xl2 = pd.ExcelFile(_rf2, engine="calamine")
+                        _df_gen_out2 = _xl2.parse(_sheet_gen2)
+
+                        if _is_ajustado2 and "plini_CAR_AJUSTADO" in _xl2.sheet_names:
+                            _sheet_car2 = "plini_CAR_AJUSTADO"
+                        elif "plini_CAR_FINAL" not in _xl2.sheet_names and "plini_CAR" in _xl2.sheet_names:
+                            _sheet_car2 = "plini_CAR"
+                        _df_car_out2 = _xl2.parse(_sheet_car2)
+                        _df_res_out2 = _xl2.parse(_sheet_res2)
+
+                        _res_dict2 = {
+                            str(k).strip(): v
+                            for k, v in zip(_df_res_out2.iloc[:, 0], _df_res_out2.iloc[:, 1])
+                        }
+
+                        def _v2(*keys, default=0.0):
+                            for k in keys:
+                                raw = _res_dict2.get(k)
+                                if raw is not None:
+                                    try:
+                                        return float(raw)
+                                    except (ValueError, TypeError):
+                                        pass
+                            return default
+
+                        _pgen_out2  = _df_gen_out2["pgini_MW"].sum() if "pgini_MW" in _df_gen_out2.columns else _v2("Pgen total asignada (MW)", "Pgen total ajustada (MW)")
+                        _pdem_out2  = _df_car_out2["plini_MW"].sum() if "plini_MW" in _df_car_out2.columns else _v2("Pdem total asignada (MW)", "Pdem total (MW)")
+                        _bal_out2   = _v2("Balance Pgen-Pdem (MW)", default=_pgen_out2 - _pdem_out2)
+                        _pdem_ev2   = _v2("Pdem_evento (MW)")
+                        _slack_out2 = str(_res_dict2.get("Slack", "—"))
+
+                        _slack_pgini2: float | None = None
+                        _raw_sp2 = _res_dict2.get("pgini slack P0_medido (MW)") \
+                                   or _res_dict2.get("Slack real LF (MW)")
+                        if _raw_sp2 is not None:
+                            try:
+                                _slack_pgini2 = float(_raw_sp2)
+                            except (ValueError, TypeError):
+                                pass
+                        if _slack_pgini2 is None and "pgini_MW" in _df_gen_out2.columns:
+                            _col_loc2 = next(
+                                (c for c in _df_gen_out2.columns if "loc_name" in c.lower()), None
+                            )
+                            if _col_loc2:
+                                _mask_sl2 = (
+                                    _df_gen_out2[_col_loc2].astype(str).str.strip()
+                                    == _slack_out2.strip()
+                                )
+                                if _mask_sl2.any():
+                                    _slack_pgini2 = float(
+                                        _df_gen_out2.loc[_mask_sl2, "pgini_MW"].iloc[0]
+                                    )
+
+                        _gens_asig2 = len(_df_gen_out2)
+                        _cars_asig2 = len(_df_car_out2)
+                        _cars_miss2 = _v2("Cargas no encontradas", "Cargas no encontradas (ajuste)")
+
+                        kc1b, kc2b, kc3b, kc4b = st.columns(4)
+                        kc1b.metric("Pgen total (MW)", f"{_pgen_out2:.2f}")
+                        kc2b.metric("Pdem total (MW)", f"{_pdem_out2:.2f}")
+                        kc3b.metric(
+                            "Balance Pgen−Pdem (MW)",
+                            f"{_bal_out2:+.2f}",
+                            delta=None,
+                            help="Diferencia entre generación y demanda asignadas a PF.",
+                        )
+                        kc4b.metric("Pdem evento (MW)", f"{_pdem_ev2:.2f}")
+
+                        kc5b, kc6b, kc7b, kc8b = st.columns(4)
+                        kc5b.metric(
+                            f"P slack — {_slack_out2}",
+                            f"{_slack_pgini2:.2f} MW" if _slack_pgini2 is not None else "—",
+                            help="Potencia asignada (pgini) a la unidad slack.",
+                        )
+                        kc6b.metric("Generadores asignados", int(_gens_asig2))
+                        kc7b.metric("Cargas asignadas", int(_cars_asig2))
+                        kc8b.metric("Cargas no encontradas", int(_cars_miss2))
+
+                        _estado_val2 = str(_res_dict2.get("Estado validacion", ""))
+                        if _estado_val2 == "OK":
+                            st.success("✅ Estado de validación: OK")
+                        elif _estado_val2:
+                            st.warning(f"⚠️ Estado de validación: {_estado_val2}")
+
+                        _col_ta2, _col_tb2 = st.columns(2)
+
+                        with _col_ta2:
+                            with st.expander("📋 Generadores (pgini final)"):
+                                st.dataframe(_df_safe(_df_gen_out2), use_container_width=False, hide_index=True)
+
+                        with _col_tb2:
+                            with st.expander(f"📋 Cargas ({_sheet_car2})"):
+                                st.dataframe(_df_safe(_df_car_out2), use_container_width=False, hide_index=True)
+
+                        with st.expander("📋 Resumen completo"):
+                            st.dataframe(_df_safe(_df_res_out2), use_container_width=False, hide_index=True)
+
+                        with open(_rf2, "rb") as _fdown2:
+                            st.download_button(
+                                label=f"⬇️  Descargar {_rf_name2}",
+                                data=_fdown2.read(),
+                                file_name=_rf_name2,
+                                mime=(
+                                    "application/vnd.openxmlformats-officedocument"
+                                    ".spreadsheetml.sheet"
+                                ),
+                                key=f"dl2_{_rf_name2}",
+                            )
+
+                    except Exception as _e2r:
+                        st.error(f"Error al leer `{_rf_name2}`: {_e2r}")
+        else:
+            st.warning("👈 Seleccione Semestre y Evento en la barra lateral para habilitar el bloque de carga.")
+
 elif bloque_trabajo == "analisis_datos":
     _render_block_header("03", "Análisis SCADA / EMF",
         "Procesa registros SCADA (1SEG) y curvas EMF del CNDC, detecta t₀ automáticamente y calcula KPIs CNDC.",
@@ -4309,7 +5123,7 @@ elif bloque_trabajo == "analisis_datos":
     n_evento = st.session_state.n_evento_global
     _sel_unit = st.session_state.global_selected_unit
 
-    # ── 1. LÓGICA DE CARGA Y SINCRONIZACIÓN POR UNIDAD ──
+    #  1. LÓGICA DE CARGA Y SINCRONIZACIÓN POR UNIDAD 
     if _sel_unit:
         _pmax_map_b3 = _load_pmax_cargado(ev_path, n_evento)
         _tmap_b3 = _load_tech_map(LOC_NAMES_GEN_PATH)
@@ -4327,7 +5141,7 @@ elif bloque_trabajo == "analisis_datos":
         st.warning("⬆️ Seleccione una unidad en el selector superior para ver el análisis.")
         st.stop()
 
-    # ── Tab bar persistente ───────────────────────────────────────────────────
+    #  Tab bar persistente 
     _b3_tab = _v4_tab_bar([
         {"id": "scada", "icon": "activity", "label": "SCADA COBEE (1SEG)"},
         {"id": "emf",   "icon": "chart",    "label": "EMF CNDC"},
@@ -4463,7 +5277,7 @@ elif bloque_trabajo == "analisis_datos":
                     xaxis_min_sc = _get_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmin", float(t_norm.min()))
                     xaxis_max_sc = _get_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", float(t_norm.max()))
 
-                    # ── Parámetros CNDC (antes del gráfico) ───────────────────
+                    #  Parámetros CNDC (antes del gráfico) 
                     _v4_section_head("Parámetros CNDC", icon="sliders")
                     _pmax_cargado_b2 = _load_pmax_cargado(ev_path, n_evento) # type: ignore
                     _tmap_b2         = _load_tech_map(LOC_NAMES_GEN_PATH)
@@ -4477,7 +5291,7 @@ elif bloque_trabajo == "analisis_datos":
 
                     _b2_pmax = float(_b2_pm_val)
                     _b2_rp_pct = float(_get_rp_default(_tk_b2, LOC_NAMES_GEN_PATH))
-                    # ── Fila 1: parámetros de detección ──────────────────────────────────
+                    #  Fila 1: parámetros de detección 
                     _pp1, _pp2, _pp3 = st.columns(3)
                     _b2_dt        = _pp1.number_input("Δt CNDC [s]", value=35, min_value=20, max_value=60, step=1, key="b2_sc_dt")
                     _b2_umbral_k  = _pp2.number_input("Umbral df/dt [Hz/s]", value=-0.04, min_value=-2.0, max_value=-0.001, step=0.005, format="%.3f", key="b2_sc_umbral")
@@ -4486,7 +5300,7 @@ elif bloque_trabajo == "analisis_datos":
                     _idx_auto_b2 = _detectar_inicio_falla(_freq_b2_arr, float(_b2_umbral_k), int(_b2_vent_suav))
                     _t_auto_b2   = float(t_norm.iloc[_idx_auto_b2])
 
-                    # ── Fila 2: label + hint + botones en la misma línea ──────────────────
+                    #  Fila 2: label + hint + botones en la misma línea 
                     _lf1, _lf2, _lf3 = st.columns([5, 1, 1])
                     _lf1.markdown(
                         f"**t₀ inicio de falla [s]** "
@@ -4506,7 +5320,7 @@ elif bloque_trabajo == "analisis_datos":
                         _save_unit_cfg(ev_path, _sel_unit, "scada_wall_clock_t0", float(t_raw.iloc[_idx_sv]))
                         st.toast(f"t₀ SCADA = {_t0_sv:.1f} s guardado para todas las unidades", icon="✅")
 
-                    # ── Fila 3: input numérico (sin label visible) ────────────────────────
+                    #  Fila 3: input numérico (sin label visible) 
                     _t_input_b2 = st.number_input(
                         "t₀ inicio de falla [s]",
                         value=st.session_state.get("b2_sc_t_falla", _t_auto_b2),
@@ -4523,48 +5337,20 @@ elif bloque_trabajo == "analisis_datos":
                                                _b2_pmax, _b2_rp_pct / 100.0, int(_b2_dt))
                     _rocof_b2     = _calcular_rocof(_t_al_b2, _freq_b2_arr, 3.0)
 
-                    # Ejes X e Y
-                    xaxis_min_sc = _get_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmin", float(t_norm.min()))
-                    xaxis_max_sc = _get_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", float(t_norm.max()))
-
-                    # ── Fila 4: métricas + auto-escala + ejes (todo en una fila) ──────────
-                    _cm1, _cm2, _cm3, _sc_ac, _sc_ej = st.columns([2, 2, 2, 2, 1])
+                    #  Fila de métricas + controles de escala estandarizados
+                    _cm1, _cm2, _cm3 = st.columns(3)
                     _cm1.metric("t falla", f"{_t_falla_abs:.1f} s")
                     _cm2.metric("f₀",      f"{_freq_b2_arr[_idx_falla_b2]:.4f} Hz")
                     _cm3.metric("P₀",      f"{_pot_b2_arr[_idx_falla_b2]:.3f} MW")
-                    auto_scale_sc = _sc_ac.toggle(
-                        "📐 Auto-escala", value=st.session_state.b3_sync_y_auto,
-                        key="b2_sc_y_auto", on_change=_sync_rpf_y_axis, args=("y_auto", "b2_sc_y_auto"),
-                    )
-                    with _sc_ej.popover("⚙️ Ejes"):
-                        st.caption("**Eje X (tiempo)**")
-                        xaxis_min = st.number_input("X Min (s)", value=xaxis_min_sc, key="b2_sc_xaxis_min")
-                        xaxis_max = st.number_input("X Max (s)", value=xaxis_max_sc, key="b2_sc_xaxis_max")
-                        st.caption("**Eje Y1 (frecuencia)**")
-                        yaxis1_min = st.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key="b2_sc_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", "b2_sc_y_f_min"))
-                        yaxis1_max = st.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key="b2_sc_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", "b2_sc_y_f_max"))
-                        st.caption("**Eje Y2 (potencia)**")
-                        yaxis2_min = st.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key="b2_sc_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", "b2_sc_y_p_min"))
-                        yaxis2_max = st.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key="b2_sc_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", "b2_sc_y_p_max"))
-                        _pb1, _pb2 = st.columns(2)
-                        if _pb1.button("🔄 Reset", key="reset_scada"):
-                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmin", float(t_norm.min()))
-                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", float(t_norm.max()))
-                            _save_unit_cfg(ev_path, _sel_unit, "y_f_min", 49.0)
-                            _save_unit_cfg(ev_path, _sel_unit, "y_f_max", 51.0)
-                            _save_unit_cfg(ev_path, _sel_unit, "y_p_min", 0.0)
-                            _save_unit_cfg(ev_path, _sel_unit, "y_p_max", float(_b2_pmax * 1.1))
-                            _save_unit_cfg(ev_path, _sel_unit, "y_auto", True)
-                            _sync_session_scale_config(ev_path, _sel_unit)
-                            st.rerun()
-                        if _pb2.button("💾 Guardar", key="save_scale_scada"):
-                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmin", xaxis_min)
-                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", xaxis_max)
-                            st.toast("Escalado guardado")
+                    xaxis_min, xaxis_max, yaxis1_min, yaxis1_max, yaxis2_min, yaxis2_max, auto_scale_sc, _sc_chart_col = \
+                        _render_axis_controls("scada", ev_path, _sel_unit,
+                                              float(t_norm.min()), float(t_norm.max()),
+                                              float(_b2_pmax * 1.1),
+                                              traces=[(t_norm.values, _pot_b2_arr)])
 
-                    # ── Gráfico con marcadores CNDC (usando funciones estándares) ─────── # type: ignore
+                    #  Gráfico con marcadores CNDC (usando funciones estándares)  # type: ignore
                     _gcfg = st.session_state.graph_config
-                    
+
                     # Crear gráfica dual eje usando función estándar
                     fig = create_dual_axis_timeseries(
                         t_data=t_base,
@@ -4580,9 +5366,9 @@ elif bloque_trabajo == "analisis_datos":
                         template=_gcfg["template"],
                         height=_gcfg["plot_height"],
                         legend_position="bottom_center",
-                        x_range=None if auto_scale_sc else [xaxis_min if not show_hhmmss else t_raw.min(), xaxis_max if not show_hhmmss else t_raw.max()],
-                        y1_range=None if auto_scale_sc else [st.session_state.b3_sync_y_f_min, st.session_state.b3_sync_y_f_max],
-                        y2_range=None if auto_scale_sc else [st.session_state.b3_sync_y_p_min, st.session_state.b3_sync_y_p_max],
+                        x_range=[xaxis_min, xaxis_max] if not show_hhmmss else None,
+                        y1_range=[yaxis1_min, yaxis1_max],
+                        y2_range=[yaxis2_min, yaxis2_max],
                     )
                     
                     # Añadir líneas de referencia (banda muerta, t₀, t₀+Δt)
@@ -4624,7 +5410,26 @@ elif bloque_trabajo == "analisis_datos":
                             tmin_plot=_tmin_plot,
                             tdt_plot=_tdt_plot,
                         )
+                        # P_máxima en ventana [t_nadir, t₀+Δt]
+                        _t_nadir_b2 = float(_kpi_b2['t_min']) if _kpi_b2 else 0.0
+                        _t_pmax_b2_al, _p_pmax_b2 = _find_pmax_time(
+                            _t_al_b2, _pot_b2_arr, int(_b2_dt), t_min_eval=_t_nadir_b2
+                        )
+                        if _t_pmax_b2_al is not None and _gcfg.get("show_pmax_marker", True):
+                            _idx_pm_b2  = int(np.argmin(np.abs(_t_al_b2 - _t_pmax_b2_al)))
+                            _f_pmax_b2  = float(_freq_b2_arr[_idx_pm_b2])
+                            _tpmax_b2_plot = _to_plotly_time(_t_falla_plot + _t_pmax_b2_al, show_hhmmss)
+                            fig = add_pmax_marker(
+                                fig, _tpmax_b2_plot, _p_pmax_b2, _f_pmax_b2,
+                                pot_color=_gcfg["pot_color_real"],
+                                freq_color=_gcfg["freq_color_real"],
+                                marker_size=_gcfg["marker_size"],
+                            )
+                        elif _t_pmax_b2_al is None:
+                            _p_pmax_b2 = None
                     else:
+                        _t_pmax_b2_al = None
+                        _p_pmax_b2    = None
                         # Banda muerta sin KPI
                         fig = add_reference_lines(
                             fig,
@@ -4633,8 +5438,8 @@ elif bloque_trabajo == "analisis_datos":
                             show_fault_line=False,
                             show_eval_line=False,
                         )
-                    
-                    st.plotly_chart(fig, use_container_width=True, key="b2sc_plotly_chart")
+
+                    _sc_chart_col.plotly_chart(fig, use_container_width=True, key="b2sc_plotly_chart")
 
                     with st.expander("📄 Ver tabla de datos"):
                         st.dataframe(_df_safe(df_scada), use_container_width=False)
@@ -4649,11 +5454,19 @@ elif bloque_trabajo == "analisis_datos":
                                 file_name=f"scada_data_{_sel_unit}_Ev{n_evento}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-                    # ── Tabla KPIs CNDC ───────────────────────────────────────
+                    #  Tabla KPIs CNDC
                     st.markdown("---") # type: ignore
                     _v4_section_head("KPIs CNDC — Criterio RPF", "Registro Real SCADA COBEE", icon="chart")
-                    _mostrar_tabla_cndc(_kpi_b2, _b2_pmax, int(_b2_dt),
-                                        fuente="SCADA COBEE (1SEG)", rocof=_rocof_b2)
+                    _kpi_pmax_b2 = None
+                    if _t_pmax_b2_al is not None:
+                        _kpi_pmax_b2 = _cndc_kpis(
+                            _t_al_b2, _freq_b2_arr, _pot_b2_arr,
+                            _b2_pmax, _b2_rp_pct / 100.0, _t_pmax_b2_al,
+                        )
+                    _mostrar_tabla_cndc_duo(
+                        _kpi_b2, _b2_pmax, int(_b2_dt), "SCADA COBEE (1SEG)", rocof=_rocof_b2,
+                        kpi2=_kpi_pmax_b2, delta_t2=_t_pmax_b2_al, fuente2="P_máxima SCADA",
+                    )
 
                 elif _sel_unit:
                     st.warning(f"La unidad **{_sel_unit}** no tiene datos SCADA procesados para este evento.")
@@ -4845,35 +5658,25 @@ elif bloque_trabajo == "analisis_datos":
                     # La columna de potencia es la que no es tiempo ni frecuencia
                     cols_pot = [c for c in df_emf.columns if c not in [col_tiempo, col_freq, 'hora']]
 
-                    fig_emf = go.Figure()
-                    
+                    # Guard: columnas mínimas requeridas para graficar
+                    if col_freq is None:
+                        st.warning(
+                            f"⚠️ El archivo **{_emf_file}** no contiene columna `frecuencia_hz`. "
+                            "El extractor EMF no encontró curva de frecuencia en el archivo .emf. "
+                            "Re-ejecute el extractor para regenerar el Excel."
+                        )
+                        st.stop()
+                    if not cols_pot:
+                        st.warning(
+                            f"⚠️ El archivo **{_emf_file}** no contiene columna de potencia reconocida. "
+                            "Re-ejecute el extractor EMF."
+                        )
+                        st.stop()
+
                     # Recuperar el clock de SCADA para sincronizar el formato HH:MM:SS
                     _scada_wall_t0 = _get_unit_cfg(ev_path, _sel_unit, "scada_wall_clock_t0", 0.0)
 
-                    if show_hhmmss and _scada_wall_t0 > 0:
-                        # Sincronización inversa: proyectar tiempo relativo de EMF sobre el reloj de SCADA
-                        _idx_f_emf_tmp = _get_unit_cfg(ev_path, _sel_unit, "emf_idx_falla", 0)
-                        _t_f_emf_rel = float(t_norm.iloc[_idx_f_emf_tmp]) if _idx_f_emf_tmp < len(t_norm) else 0.0
-                        x_axis_raw = (t_norm - _t_f_emf_rel) + _scada_wall_t0
-                        x_axis = _to_plotly_time(x_axis_raw, True)
-                    else:
-                        x_axis = _to_plotly_time(t_norm, False)
-
-                    if col_freq is not None:
-                        fig_emf.add_trace(go.Scatter(
-                            x=x_axis, y=df_emf[col_freq],
-                            name="Frecuencia CNDC (Hz)", line=dict(color='darkblue', width=2.5),
-                            yaxis="y1"
-                        ))
-
-                    for cp in cols_pot:
-                        fig_emf.add_trace(go.Scatter(
-                            x=x_axis, y=df_emf[cp],
-                            name=f"Potencia CNDC {cp} (MW)", line=dict(color=st.session_state.graph_config["pot_color_real"], width=st.session_state.graph_config["line_width"]),
-                            yaxis="y2"
-                        ))
-
-                    # ── Integración de Metodología CNDC en pestaña EMF ────────
+                    #  Integración de Metodología CNDC en pestaña EMF 
                     _v4_section_head("Parámetros de Análisis", "Metodología CNDC", icon="sliders")
                     _pmax_cargado_emf = _load_pmax_cargado(ev_path, n_evento)
                     _tmap_emf         = _load_tech_map(LOC_NAMES_GEN_PATH)
@@ -4915,41 +5718,27 @@ elif bloque_trabajo == "analisis_datos":
                         _save_event_cfg(ev_path, "emf_t0_s", float(t_norm.iloc[_idx_falla_emf]))
                         st.toast(f"t₀ EMF = {_t_input_emf:.1f} s guardado para todas las unidades", icon="✅")
 
-                    # ── Barra de control compacta EMF ──────────────────────────────────────
-                    _emf_c1, _emf_c2 = st.columns([3, 1])
-                    auto_scale_emf = _emf_c1.toggle(
-                        "📐 Auto-escala", value=st.session_state.b3_sync_y_auto,
-                        key="b2_emf_y_auto", on_change=_sync_rpf_y_axis, args=("y_auto", "b2_emf_y_auto"),
-                    )
-                    with _emf_c2.popover("⚙️ Ejes"):
-                        st.caption("**Eje X (tiempo)**")
-                        xaxis_min = st.number_input("X Min (s)", value=_get_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmin", float(t_norm.min())), key="b2_emf_xaxis_min")
-                        xaxis_max = st.number_input("X Max (s)", value=_get_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmax", float(t_norm.max())), key="b2_emf_xaxis_max")
-                        st.caption("**Eje Y1 (frecuencia)**")
-                        yaxis1_min = st.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key="b2_emf_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", "b2_emf_y_f_min"))
-                        yaxis1_max = st.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key="b2_emf_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", "b2_emf_y_f_max"))
-                        st.caption("**Eje Y2 (potencia)**")
-                        yaxis2_min = st.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key="b2_emf_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", "b2_emf_y_p_min"))
-                        yaxis2_max = st.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key="b2_emf_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", "b2_emf_y_p_max"))
-                        _eb1, _eb2 = st.columns(2)
-                        if _eb1.button("🔄 Reset", key="reset_emf"):
-                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmin", float(t_norm.min()))
-                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmax", float(t_norm.max()))
-                            _sync_session_scale_config(ev_path, _sel_unit)
-                            st.rerun()
-                        if _eb2.button("💾 Guardar", key="save_scale_emf"):
-                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmin", xaxis_min)
-                            _save_unit_cfg(ev_path, _sel_unit, "b3_tab_emf_xmax", xaxis_max)
-                            st.toast("Escalado EMF guardado")
+                    #  Controles de escala EMF
+                    xaxis_min, xaxis_max, yaxis1_min, yaxis1_max, yaxis2_min, yaxis2_max, auto_scale_emf, _emf_chart_col = \
+                        _render_axis_controls("emf", ev_path, _sel_unit,
+                                              float(t_norm.min()), float(t_norm.max()),
+                                              float(_emf_pmax * 1.1),
+                                              traces=[(t_norm.values, _pot_emf_arr)])
 
                     _t_falla_emf = float(t_norm.iloc[_idx_falla_emf])
                     _t_al_emf = (t_norm - _t_falla_emf).values
                     
                     _kpi_emf = _cndc_kpis(_t_al_emf, _freq_emf_arr, _pot_emf_arr, _emf_pmax, _emf_rp_pct/100.0, _emf_dt)
                     
-                    # ── Gráfico EMF con metodología CNDC (usando funciones estándares) ───
-                    # Con HH:MM:SS, usar t_raw (tiempo absoluto del día) como base del gráfico.
-                    _t_base_emf = t_raw if show_hhmmss else t_norm
+                    #  Gráfico EMF con metodología CNDC (usando funciones estándares) 
+                    # Con HH:MM:SS: sincronizar EMF al reloj de pared del SCADA.
+                    # Sin HH:MM:SS: usar tiempo relativo normalizado (t_norm).
+                    if show_hhmmss and _scada_wall_t0 > 0:
+                        # Proyectar tiempo relativo EMF sobre el reloj absoluto del SCADA:
+                        # t=0 (falla EMF) → _scada_wall_t0
+                        _t_base_emf = t_norm - _t_falla_emf + _scada_wall_t0
+                    else:
+                        _t_base_emf = t_raw if show_hhmmss else t_norm
                     fig_emf = create_dual_axis_timeseries(
                         t_data=_t_base_emf,
                         freq_data=_freq_emf_arr,
@@ -4964,15 +5753,16 @@ elif bloque_trabajo == "analisis_datos":
                         template=_gcfg["template"],
                         height=_gcfg["plot_height"],
                         legend_position="bottom_center",
-                        x_range=None if auto_scale_emf else [xaxis_min if not show_hhmmss else t_raw.min(), xaxis_max if not show_hhmmss else t_raw.max()],
-                        y1_range=None if auto_scale_emf else [st.session_state.b3_sync_y_f_min, st.session_state.b3_sync_y_f_max],
-                        y2_range=None if auto_scale_emf else [st.session_state.b3_sync_y_p_min, st.session_state.b3_sync_y_p_max],
+                        x_range=[xaxis_min, xaxis_max] if not show_hhmmss else None,
+                        y1_range=[yaxis1_min, yaxis1_max],
+                        y2_range=[yaxis2_min, yaxis2_max],
                     )
 
                     # Añadir líneas de referencia y marcadores KPI
                     if _kpi_emf:
-                        # Mismo patrón que SCADA: tiempo absoluto cuando show_hhmmss=True.
-                        _t_falla_emf_plot = float(t_raw.iloc[_idx_falla_emf]) if show_hhmmss else _t_falla_emf
+                        # Con HH:MM:SS: tiempo de falla en la escala de _t_base_emf (sincronizado con SCADA).
+                        # Sin HH:MM:SS: _t_falla_emf (segundos relativos).
+                        _t_falla_emf_plot = float(_t_base_emf.iloc[_idx_falla_emf]) if show_hhmmss else _t_falla_emf
                         fig_emf = add_reference_lines(
                             fig_emf,
                             t_fault_abs=_t_falla_emf_plot,
@@ -5001,7 +5791,26 @@ elif bloque_trabajo == "analisis_datos":
                             tmin_plot=_tmin_plot_emf,
                             tdt_plot=_tdt_plot_emf,
                         )
+                        # P_máxima en ventana [t_nadir, t₀+Δt]
+                        _t_nadir_emf = float(_kpi_emf['t_min']) if _kpi_emf else 0.0
+                        _t_pmax_emf_al, _p_pmax_emf = _find_pmax_time(
+                            _t_al_emf, _pot_emf_arr, _emf_dt, t_min_eval=_t_nadir_emf
+                        )
+                        if _t_pmax_emf_al is not None and _gcfg.get("show_pmax_marker", True):
+                            _idx_pm_emf  = int(np.argmin(np.abs(_t_al_emf - _t_pmax_emf_al)))
+                            _f_pmax_emf  = float(_freq_emf_arr[_idx_pm_emf])
+                            _tpmax_emf_plot = _to_plotly_time(_t_falla_emf_plot + _t_pmax_emf_al, show_hhmmss)
+                            fig_emf = add_pmax_marker(
+                                fig_emf, _tpmax_emf_plot, _p_pmax_emf, _f_pmax_emf,
+                                pot_color=_gcfg["pot_color_sim0"],
+                                freq_color="cyan",
+                                marker_size=_gcfg["marker_size"],
+                            )
+                        elif _t_pmax_emf_al is None:
+                            _p_pmax_emf = None
                     else:
+                        _t_pmax_emf_al = None
+                        _p_pmax_emf    = None
                         fig_emf = add_reference_lines(
                             fig_emf,
                             show_hhmmss=show_hhmmss,
@@ -5009,8 +5818,8 @@ elif bloque_trabajo == "analisis_datos":
                             show_fault_line=False,
                             show_eval_line=False,
                         )
-                    
-                    st.plotly_chart(fig_emf, use_container_width=True, key="b2emf_plotly_chart")
+
+                    _emf_chart_col.plotly_chart(fig_emf, use_container_width=True, key="b2emf_plotly_chart")
 
                     _v4_section_head("KPIs CNDC — Criterio RPF", "Registro EMF CNDC", icon="chart")
                     if st.button("Descargar datos EMF a Excel", key=f"dl_emf_data_{_sel_unit}"): # type: ignore
@@ -5023,7 +5832,16 @@ elif bloque_trabajo == "analisis_datos":
                             excel_data,
                             file_name=f"emf_data_{_sel_unit}_Ev{n_evento}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                    _mostrar_tabla_cndc(_kpi_emf, _emf_pmax, _emf_dt, fuente="Gráfico EMF CNDC")
+                    _kpi_pmax_emf = None
+                    if _t_pmax_emf_al is not None:
+                        _kpi_pmax_emf = _cndc_kpis(
+                            _t_al_emf, _freq_emf_arr, _pot_emf_arr,
+                            _emf_pmax, _emf_rp_pct / 100.0, _t_pmax_emf_al,
+                        )
+                    _mostrar_tabla_cndc_duo(
+                        _kpi_emf, _emf_pmax, _emf_dt, "Gráfico EMF CNDC",
+                        kpi2=_kpi_pmax_emf, delta_t2=_t_pmax_emf_al, fuente2="P_máxima EMF",
+                    )
                 elif _sel_unit:
                     st.warning(f"La unidad **{_sel_unit}** no tiene datos EMF procesados para este evento.")
             else:
@@ -5189,11 +6007,14 @@ elif bloque_trabajo == "analisis_datos":
                 ))
 
                 # 3. Aplicar líneas de referencia segmentadas (t0 y t0+35s)
+                # Con HH:MM:SS: t0 está en _scada_wall_t0 (segundos absolutos del reloj).
+                # Sin HH:MM:SS: t0 está en 0.0 (datos ya alineados → falla = t=0).
+                _t_ref_fault = _scada_wall_t0 if (show_hhmmss and _scada_wall_t0 > 0) else 0.0
                 fig_c = add_reference_lines(
                     fig_c,
-                    t_fault_abs=0.0,   # Ya alineado
-                    t_eval_abs=35.0,  # Marcador solicitado a t=35
-                    show_hhmmss=False,
+                    t_fault_abs=_t_ref_fault,
+                    t_eval_abs=_t_ref_fault + 35.0,
+                    show_hhmmss=show_hhmmss,
                     show_deadband=_gcfg["show_deadband"],
                     show_fault_line=True,
                     show_eval_line=True,
@@ -5218,42 +6039,22 @@ elif bloque_trabajo == "analisis_datos":
                     st.write(f"Diferencia promedio en Potencia: " +
                              f"{abs(df_s[p_col_s].mean() - df_e[p_col_e].mean()):.2f} MW") # type: ignore
 
-                # Opciones de ejes (se aplican al primer y único gráfico)
-                with st.expander("Opciones de Ejes"):
-                    col_ax1, col_ax2, col_ax3, col_ax4 = st.columns([1, 1, 1, 0.5])
-                    # Defaults based on aligned data
-                    _t_comb_aligned = pd.concat([t_scada_aligned, t_emf_aligned]).dropna()
-                    _f_comb = pd.concat([df_s['Frecuencia_Hz'], df_e['frecuencia_hz']]).dropna()
-                    _p_comb = pd.concat([df_s[p_col_s], df_e[p_col_e]]).dropna()
-
-                    xaxis_min = col_ax1.number_input("X Min (s)", value=_get_unit_cfg(ev_path, _sel_unit, "b3_tab_comp_xmin", float(_t_comb_aligned.min()) if not _t_comb_aligned.empty else -10.0), key="b3_comp_xmin")
-                    xaxis_max = col_ax1.number_input("X Max (s)", value=_get_unit_cfg(ev_path, _sel_unit, "b3_tab_comp_xmax", float(_t_comb_aligned.max()) if not _t_comb_aligned.empty else 100.0), key="b3_comp_xmax")
-                    
-                    yaxis1_min = col_ax2.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key="b3_comp_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", "b3_comp_y_f_min"))
-                    yaxis1_max = col_ax2.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key="b3_comp_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", "b3_comp_y_f_max"))
-                    yaxis2_min = col_ax3.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key="b3_comp_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", "b3_comp_y_p_min"))
-                    yaxis2_max = col_ax3.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key="b3_comp_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", "b3_comp_y_p_max"))
-
-                    auto_scale_comp = st.toggle("Auto-escala (Plotly)", value=st.session_state.b3_sync_y_auto, 
-                                                key="b3_comp_y_auto", on_change=_sync_rpf_y_axis, args=("y_auto", "b3_comp_y_auto"))
-
-                    c_btn1, c_btn2 = col_ax4.columns(2)
-                    if c_btn1.button("🔄", key="reset_comp", help="Auto-detectar límites de datos y guardar"):
-                        _save_unit_cfg(ev_path, _sel_unit, "b3_tab_comp_xmin", float(_t_comb_aligned.min()) if not _t_comb_aligned.empty else -10.0)
-                        _save_unit_cfg(ev_path, _sel_unit, "b3_tab_comp_xmax", float(_t_comb_aligned.max()) if not _t_comb_aligned.empty else 100.0) # type: ignore
-                        _sync_session_scale_config(ev_path, _sel_unit)
-                        st.rerun()
-
-                    if c_btn2.button("Guardar", key="save_scale_comp", help="Guardar escala manual"):
-                        _save_unit_cfg(ev_path, _sel_unit, "b3_tab_comp_xmin", xaxis_min); _save_unit_cfg(ev_path, _sel_unit, "b3_tab_comp_xmax", xaxis_max)
-                        st.toast("Escala Comparativa guardada")
+                _t_comb_aligned = pd.concat([t_scada_aligned, t_emf_aligned]).dropna()
+                _p_comb_max = max(df_s[p_col_s].max(), df_e[p_col_e].max()) * 1.1 if not _t_comb_aligned.empty else 200.0
+                xaxis_min, xaxis_max, yaxis1_min, yaxis1_max, yaxis2_min, yaxis2_max, auto_scale_comp, _comp_chart_col = \
+                    _render_axis_controls("comp", ev_path, _sel_unit,
+                                          float(_t_comb_aligned.min()) if not _t_comb_aligned.empty else -10.0,
+                                          float(_t_comb_aligned.max()) if not _t_comb_aligned.empty else 100.0,
+                                          float(_p_comb_max),
+                                          traces=[(t_scada_aligned.values, df_s[p_col_s].values),
+                                                  (t_emf_aligned.values, df_e[p_col_e].values)])
 
                 fig_c.update_layout(
-                    xaxis=dict(range=None if auto_scale_comp else [_to_plotly_time(xaxis_min, show_hhmmss), _to_plotly_time(xaxis_max, show_hhmmss)]),
-                    yaxis=dict(range=None if auto_scale_comp else [st.session_state.b3_sync_y_f_min, st.session_state.b3_sync_y_f_max]),
-                    yaxis2=dict(range=None if auto_scale_comp else [st.session_state.b3_sync_y_p_min, st.session_state.b3_sync_y_p_max]),
+                    xaxis=dict(range=[_to_plotly_time(xaxis_min, show_hhmmss), _to_plotly_time(xaxis_max, show_hhmmss)]),
+                    yaxis=dict(range=[yaxis1_min, yaxis1_max]),
+                    yaxis2=dict(range=[yaxis2_min, yaxis2_max]),
                 )
-                st.plotly_chart(fig_c, use_container_width=True)
+                _comp_chart_col.plotly_chart(fig_c, use_container_width=True)
 
             else:
                 _missing = []
@@ -5263,7 +6064,7 @@ elif bloque_trabajo == "analisis_datos":
         else:
             st.info("Asegúrese de haber ejecutado los procesadores en las pestañas anteriores.")
 
-    # ── Exportación masiva Bloque 3 ──────────────────────────────────────────
+    #  Exportación masiva Bloque 3 
     st.markdown("---") # type: ignore
     _v4_section_head("Exportar todos los gráficos de Bloque 3", icon="download")
     st.caption("Genera capturas PNG de SCADA y EMF para todas las unidades disponibles.")
@@ -5301,7 +6102,8 @@ elif bloque_trabajo == "analisis_datos":
                         _fr_s = pd.to_numeric(_df_s['Frecuencia_Hz'], errors='coerce').ffill().values
                         _pt_s = pd.to_numeric(_df_s.iloc[:, 2], errors='coerce').ffill().values
                         
-                        _idx_f = int(_get_unit_cfg(ev_path, _uname, "scada_idx_falla", _detectar_inicio_falla(_fr_s)))
+                        _t0_s = float(_get_unit_cfg(ev_path, _uname, "scada_t0_s", 0.0))
+                        _idx_f = int(np.argmin(np.abs(_t_norm_s.values - _t0_s))) if _t0_s > 0 else _detectar_inicio_falla(_fr_s)
                         _t_f_abs = float(_t_norm_s.iloc[_idx_f])
                         
                         _pm_v, _tk, _ = _get_pmax_from_cargado(_uname, _pmax_map_exp, _tmap_exp)
@@ -5357,7 +6159,8 @@ elif bloque_trabajo == "analisis_datos":
                         _pcol = [c for c in _df_e.columns if c not in ['tiempo_s', 'frecuencia_hz', 'hora', 't_norm']][0]
                         _pt_e = pd.to_numeric(_df_e[_pcol], errors='coerce').ffill().values
                         
-                        _idx_e = int(_get_unit_cfg(ev_path, _uname, "emf_idx_falla", _detectar_inicio_falla(_fr_e)))
+                        _t0_e = float(_get_unit_cfg(ev_path, _uname, "emf_t0_s", 0.0))
+                        _idx_e = int(np.argmin(np.abs(_t_norm_e.values - _t0_e))) if _t0_e > 0 else _detectar_inicio_falla(_fr_e)
                         _t_fe_abs = float(_t_norm_e.iloc[_idx_e])
                         
                         _pm_v, _tk, _ = _get_pmax_from_cargado(_uname, _pmax_map_exp, _tmap_exp)
@@ -5457,7 +6260,7 @@ elif bloque_trabajo == "analisis_simulacion":
                         break # type: ignore
                 if _sel_file_b3: break
 
-    # ── Auto-detección de t₀ desde el archivo de simulación ─────────────────────
+    #  Auto-detección de t₀ desde el archivo de simulación 
     # El event_id NO incluye el archivo de simulación para que cambiar de unidad
     # no resetee t₀ si ya fue guardado para este evento.
     _b3_event_id = f"{st.session_state.semestre_global}|{st.session_state.evento_global}"
@@ -5487,7 +6290,7 @@ elif bloque_trabajo == "analisis_simulacion":
     _t_falla_sim_val = st.session_state.get("b3_t_falla", _t0_autodet)
 
 
-    # ── Indicador de contexto compacto ────────────────────────────────────────
+    #  Indicador de contexto compacto 
     if _sel_unit:
         _u_clean_b4 = _sel_unit.replace("sym_", "")
         _pm_b4 = _load_pmax_cargado(ev_path, n_evento)
@@ -5497,7 +6300,7 @@ elif bloque_trabajo == "analisis_simulacion":
         st.warning("⬆️ Seleccione una unidad en el selector superior para ver el análisis.")
         st.stop()
 
-    # ── Parámetros compartidos entre tabs ─────────────────────────────────────
+    #  Parámetros compartidos entre tabs 
     _v4_section_head("⚙️ Parámetros de Análisis CNDC",
         f"t₀ auto-detectado: {_t0_autodet:.1f} s  ·  Ajuste si difiere del evento real.",
         "sliders")
@@ -5530,7 +6333,7 @@ elif bloque_trabajo == "analisis_simulacion":
         st.session_state.b3_t_falla = _t0_autodet
         st.rerun()
 
-    # ── Tab bar persistente ───────────────────────────────────────────────────
+    #  Tab bar persistente 
     _b4_tab = _v4_tab_bar([
         {"id": "cndc",  "icon": "database", "label": f"Simulación E{n_evento}.0 (CNDC)"},
         {"id": "cobee", "icon": "chart",    "label": f"Simulación E{n_evento}.1 (COBEE)"},
@@ -5625,29 +6428,10 @@ elif bloque_trabajo == "analisis_simulacion":
         _xmin_cfg = f"{pfx}_xmin"
         _xmax_cfg = f"{pfx}_xmax"
 
-        auto_s = st.toggle(
-            "Auto-escala (Plotly)", value=st.session_state.b3_sync_y_auto,
-            key=f"{pfx}_auto_toggle", on_change=_sync_rpf_y_axis, args=("y_auto", f"{pfx}_auto_toggle"),
-        )
-
-        with st.expander("Opciones de Ejes"):
-            _cx1, _cx2, _cx3, _cx4 = st.columns([1, 1, 1, 0.5])
-            _xmin_w = _cx1.number_input("X Min (s)", value=_get_unit_cfg(ev_path, _sel_unit or "", _xmin_cfg, _xdef_min), key=f"{pfx}_xmin")
-            _xmax_w = _cx1.number_input("X Max (s)", value=_get_unit_cfg(ev_path, _sel_unit or "", _xmax_cfg, _xdef_max), key=f"{pfx}_xmax")
-            _y1min_w = _cx2.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key=f"{pfx}_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", f"{pfx}_y_f_min"))
-            _y1max_w = _cx2.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key=f"{pfx}_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", f"{pfx}_y_f_max"))
-            _y2min_w = _cx3.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key=f"{pfx}_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", f"{pfx}_y_p_min"))
-            _y2max_w = _cx3.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key=f"{pfx}_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", f"{pfx}_y_p_max"))
-            _rb1, _rb2 = _cx4.columns(2)
-            if _rb1.button("🔄", key=f"reset_{pfx}", help="Resetear límites"):
-                _save_unit_cfg(ev_path, _sel_unit or "", _xmin_cfg, _xdef_min)
-                _save_unit_cfg(ev_path, _sel_unit or "", _xmax_cfg, _xdef_max)
-                _sync_session_scale_config(ev_path, _sel_unit or "")
-                st.rerun()
-            if _rb2.button("💾", key=f"save_{pfx}", help="Guardar escalado"):
-                _save_unit_cfg(ev_path, _sel_unit or "", _xmin_cfg, _xmin_w)
-                _save_unit_cfg(ev_path, _sel_unit or "", _xmax_cfg, _xmax_w)
-                st.toast(f"Escalado {sim_ver} guardado")
+        _xmin_w, _xmax_w, _y1min_w, _y1max_w, _y2min_w, _y2max_w, auto_s, _sim_chart_col = \
+            _render_axis_controls(pfx, ev_path, _sel_unit or "",
+                                  _xdef_min, _xdef_max, float(pm_v * 1.1),
+                                  traces=[(ts_aligned, ps_mw)])
 
         fig_s = create_dual_axis_timeseries(
             t_data=ts_aligned, freq_data=fs_hz, pot_data=ps_mw,
@@ -5657,10 +6441,21 @@ elif bloque_trabajo == "analisis_simulacion":
             freq_color=sim_color_f, pot_color=sim_color_p,
             line_width=_gcfg["line_width"], template=_gcfg["template"],
             height=_gcfg["plot_height"], legend_position="bottom_center",
-            x_range=None if auto_s else [_xmin_w, _xmax_w],
-            y1_range=None if auto_s else [_y1min_w, _y1max_w],
-            y2_range=None if auto_s else [_y2min_w, _y2max_w],
+            x_range=[_xmin_w, _xmax_w],
+            y1_range=[_y1min_w, _y1max_w],
+            y2_range=[_y2min_w, _y2max_w],
         )
+        # P_máxima en ventana [t_nadir, t₀+Δt]
+        # Si el nadir cae fuera del período de evaluación (t_nadir > _b3_dt),
+        # se busca desde t=0 para no obtener una ventana vacía.
+        _t_nadir_s3 = float(_kpi['t_min']) if _kpi else 0.0
+        _t_pmax_start = _t_nadir_s3 if _t_nadir_s3 < float(_b3_dt) else 0.0
+        _t_pmax_s3, _p_pmax_s3 = _find_pmax_time(ts_aligned, ps_mw, _b3_dt, t_min_eval=_t_pmax_start)
+        _f_pmax_s3 = None
+        if _t_pmax_s3 is not None:
+            _idx_pm_s3 = int(np.argmin(np.abs(ts_aligned - _t_pmax_s3)))
+            _f_pmax_s3 = float(fs_hz[_idx_pm_s3])
+
         if _kpi:
             fig_s = add_reference_lines(
                 fig_s, t_fault_abs=0.0, t_eval_abs=_b3_dt, show_hhmmss=False,
@@ -5675,8 +6470,14 @@ elif bloque_trabajo == "analisis_simulacion":
         else:
             fig_s = add_reference_lines(fig_s, show_hhmmss=False, show_deadband=_gcfg["show_deadband"],
                                          show_fault_line=False, show_eval_line=False)
+        if _t_pmax_s3 is not None and _gcfg.get("show_pmax_marker", True):
+            fig_s = add_pmax_marker(
+                fig_s, _t_pmax_s3, _p_pmax_s3, _f_pmax_s3,
+                pot_color=sim_color_p, freq_color=sim_color_f,
+                marker_size=_gcfg["marker_size"],
+            )
 
-        st.plotly_chart(fig_s, use_container_width=True)
+        _sim_chart_col.plotly_chart(fig_s, use_container_width=True)
 
         with st.expander("📄 Ver tabla de datos"):
             st.dataframe(_df_safe(df_raw), use_container_width=False)
@@ -5692,7 +6493,13 @@ elif bloque_trabajo == "analisis_simulacion":
 
         st.markdown("---")
         _v4_section_head(f"KPIs CNDC — {sim_ver}", "Resultado simulación PowerFactory", icon="chart")
-        _mostrar_tabla_cndc(_kpi, pm_v, _b3_dt, fuente=f"Simulación {sim_ver}", rocof=_rocof)
+        _kpi_pmax_s3 = None
+        if _t_pmax_s3 is not None:
+            _kpi_pmax_s3 = _cndc_kpis(ts_aligned, fs_hz, ps_mw, pm_v, rp_v, _t_pmax_s3)
+        _mostrar_tabla_cndc_duo(
+            _kpi, pm_v, _b3_dt, f"Simulación {sim_ver}", rocof=_rocof,
+            kpi2=_kpi_pmax_s3, delta_t2=_t_pmax_s3, fuente2=f"P_máxima {sim_ver}",
+        )
         return _kpi, ts_aligned, fs_hz, ps_mw, pm_v, rp_v
 
     # Pestaña 1: Simulación E{N}.0 (CNDC)
@@ -5738,35 +6545,21 @@ elif bloque_trabajo == "analisis_simulacion":
             else:
                 pm_vc, rp_vc = _sim_kpis_and_pmax(_sel_unit, ev_path, n_evento)
 
-                auto_sc = st.toggle(
-                    "Auto-escala (Plotly)", value=st.session_state.b3_sync_y_auto,
-                    key="b3_simc_auto_toggle", on_change=_sync_rpf_y_axis, args=("y_auto", "b3_simc_auto_toggle"),
-                )
-                with st.expander("Opciones de Ejes"):
-                    _ccx1, _ccx2, _ccx3, _ccx4 = st.columns([1, 1, 1, 0.5])
-                    _sc_xmin = _ccx1.number_input("X Min (s)", value=_get_unit_cfg(ev_path, _sel_unit or "", "simcomp_xmin", -10.0), key="b3_simc_xmin")
-                    _sc_xmax = _ccx1.number_input("X Max (s)", value=_get_unit_cfg(ev_path, _sel_unit or "", "simcomp_xmax", 100.0), key="b3_simc_xmax")
-                    _sc_y1min = _ccx2.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key="b3_simc_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", "b3_simc_y_f_min"))
-                    _sc_y1max = _ccx2.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key="b3_simc_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", "b3_simc_y_f_max"))
-                    _sc_y2min = _ccx3.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key="b3_simc_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", "b3_simc_y_p_min"))
-                    _sc_y2max = _ccx3.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key="b3_simc_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", "b3_simc_y_p_max"))
-                    _rcb1, _rcb2 = _ccx4.columns(2)
-                    if _rcb1.button("🔄", key="reset_simc", help="Resetear límites"):
-                        _save_unit_cfg(ev_path, _sel_unit or "", "simcomp_xmin", -10.0)
-                        _save_unit_cfg(ev_path, _sel_unit or "", "simcomp_xmax", 100.0)
-                        _sync_session_scale_config(ev_path, _sel_unit or "")
-                        st.rerun()
-                    if _rcb2.button("💾", key="save_simc", help="Guardar escalado"):
-                        _save_unit_cfg(ev_path, _sel_unit or "", "simcomp_xmin", _sc_xmin)
-                        _save_unit_cfg(ev_path, _sel_unit or "", "simcomp_xmax", _sc_xmax)
-                        st.toast("Escalado comparativa guardado")
-
-                # Construir gráfico base (E.0 si existe, E.1 si no)
+                # Extraer datos antes de controles (para auto-P con ambas trazas)
                 _base = _d0 or _d1
                 _base_ver = f"E{n_evento}.0" if _d0 else f"E{n_evento}.1"
                 _base_cf = _gcfg["freq_color_sim0"] if _d0 else _gcfg["freq_color_sim1"]
                 _base_cp = _gcfg["pot_color_sim0"] if _d0 else _gcfg["pot_color_sim1"]
                 _ts_b, _fs_b, _ps_b, _ = _base
+                _simc_traces = [(_ts_b, _ps_b)]
+                if _d0 and _d1:
+                    _ts_ov, _fs_ov, _ps_ov, _ = _d1
+                    _simc_traces.append((_ts_ov, _ps_ov))
+
+                _sc_xmin, _sc_xmax, _sc_y1min, _sc_y1max, _sc_y2min, _sc_y2max, auto_sc, _simc_chart_col = \
+                    _render_axis_controls("simc", ev_path, _sel_unit or "",
+                                          -10.0, 100.0, float(pm_vc * 1.1),
+                                          traces=_simc_traces)
 
                 fig_sc = create_dual_axis_timeseries(
                     t_data=_ts_b, freq_data=_fs_b, pot_data=_ps_b,
@@ -5776,16 +6569,13 @@ elif bloque_trabajo == "analisis_simulacion":
                     freq_color=_base_cf, pot_color=_base_cp,
                     line_width=_gcfg["line_width"], template=_gcfg["template"],
                     height=_gcfg["plot_height"], legend_position="bottom_center",
-                    x_range=None if auto_sc else [_sc_xmin, _sc_xmax],
-                    y1_range=None if auto_sc else [_sc_y1min, _sc_y1max],
-                    y2_range=None if auto_sc else [_sc_y2min, _sc_y2max],
+                    x_range=[_sc_xmin, _sc_xmax],
+                    y1_range=[_sc_y1min, _sc_y1max],
+                    y2_range=[_sc_y2min, _sc_y2max],
                 )
 
                 # Overlay de la otra simulación
-                _overlay = _d1 if _d0 else _d0
-                _ov_ver = f"E{n_evento}.1" if _d0 and _d1 else None
                 if _d0 and _d1:
-                    _ts_ov, _fs_ov, _ps_ov, _ = _d1
                     fig_sc.add_trace(go.Scatter(
                         x=_ts_ov, y=_fs_ov, name=f"Frecuencia E{n_evento}.1 (Hz)",
                         line=dict(color=_gcfg["freq_color_sim1"], dash="dash", width=_gcfg["line_width"]), yaxis="y",
@@ -5799,7 +6589,7 @@ elif bloque_trabajo == "analisis_simulacion":
                     fig_sc, t_fault_abs=0.0, t_eval_abs=_b3_dt, show_hhmmss=False,
                     show_deadband=_gcfg["show_deadband"], eval_line_label=f"t₀+Δt ({_b3_dt} s)",
                 )
-                st.plotly_chart(fig_sc, use_container_width=True)
+                _simc_chart_col.plotly_chart(fig_sc, use_container_width=True)
 
                 # Tabla comparativa de KPIs
                 _kpi_rows_sc = []
@@ -5839,7 +6629,7 @@ elif bloque_trabajo == "comparativa_real_simu":
         st.warning("⬆️ Seleccione una unidad en el selector superior para ver el análisis.")
         st.stop()
 
-    # ── Funciones auxiliares ────────────────────────────────────────────────────
+    #  Funciones auxiliares 
     def _local_parse_sec(series):
         def _to_sec(val):
             if pd.isna(val): return 0.0
@@ -5852,7 +6642,7 @@ elif bloque_trabajo == "comparativa_real_simu":
             except: return 0.0
         return series.apply(_to_sec)
 
-    # ── Panel de configuración — mismo patrón que B04 ─────────────────────────
+    #  Panel de configuración — mismo patrón que B04 
     # Orden: t₀ (col1) · Δt (col2) · Fuente (col3) · Simulaciones (col4) · Guardar (col5)
     _v4_section_head("⚙️ Parámetros de Análisis CNDC", icon="sliders")
     _event_cfg = _load_event_cfg(ev_path)
@@ -5920,32 +6710,11 @@ elif bloque_trabajo == "comparativa_real_simu":
                 key="b4_ventana_pre",
             )
 
-    # Opciones de ejes (colapsadas — mismo patrón que B04)
-    with st.expander("📐 Ejes del gráfico", expanded=False):
-        auto_v = st.toggle(
-            "Auto-escala",
-            value=st.session_state.b3_sync_y_auto,
-            key="b4_val_auto",
-            on_change=_sync_rpf_y_axis, args=("y_auto", "b4_val_auto"),
-        )
-        c1, c2, c3, c4 = st.columns([1, 1, 1, 0.5])
-        _xmin_v = c1.number_input("X Min", value=float(_event_cfg.get("b5_xmin", -10.0)), key="b4_val_xmin")
-        _xmax_v = c1.number_input("X Max", value=float(_event_cfg.get("b5_xmax", 100.0)), key="b4_val_xmax")
-        _y1min_v = c2.number_input("Y1 Min (Hz)", value=st.session_state.b3_sync_y_f_min, key="b4_val_y_f_min", on_change=_sync_rpf_y_axis, args=("y_f_min", "b4_val_y_f_min"))
-        _y1max_v = c2.number_input("Y1 Max (Hz)", value=st.session_state.b3_sync_y_f_max, key="b4_val_y_f_max", on_change=_sync_rpf_y_axis, args=("y_f_max", "b4_val_y_f_max"))
-        _y2min_v = c3.number_input("Y2 Min (MW)", value=st.session_state.b3_sync_y_p_min, key="b4_val_y_p_min", on_change=_sync_rpf_y_axis, args=("y_p_min", "b4_val_y_p_min"))
-        _y2max_v = c3.number_input("Y2 Max (MW)", value=st.session_state.b3_sync_y_p_max, key="b4_val_y_p_max", on_change=_sync_rpf_y_axis, args=("y_p_max", "b4_val_y_p_max"))
-        _rb1, _rb2 = c4.columns(2)
-        if _rb1.button("🔄", key="reset_b5_scale", help="Resetear límites"):
-            _save_event_cfg(ev_path, "b5_xmin", -10.0)
-            _save_event_cfg(ev_path, "b5_xmax", 100.0)
-            st.rerun()
-        if _rb2.button("💾", key="save_b5_scale", help="Guardar X"):
-            _save_event_cfg(ev_path, "b5_xmin", _xmin_v)
-            _save_event_cfg(ev_path, "b5_xmax", _xmax_v)
-            st.toast("Escalado B5 guardado")
+    _b5_sel_unit = st.session_state.get("global_selected_unit", "")
+    _xmin_v, _xmax_v, _y1min_v, _y1max_v, _y2min_v, _y2max_v, auto_v, _b5_chart_col = \
+        _render_axis_controls("b5", ev_path, _b5_sel_unit, -10.0, 100.0, 200.0)
 
-    # ── Carga y Alineación Real ────────────────────────────────────────────────
+    #  Carga y Alineación Real 
     _sel_unit = st.session_state.global_selected_unit
     real_subdir = "Graficas Registro 1SEG COBEE" if "SCADA" in src_real else "Resultados_COBEE"
     _r_dir = os.path.join(ev_path, real_subdir)
@@ -5953,11 +6722,25 @@ elif bloque_trabajo == "comparativa_real_simu":
     if _sel_unit and os.path.isdir(_r_dir):
         _rf_match = _buscar_archivo_unidad(_sel_unit, os.listdir(_r_dir))
         if _rf_match:
-            # _cached_real_arrays: caché compartido con B2/B3 → hit si ya fue leído
+            # _cached_real_arrays: caché compartido con B3 → hit si ya fue leído
             _r_fpath = os.path.join(_r_dir, _rf_match)
-            tr_aligned, _fr_arr, _pr_arr, idx_f_r = _cached_real_arrays(
+            tr_aligned, _fr_arr, _pr_arr, idx_f_r, _t_f_auto = _cached_real_arrays(
                 _r_fpath, umbral_dfdt, int(ventana_suavizado)
             )
+
+            # Aplicar t₀ guardado en B3 (si el usuario lo ajustó manualmente)
+            _src_key = "scada_t0_s" if "SCADA" in src_real else "emf_t0_s"
+            _t0_manual = _event_cfg.get(_src_key)
+            if _t0_manual is not None:
+                # tr_aligned = tr_norm - t_f_auto → recentrar en el t₀ manual
+                tr_aligned = tr_aligned + (_t_f_auto - float(_t0_manual))
+
+            # Auto-P para B5: los widgets están deshabilitados en modo auto,
+            # así que solo actualizamos las variables locales para el gráfico.
+            if auto_v:
+                _ap_b5 = _compute_auto_p_range([(tr_aligned, _pr_arr)], _xmin_v, _xmax_v)
+                if _ap_b5:
+                    _y2min_v, _y2max_v = _ap_b5[0], _ap_b5[1]
 
             # --- Construcción del Gráfico de Validación ---
             _gcfg = st.session_state.graph_config
@@ -5967,9 +6750,9 @@ elif bloque_trabajo == "comparativa_real_simu":
                 freq_label=f"Frec. Real ({src_real})", pot_label=f"Pot. Real ({src_real})",
                 freq_color=_gcfg["freq_color_real"], pot_color=_gcfg["pot_color_real"],
                 show_hhmmss=False,
-                x_range=None if auto_v else [_xmin_v, _xmax_v], # type: ignore
-                y1_range=None if auto_v else [_y1min_v, _y1max_v], # type: ignore
-                y2_range=None if auto_v else [_y2min_v, _y2max_v] # type: ignore
+                x_range=[_xmin_v, _xmax_v],
+                y1_range=[_y1min_v, _y1max_v],
+                y2_range=[_y2min_v, _y2max_v],
             )
             
             # Marcadores y KPIs — Datos Reales
@@ -5990,8 +6773,26 @@ elif bloque_trabajo == "comparativa_real_simu":
                 show_deadband=_gcfg["show_deadband"],
                 eval_line_label=f"t₀+Δt ({delta_t_cndc} s)",
             )
+            # P_máxima — datos reales en [t_nadir, t₀+Δt]
+            _t_nadir_r5 = float(_kr['t_min']) if _kr else 0.0
+            _t_pmax_r5, _p_pmax_r5 = _find_pmax_time(
+                tr_aligned, _pr_arr, delta_t_cndc, t_min_eval=_t_nadir_r5
+            )
+            _kpi_pmax_per_src5 = {}
+            if _t_pmax_r5 is not None:
+                _idx_pm_r5  = int(np.argmin(np.abs(tr_aligned - _t_pmax_r5)))
+                _f_pmax_r5  = float(_fr_arr[_idx_pm_r5])
+                if _gcfg.get("show_pmax_marker", True):
+                    fig = add_pmax_marker(
+                        fig, _t_pmax_r5, _p_pmax_r5, _f_pmax_r5,
+                        pot_color=_gcfg["pot_color_real"], freq_color=_gcfg["freq_color_real"],
+                        marker_size=_gcfg["marker_size"],
+                    )
+                if _kr:
+                    _kpi_pm_r5 = _cndc_kpis(tr_aligned, _fr_arr, _pr_arr, float(_pm_v), _rp_v, _t_pmax_r5)
+                    _kpi_pmax_per_src5[f"Real ({src_real})"] = (_kpi_pm_r5, float(_pm_v), _t_pmax_r5, _p_pmax_r5)
 
-            # ── Carga y Alineación Simulaciones ────────────────────────────────
+            #  Carga y Alineación Simulaciones
             _kpi_rows   = [{"Fuente": f"REAL ({src_real})", **_kr}] if _kr else []
             _rocof_rows = {f"REAL ({src_real})": _rocof_r}
             _sim_for_error = []
@@ -6029,9 +6830,27 @@ elif bloque_trabajo == "comparativa_real_simu":
                 _rocof_rows[s_ver] = _roc_s
                 _sim_for_error.append({"ver": s_ver, "t": ts_al, "f": fs_hz, "color": _color_f})
 
-            st.plotly_chart(fig, use_container_width=True)
+                # P_máxima por fuente de simulación en [t_nadir, t₀+Δt]
+                _t_nadir_s5 = float(_ks['t_min']) if _ks else 0.0
+                _t_pmax_s5, _p_pmax_s5 = _find_pmax_time(
+                    ts_al, ps_mw, delta_t_cndc, t_min_eval=_t_nadir_s5
+                )
+                if _t_pmax_s5 is not None:
+                    _idx_pm_s5 = int(np.argmin(np.abs(ts_al - _t_pmax_s5)))
+                    _f_pmax_s5 = float(fs_hz[_idx_pm_s5])
+                    if _gcfg.get("show_pmax_marker", True):
+                        fig = add_pmax_marker(
+                            fig, _t_pmax_s5, _p_pmax_s5, _f_pmax_s5,
+                            pot_color=_color_p, freq_color=_color_f,
+                            marker_size=_gcfg["marker_size"],
+                        )
+                    if _ks:
+                        _kpi_pm_s5 = _cndc_kpis(ts_al, fs_hz, ps_mw, float(_pm_v), _rp_v, _t_pmax_s5)
+                        _kpi_pmax_per_src5[f"Sim {s_ver}"] = (_kpi_pm_s5, float(_pm_v), _t_pmax_s5, _p_pmax_s5)
 
-            # ── Tabla comparativa KPIs (todas las fuentes en una sola vista) ──
+            _b5_chart_col.plotly_chart(fig, use_container_width=True)
+
+            #  Tabla comparativa KPIs (todas las fuentes en una sola vista) 
             if _pm_fuente:
                 st.caption(f"✅ P_max desde `{_pm_fuente}` → **{float(_pm_v):.2f} MW** | Rp = {_rp_v*100:.1f}%")
             else:
@@ -6081,25 +6900,43 @@ elif bloque_trabajo == "comparativa_real_simu":
 
                 _df_comp_b5 = pd.DataFrame(_tabla_b5)
 
-                def _style_comp_b5(row):
-                    """Verde/rojo en la fila ¿Aporta?, gris en P_max."""
-                    base = [""] * len(row)
-                    if "Aporta" in str(row["KPI"]):
-                        return [
-                            ("background-color:#d4edda;color:#155724" if "✅" in str(v)
-                             else "background-color:#f8d7da;color:#721c24" if "❌" in str(v)
-                             else "")
-                            for v in row
-                        ]
-                    if "P_max" in str(row["KPI"]):
-                        return ["background-color:#f2f2f2"] * len(row)
-                    return base
-
-                st.dataframe(
-                    _df_comp_b5.style.apply(_style_comp_b5, axis=1),
-                    use_container_width=False,
-                    hide_index=True,
+                # Tabla comparativa: HTML puro — centrada, sin scrollbars
+                _src_names_b5 = list(_comp_srcs.keys())
+                _th_k5 = ("padding:7px 12px;text-align:left;font-weight:600;"
+                           "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
+                _th_v5 = ("padding:7px 12px;text-align:right;font-weight:600;"
+                           "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
+                _td_k5 = "padding:5px 12px;border-bottom:1px solid #e0e0e0;font-size:12px;white-space:nowrap;"
+                _td_v5 = ("padding:5px 12px;border-bottom:1px solid #e0e0e0;"
+                           "font-size:12px;text-align:right;white-space:nowrap;min-width:110px;")
+                _hdr5 = f'<th style="{_th_k5}">KPI</th>' + "".join(
+                    f'<th style="{_th_v5}">{_sn}</th>' for _sn in _src_names_b5
                 )
+                _body5 = ""
+                for _row5 in _tabla_b5:
+                    _lbl5    = _row5["KPI"]
+                    _aporta5 = "Aporta" in _lbl5
+                    _ispmax5 = "P_max"  in _lbl5
+                    _bgrow5  = "background:#f2f2f2;" if _ispmax5 else ""
+                    _cells5  = f'<td style="{_td_k5}{_bgrow5}">{_lbl5}</td>'
+                    for _sn5 in _src_names_b5:
+                        _val5 = _row5.get(_sn5, "—")
+                        _cs5  = _td_v5
+                        if _aporta5:
+                            if "✅" in str(_val5):   _cs5 += "background:#d4edda;color:#155724;"
+                            elif "❌" in str(_val5): _cs5 += "background:#f8d7da;color:#721c24;"
+                        elif _ispmax5:
+                            _cs5 += _bgrow5
+                        _cells5 += f'<td style="{_cs5}">{_val5}</td>'
+                    _body5 += f'<tr>{_cells5}</tr>'
+                _html_b5 = (
+                    '<div style="display:flex;justify-content:center;margin:8px 0 4px 0;">'
+                    '<table style="border-collapse:collapse;border:1px solid #d0d0d0;border-radius:6px;overflow:hidden;">'
+                    f'<thead><tr>{_hdr5}</tr></thead>'
+                    f'<tbody>{_body5}</tbody>'
+                    '</table></div>'
+                )
+                st.markdown(_html_b5, unsafe_allow_html=True)
 
                 # Exportar tabla comparativa
                 if st.button("⬇️ Exportar comparativa a Excel", key="dl_b5_comp"):
@@ -6120,6 +6957,68 @@ elif bloque_trabajo == "comparativa_real_simu":
                         )
                     except Exception as _ex:
                         st.error(f"Error exportando: {_ex}")
+
+                # KPIs evaluados en P_máxima por fuente — tabla multi-columna
+                if _kpi_pmax_per_src5:
+                    st.markdown("---")
+                    _v4_section_head("KPIs CNDC — P_máxima (por fuente)", icon="chart")
+                    _src_pm5 = list(_kpi_pmax_per_src5.keys())
+                    _KPI_FILAS_PM5 = [
+                        ("P_max [MW]",                    lambda k, pm, t, p: f"{pm:.2f}"),
+                        ("t_Pmáx [s]",                    lambda k, pm, t, p: f"{t:.1f}"),
+                        ("f₀ — Inicio evento [Hz]",       lambda k, pm, t, p: f"{k['f0']:.4f}" if k else "—"),
+                        ("P₀ — Inicio evento [MW]",       lambda k, pm, t, p: f"{k['p0']:.3f}" if k else "—"),
+                        ("f_min — Nadir [Hz]",            lambda k, pm, t, p: f"{k['f_min']:.4f}" if k else "—"),
+                        ("t_min — Nadir [s]",             lambda k, pm, t, p: f"{k['t_min']:.1f}" if k else "—"),
+                        ("f en t_Pmáx [Hz]",              lambda k, pm, t, p: f"{k['f_dt']:.4f}" if k else "—"),
+                        ("P en t_Pmáx [MW]",              lambda k, pm, t, p: f"{p:.3f}"),
+                        ("R_inic [MW]",                   lambda k, pm, t, p: f"{k['r_inic']:.3f}" if k else "—"),
+                        ("R_inic [%]",                    lambda k, pm, t, p: f"{k['r_inic_pct']:.2f}" if k else "—"),
+                        ("ΔP entregada [MW]",             lambda k, pm, t, p: f"{k['dp']:.3f}" if k else "—"),
+                        ("ΔP% aporte [%]",                lambda k, pm, t, p: f"{k['dp_pct']:.2f}" if k else "—"),
+                        ("¿Aporta RPF? (ΔP% ≥ 1.5%)",    lambda k, pm, t, p: ("✅ Sí" if k['aporta'] else "❌ No") if k else "—"),
+                        ("Droop Nominal [%]",             lambda k, pm, t, p: f"{k['droop_nom']:.1f}" if k else "—"),
+                        ("Droop Calculado [%]",           lambda k, pm, t, p: str(k['droop_calc']) if k else "—"),
+                    ]
+                    _th_kpm = ("padding:7px 12px;text-align:left;font-weight:600;"
+                               "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
+                    _th_vpm = ("padding:7px 12px;text-align:right;font-weight:600;"
+                               "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
+                    _td_kpm = "padding:5px 12px;border-bottom:1px solid #e0e0e0;font-size:12px;white-space:nowrap;"
+                    _td_vpm = ("padding:5px 12px;border-bottom:1px solid #e0e0e0;"
+                               "font-size:12px;text-align:right;white-space:nowrap;min-width:110px;")
+                    _hdrpm = f'<th style="{_th_kpm}">KPI</th>' + "".join(
+                        f'<th style="{_th_vpm}">{_sn}</th>' for _sn in _src_pm5
+                    )
+                    _bodypm = ""
+                    for _lblpm, _fnpm in _KPI_FILAS_PM5:
+                        _aporta_rowpm = "Aporta" in _lblpm
+                        _ispmax_rowpm = "P_max"  in _lblpm
+                        _bgrow_pm     = "background:#f2f2f2;" if _ispmax_rowpm else ""
+                        _cells_pm     = f'<td style="{_td_kpm}{_bgrow_pm}">{_lblpm}</td>'
+                        for _snpm in _src_pm5:
+                            _kpm5, _pm5p, _t5p, _p5p = _kpi_pmax_per_src5[_snpm]
+                            try:
+                                _val_pm = _fnpm(_kpm5, _pm5p, _t5p, _p5p)
+                            except Exception:
+                                _val_pm = "—"
+                            _cspm = _td_vpm
+                            if _aporta_rowpm:
+                                if "✅" in str(_val_pm):   _cspm += "background:#d4edda;color:#155724;"
+                                elif "❌" in str(_val_pm): _cspm += "background:#f8d7da;color:#721c24;"
+                            elif _ispmax_rowpm:
+                                _cspm += _bgrow_pm
+                            _cells_pm += f'<td style="{_cspm}">{_val_pm}</td>'
+                        _bodypm += f'<tr>{_cells_pm}</tr>'
+                    _html_pm5 = (
+                        '<div style="display:flex;justify-content:center;margin:8px 0 4px 0;">'
+                        '<table style="border-collapse:collapse;border:1px solid #d0d0d0;'
+                        'border-radius:6px;overflow:hidden;">'
+                        f'<thead><tr>{_hdrpm}</tr></thead>'
+                        f'<tbody>{_bodypm}</tbody>'
+                        '</table></div>'
+                    )
+                    st.markdown(_html_pm5, unsafe_allow_html=True)
 
                 # --- Curva de Error de Seguimiento y Barras KPI ---------------
                 if _sim_for_error:
@@ -6180,6 +7079,10 @@ if bloque_trabajo == "reporte_tecnico":
     _render_block_header("07", "Reporte Técnico",
         "Consolida KPIs de SCADA, EMF y simulación. Exporta informe para entrega al CNDC.",
         "Salida", pf_required=False)
+    # Inicializar estado del generador de reporte
+    for _k7 in ("b7_docx_bytes", "b7_docx_ctx", "b7_show_ctx_pack"):
+        if _k7 not in st.session_state:
+            st.session_state[_k7] = None
     _v4_section_head("Configuración del Reporte", icon="sliders")
     if not st.session_state.semestre_global or not st.session_state.evento_global:
         st.warning("👈 Seleccione Semestre y Evento en la barra lateral para ver la auditoría del proyecto.")
@@ -6188,7 +7091,7 @@ if bloque_trabajo == "reporte_tecnico":
     ev_path = st.session_state.ev_path_global
     n_evento = st.session_state.n_evento_global
 
-    # ─── SECCIÓN 1: AUDITORÍA DE ARCHIVOS DEL EVENTO ───────────────────────────
+    #  SECCIÓN 1: AUDITORÍA DE ARCHIVOS DEL EVENTO 
     _v4_section_head("Auditoría de Archivos del Evento", icon="server")
     st.caption("Estado actual de los archivos generados y requeridos para el evento seleccionado.")
     
@@ -6229,7 +7132,7 @@ if bloque_trabajo == "reporte_tecnico":
         st.download_button("Descargar Reporte de Auditoría", excel_audit,
                            file_name=f"auditoria_Ev{n_evento}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-    # ─── SECCIÓN 2: DOCUMENTACIÓN DE MEMORIA Y PROCESOS ────────────────────────
+    #  SECCIÓN 2: DOCUMENTACIÓN DE MEMORIA Y PROCESOS 
     st.markdown("---") # type: ignore
     _v4_section_head("Manual Técnico y Memoria del Sistema", icon="report")
 
@@ -6300,7 +7203,7 @@ if bloque_trabajo == "reporte_tecnico":
         *   **Exportación:** Imágenes `.png` individuales y archivos `.zip` consolidados por evento.
         """)
 
-    # ─── SECCIÓN 3: RESUMEN DE RUTAS ──────────────────────────────────────────
+    #  SECCIÓN 3: RESUMEN DE RUTAS 
     st.markdown("---")
     _v4_section_head("Rutas de Memoria Activas", icon="server")
     
@@ -6317,15 +7220,145 @@ if bloque_trabajo == "reporte_tecnico":
         st.caption(f"Cargas: `{os.path.basename(LOC_CAR_PATH)}`")
         st.caption(f"Trafos: `{os.path.basename(LOC_XFO_PATH)}`")
 
-    # ─── PRÓXIMAMENTE ──────────────────────────────────────────────────────────
-    st.markdown("---") # type: ignore
-    col_rep1, col_rep2 = st.columns([2,1])
-    with col_rep1:
-        _v4_section_head("Generador de Reporte Final", icon="report")
-        st.write("Consolida los KPIs de todas las unidades y las gráficas comparativas en un documento PDF/Word.")
-    with col_rep2:
-        st.write("")
-        st.button("📄 Próximamente: Exportar PDF", disabled=True)
+    # ── SECCIÓN 4: GENERADOR DE REPORTE TÉCNICO ──────────────────────────────
+    st.markdown("---")
+    _v4_section_head(
+        "Generador de Reporte Técnico",
+        "Consolida KPIs de SCADA, EMF y simulación en un documento Word listo para entregar al CNDC.",
+        "report",
+    )
+
+    _sel_unit_b7 = st.session_state.global_selected_unit
+    _ev_cfg_b7   = _load_event_cfg(ev_path)
+    _b7_dt       = int(_ev_cfg_b7.get("delta_t_cndc", 35))
+    _b7_t_falla  = float(_ev_cfg_b7.get("t_sim_falla", 5.0))
+
+    if not _sel_unit_b7:
+        st.info("ℹ️ Seleccione una unidad generadora en el selector superior para generar el reporte.")
+    else:
+        _unit_clean_b7 = _sel_unit_b7.replace("sym_", "").replace("SYM_", "")
+        st.caption(f"Unidad seleccionada: **{_unit_clean_b7}** | Δt={_b7_dt} s | t₀={_b7_t_falla:.1f} s")
+
+        _cb1, _cb2, _cb3 = st.columns(3)
+        with _cb1:
+            _b7_incluir_hist  = st.checkbox("Incluir histórico de la unidad", value=True,  key="b7_hist")
+        with _cb2:
+            _b7_incluir_datos = st.checkbox("Incluir apéndice de datos crudos", value=False, key="b7_raw")
+        with _cb3:
+            _b7_subir_sp = st.checkbox(
+                "Subir a SharePoint automáticamente", value=False, key="b7_sp",
+                help="Requiere conexión activa a SharePoint (contraseña configurada en secrets.toml)"
+            )
+
+        _btn_col1, _btn_col2, _ = st.columns([1, 1, 2])
+        with _btn_col1:
+            _btn_generar_b7  = st.button("📄 Generar Reporte Word", type="primary", key="b7_gen_word")
+        with _btn_col2:
+            _btn_ctx_pack_b7 = st.button("🤖 Copilot Context Pack", key="b7_ctx_pack",
+                                          help="Genera texto estructurado para copiar/pegar en Teams Copilot Chat")
+
+        # ── Copilot Context Pack (operación ligera, sin generar Word) ────────
+        if _btn_ctx_pack_b7:
+            st.session_state["b7_show_ctx_pack"] = True
+        if st.session_state.get("b7_show_ctx_pack"):
+            with st.spinner("Preparando datos para Copilot..."):
+                try:
+                    from reporte_tecnico import collect_kpis_para_reporte, generar_copilot_context_pack
+                    _ctx_cp = collect_kpis_para_reporte(
+                        ev_path=ev_path, n_evento=n_evento, unit_key=_sel_unit_b7,
+                        delta_t=_b7_dt, t_falla=_b7_t_falla,
+                        loc_gen_path=LOC_NAMES_GEN_PATH,
+                    )
+                    _ctx_cp.semestre = st.session_state.semestre_global or ""
+                    _pack_txt = generar_copilot_context_pack(_ctx_cp)
+                except Exception as _e_cp:
+                    st.error(f"Error al preparar contexto: {_e_cp}")
+                    _pack_txt = None
+            if _pack_txt:
+                st.markdown("---")
+                _v4_section_head(
+                    "Copilot Context Pack",
+                    "Selecciona todo el bloque y pégalo directamente en Teams Copilot Chat o en Word Copilot",
+                    "report",
+                )
+                st.info("💡 **Cómo usar:** Copia el texto de abajo → abre Teams → Copilot Chat → pega y envía el prompt que necesites.")
+                st.code(_pack_txt, language="markdown")
+                if st.button("✕ Cerrar Context Pack", key="b7_close_ctx"):
+                    st.session_state["b7_show_ctx_pack"] = False
+                    st.rerun()
+
+        # ── Generación del Word ──────────────────────────────────────────────
+        if _btn_generar_b7:
+            with st.spinner(f"Generando reporte para {_unit_clean_b7}... (puede tardar 15-30 s)"):
+                try:
+                    from reporte_tecnico import (
+                        collect_kpis_para_reporte,
+                        generar_reporte_word,
+                        subir_reporte_a_sharepoint,
+                    )
+                    _ctx_b7 = collect_kpis_para_reporte(
+                        ev_path=ev_path, n_evento=n_evento, unit_key=_sel_unit_b7,
+                        delta_t=_b7_dt, t_falla=_b7_t_falla,
+                        loc_gen_path=LOC_NAMES_GEN_PATH,
+                    )
+                    _ctx_b7.semestre = st.session_state.semestre_global or ""
+                    _docx_b7 = generar_reporte_word(
+                        _ctx_b7,
+                        incluir_historico=_b7_incluir_hist,
+                        incluir_apendice=_b7_incluir_datos,
+                    )
+                    st.session_state["b7_docx_bytes"] = _docx_b7
+                    st.session_state["b7_docx_ctx"]   = _ctx_b7
+                    st.success("✅ Reporte generado correctamente.")
+
+                    # Subida a SharePoint opcional
+                    if _b7_subir_sp and _SP_OK:
+                        import sharepoint_client as _sp_mod
+                        _ok_sp, _msg_sp = subir_reporte_a_sharepoint(
+                            _docx_b7, ev_path, n_evento, _unit_clean_b7,
+                            st.session_state.semestre_global or "",
+                            upload_fn=_sp.upload_file,
+                            local_to_sp_fn=getattr(_sp, "local_path_to_sp_folder",
+                                                    getattr(_sp, "_local_to_sp_folder", None)),
+                            raiz_local=RAIZ,
+                        )
+                        if _ok_sp:
+                            st.toast("✅ Reporte subido a SharePoint", icon="✅")
+                        else:
+                            st.warning(f"SharePoint: {_msg_sp}")
+                    elif _b7_subir_sp and not _SP_OK:
+                        st.warning("SharePoint no está conectado. Descarga el archivo manualmente.")
+                except Exception as _e_gen:
+                    st.error(f"Error al generar el reporte: {_e_gen}")
+                    with st.expander("Detalle del error"):
+                        import traceback
+                        st.code(traceback.format_exc())
+
+        # ── Botón de descarga (persiste entre reruns) ────────────────────────
+        if st.session_state.get("b7_docx_bytes"):
+            _ctx_dl = st.session_state.get("b7_docx_ctx")
+            _unit_dl = (_ctx_dl.unit_name if _ctx_dl else _unit_clean_b7).replace(" ", "_")
+            _sem_dl  = st.session_state.semestre_global or "SEM"
+            _fname_dl = f"RPF_{_sem_dl}_Ev{n_evento}_{_unit_dl}.docx"
+            st.download_button(
+                label="⬇️ Descargar Reporte Word",
+                data=st.session_state["b7_docx_bytes"],
+                file_name=_fname_dl,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="b7_dl_btn",
+            )
+            # Resumen de fuentes incluidas en el reporte
+            if _ctx_dl:
+                st.markdown("**Fuentes incluidas en el reporte:**")
+                _audit_cols = st.columns(4)
+                _audit_info = [
+                    ("SCADA (1SEG)",           _ctx_dl.kpi_scada  is not None),
+                    ("EMF CNDC",               _ctx_dl.kpi_emf    is not None),
+                    (f"Sim E{n_evento}.0",     _ctx_dl.kpi_sim_e0 is not None),
+                    (f"Sim E{n_evento}.1",     _ctx_dl.kpi_sim_e1 is not None),
+                ]
+                for (label_a, ok_a), col_a in zip(_audit_info, _audit_cols):
+                    col_a.metric(label_a, "✅ Incluida" if ok_a else "⬜ N/D")
 
     # Botón para abrir la carpeta del evento (Solo Windows)
     if st.button("📂 Abrir Carpeta del Evento en Explorador"):

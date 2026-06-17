@@ -32,7 +32,9 @@ except (FileNotFoundError, ValueError) as _e:
 
 _base_ev_rpf = os.path.join(_RAIZ_RPF, _SEM, "Análisis_todos_los_eventos")
 try:
-    _evs    = sorted(d for d in os.listdir(_base_ev_rpf) if os.path.isdir(os.path.join(_base_ev_rpf, d)))
+    _evs    = sorted(
+        (d for d in os.listdir(_base_ev_rpf) if os.path.isdir(os.path.join(_base_ev_rpf, d))),
+        key=lambda d: int(m.group(1)) if (m := re.search(r"(\d+)$", d)) else -1)
     _EV_IDX = str(_evs.index(_EV) + 1)
 except (FileNotFoundError, ValueError) as _e:
     print(f"[ERROR] Evento '{_EV}' no encontrado en {_base_ev_rpf}: {_e}")

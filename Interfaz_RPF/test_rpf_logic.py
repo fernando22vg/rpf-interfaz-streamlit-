@@ -5,9 +5,9 @@ from interfaz_analisis_RPF import _detectar_inicio_falla, _cndc_kpis, _calcular_
 from CondInicialesPF import extraer_sti, buscar_p0, _norm_hora, _ajustar_plini_por_distribuidor
 from ExtractorResultadosCNDC import _parse_time_s, _interp
 
-# ─────────────────────────────────────────────────────────────
+# 
 # TESTS: Análisis RPF (interfaz_analisis_RPF.py)
-# ─────────────────────────────────────────────────────────────
+# 
 
 def test_detectar_inicio_falla():
     # Frequency dropping starting at index 5
@@ -39,9 +39,9 @@ def test_calcular_rocof():
     rocof = _calcular_rocof(t, f, ventana_s=2.0)
     assert pytest.approx(rocof, 0.001) == -0.1
 
-# ─────────────────────────────────────────────────────────────
+# 
 # TESTS: Condiciones Iniciales (CondInicialesPF.py)
-# ─────────────────────────────────────────────────────────────
+# 
 
 def test_extraer_sti():
     assert extraer_sti("sym_ZON01") == "ZON01"
@@ -77,9 +77,9 @@ def test_ajustar_plini_por_distribuidor():
     assert max_residuo == 0
     assert 2.505 in df_plini["plini_MW"].values
 
-# ─────────────────────────────────────────────────────────────
+# 
 # TESTS: EMF Parser (ExtractorResultadosCNDC.py)
-# ─────────────────────────────────────────────────────────────
+# 
 
 def test_parse_time_s():
     # HH:MM:SS

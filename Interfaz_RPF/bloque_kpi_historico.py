@@ -21,7 +21,7 @@ _SP_FOLDER = "03_DATOS GEN"
 _SP_FILE   = "rpf_kpi_cobee.csv"
 
 
-# ─── Carga con fallback automático ───────────────────────────────────────────
+#  Carga con fallback automático 
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _load_data() -> tuple[pd.DataFrame, str]:
@@ -49,24 +49,48 @@ def _load_data() -> tuple[pd.DataFrame, str]:
             # Guardar cache local para uso offline
             os.makedirs(os.path.dirname(_CSV_LOCAL), exist_ok=True)
             df.to_csv(_CSV_LOCAL, index=False)
+            # Subir a SharePoint en background para que esté disponible fuera de la red
+            try:
+                import sharepoint_client as _spc
+                import threading
+                import io as _io
+                csv_bytes = df.to_csv(index=False).encode("utf-8")
+                def _upload():
+                    try:
+                        session, site_url, root_path = _spc._get_session()
+                        sp_folder = f"{root_path}/{_SP_FOLDER}"
+                        _spc._upload_sp_file(session, site_url, sp_folder, _SP_FILE, csv_bytes)
+                    except Exception:
+                        pass
+                threading.Thread(target=_upload, daemon=True).start()
+            except Exception:
+                pass
             return df, "🟢 PostgreSQL (servidor local)"
     except Exception:
         pass
 
     # 2. SharePoint
     try:
-        from sharepoint_client import SharePointClient
-        sp_pass = st.secrets.get("SP_PASSWORD", "")
-        if sp_pass:
-            sp = SharePointClient(password=sp_pass)
-            content = sp.download_file_content(f"{_SP_FOLDER}/{_SP_FILE}")
-            if content:
-                import io
-                df = pd.read_csv(io.BytesIO(content))
-                if not df.empty:
-                    os.makedirs(os.path.dirname(_CSV_LOCAL), exist_ok=True)
-                    df.to_csv(_CSV_LOCAL, index=False)
-                    return df, "🔵 SharePoint (nube COBEE)"
+        import sharepoint_client as _spc
+        session, site_url, root_path = _spc._get_session()
+        sp_file_path = f"{root_path}/{_SP_FOLDER}/{_SP_FILE}"
+        dl_url = (
+            f"{site_url}/_api/web"
+            f"/GetFileByServerRelativeUrl('{_spc._sp_path(sp_file_path)}')/$value"
+        )
+        r = session.get(
+            dl_url,
+            headers={"Accept": "application/json;odata=nometadata"},
+            timeout=20,
+        )
+        if r.status_code != 404:
+            r.raise_for_status()
+            import io
+            df = pd.read_csv(io.BytesIO(r.content))
+            if not df.empty:
+                os.makedirs(os.path.dirname(_CSV_LOCAL), exist_ok=True)
+                df.to_csv(_CSV_LOCAL, index=False)
+                return df, "🔵 SharePoint (nube COBEE)"
     except Exception:
         pass
 
@@ -109,14 +133,16 @@ def _base_layout(t: dict, **kwargs) -> dict:
         paper_bgcolor=t["paper"],
         plot_bgcolor=t["paper"],
         font=dict(family="Inter, sans-serif", color=t["muted"], size=11),
-        xaxis=dict(gridcolor=t["grid"], zerolinecolor=t["grid"]),
-        yaxis=dict(gridcolor=t["grid"], zerolinecolor=t["grid"]),
-        margin=dict(t=20, r=16, b=40, l=60),
         **kwargs,
     )
 
 
-# ─── Filtros ──────────────────────────────────────────────────────────────────
+def _axis(t: dict, **kwargs) -> dict:
+    """Eje con grid del tema + kwargs adicionales."""
+    return dict(gridcolor=t["grid"], zerolinecolor=t["grid"], **kwargs)
+
+
+#  Filtros 
 
 def _render_filters(df: pd.DataFrame):
     col1, col2, col3 = st.columns([2, 2, 2])
@@ -143,10 +169,10 @@ def _render_filters(df: pd.DataFrame):
     return dff
 
 
-# ─── Tab 1: Cumplimiento ──────────────────────────────────────────────────────
+#  Tab 1: Cumplimiento 
 
 def _tab_cumplimiento(df: pd.DataFrame, t: dict):
-    # ── Heatmap ──────────────────────────────────────────────────────────────
+    #  Heatmap 
     st.markdown("#### Mapa de Cumplimiento por Unidad y Evento")
 
     # Construir etiqueta de evento con semestre
@@ -165,6 +191,10 @@ def _tab_cumplimiento(df: pd.DataFrame, t: dict):
                                 values="estado_num", aggfunc="first")
     pivot_txt = df2.pivot_table(index="unidad", columns="ev_label",
                                 values="estado_txt", aggfunc="first")
+
+    # Celdas vacías = unidad no despachada en ese evento → F.S.
+    pivot_num = pivot_num.fillna(-0.5)
+    pivot_txt = pivot_txt.fillna("F.S.")
 
     # Ordenar unidades por % incumplimiento
     inc_order = (df2[df2["aporta_rpf"] == "No"]
@@ -222,7 +252,7 @@ def _tab_cumplimiento(df: pd.DataFrame, t: dict):
 
     st.markdown("---")
 
-    # ── Ranking incumplimiento ────────────────────────────────────────────────
+    #  Ranking incumplimiento 
     st.markdown("#### Ranking de Incumplimiento RPF por Unidad")
 
     inc_df = (
@@ -260,12 +290,12 @@ def _tab_cumplimiento(df: pd.DataFrame, t: dict):
     st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
 
 
-# ─── Tab 2: Frecuencia ────────────────────────────────────────────────────────
+#  Tab 2: Frecuencia 
 
 def _tab_frecuencia(df: pd.DataFrame, t: dict):
     col_a, col_b = st.columns(2)
 
-    # ── Timeline f_min ────────────────────────────────────────────────────────
+    #  Timeline f_min 
     with col_a:
         st.markdown("#### Evolución de f_min por Evento")
         ev_df = (df.groupby(["semestre", "evento", "fecha_evento"])
@@ -297,7 +327,7 @@ def _tab_frecuencia(df: pd.DataFrame, t: dict):
         )
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-    # ── Scatter droop ─────────────────────────────────────────────────────────
+    #  Scatter droop 
     with col_b:
         st.markdown("#### Droop Declarado vs Calculado")
         droop_df = (df.dropna(subset=["droop_inf_pct", "droop_calc_pct"])
@@ -353,7 +383,7 @@ def _tab_frecuencia(df: pd.DataFrame, t: dict):
         st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
 
 
-# ─── Tab 3: Reservas ──────────────────────────────────────────────────────────
+#  Tab 3: Reservas 
 
 def _tab_reservas(df: pd.DataFrame, t: dict):
     st.markdown("#### Reserva Disponible vs Potencia Entregada por Unidad")
@@ -390,7 +420,7 @@ def _tab_reservas(df: pd.DataFrame, t: dict):
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-    # ── Estadísticas resumidas ────────────────────────────────────────────────
+    #  Estadísticas resumidas 
     st.markdown("---")
     st.markdown("#### Estadísticas por Semestre")
 
@@ -418,7 +448,7 @@ def _tab_reservas(df: pd.DataFrame, t: dict):
     )
 
 
-# ─── Render principal ─────────────────────────────────────────────────────────
+#  Render principal 
 
 def render_bloque_kpi(session_state):
     t = _theme()
@@ -480,11 +510,33 @@ def render_bloque_kpi(session_state):
         st.info("Sin registros para los filtros seleccionados.")
         return
 
-    # Tabs
-    tab1, tab2, tab3 = st.tabs(["Cumplimiento", "Frecuencia & Droop", "Reservas"])
-    with tab1:
+    # Barra de tabs — mismo patrón que _v4_tab_bar del interfaz principal
+    _tab_defs = [
+        {"id": "cumpl", "label": "Cumplimiento"},
+        {"id": "freq",  "label": "Frecuencia & Droop"},
+        {"id": "res",   "label": "Reservas"},
+    ]
+    _sk = "v4_tab_b06_kpi"
+    _ids = [td["id"] for td in _tab_defs]
+    if _sk not in st.session_state or st.session_state[_sk] not in _ids:
+        st.session_state[_sk] = _ids[0]
+    _active = st.session_state[_sk]
+
+    _cols = st.columns(len(_tab_defs))
+    for _td, _col in zip(_tab_defs, _cols):
+        with _col:
+            if st.button(
+                _td["label"],
+                key=f"{_sk}_{_td['id']}",
+                type="primary" if _td["id"] == _active else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state[_sk] = _td["id"]
+                st.rerun()
+
+    if _active == "cumpl":
         _tab_cumplimiento(dff, t)
-    with tab2:
+    elif _active == "freq":
         _tab_frecuencia(dff, t)
-    with tab3:
+    elif _active == "res":
         _tab_reservas(dff, t)

@@ -104,6 +104,9 @@ def crear_tablas(**overrides):
     try:
         with conn.cursor() as cur:
             cur.execute(_DDL)
+            cur.execute(
+                "ALTER TABLE dsl_experimentos ADD COLUMN IF NOT EXISTS carpeta_curvas TEXT"
+            )
         conn.commit()
     finally:
         conn.close()
@@ -139,6 +142,20 @@ def actualizar_estado(exp_id: int, estado: str, **overrides):
             cur.execute(
                 "UPDATE dsl_experimentos SET estado=%s WHERE id=%s",
                 (estado, exp_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def vincular_curva(exp_id: int, carpeta_curvas: str, **overrides):
+    """UPDATE dsl_experimentos.carpeta_curvas. No cambia el estado (eso lo hace registrar_kpis)."""
+    conn = _conectar(**overrides)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE dsl_experimentos SET carpeta_curvas=%s WHERE id=%s",
+                (carpeta_curvas, exp_id),
             )
         conn.commit()
     finally:
@@ -236,7 +253,7 @@ def listar_experimentos(sym: str | None = None,
 
     sql = """
         SELECT e.id, e.sym, e.familia, e.evento_ref, e.nombre,
-               e.fecha, e.estado, e.notas,
+               e.fecha, e.estado, e.notas, e.carpeta_curvas,
                k.f_min, k.t_min, k.delta_f, k.rocof,
                k.delta_p, k.delta_p_pct, k.aporta_rpf
         FROM   dsl_experimentos e

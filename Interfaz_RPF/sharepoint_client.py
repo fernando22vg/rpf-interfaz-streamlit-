@@ -483,7 +483,9 @@ def listar_eventos(semestre: str) -> list:
     session, site_url, raiz = _raiz_path()
     analisis_path = f"{raiz}/{semestre}/Análisis_todos_los_eventos"
     folders = _list_folders(session, site_url, analisis_path)
-    return sorted(f["Name"] for f in folders)
+    return sorted(
+        (f["Name"] for f in folders),
+        key=lambda d: int(m.group(1)) if (m := re.search(r"(\d+)$", d)) else -1)
 
 
 # Rutas temporales equivalentes a las carpetas locales
