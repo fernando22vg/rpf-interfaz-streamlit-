@@ -141,7 +141,7 @@ def _buscar_archivo_unidad(unit_name, file_list):
 # CONFIGURACIÓN DE PÁGINA
 # 
 st.set_page_config(
-    page_title="Analisis RPF",
+    page_title="Analisis",
     page_icon="⚡",  # fallback; el favicon SVG real se inyecta via components.html
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -2492,9 +2492,8 @@ _v1_cmp.html(
   var P=window.parent;
   if(!P)return;
 
-  //  1. Favicon SVG (rayo sobre gradiente azul/cyan) 
-  // Para usar logo COBEE: reemplazar el SVG por <img> o cambiar el href por
-  // la URL/data-URI del logo PNG/SVG de COBEE.
+  //  1. Favicon SVG persistente (rayo sobre gradiente azul/cyan)
+  // MutationObserver sobre <head> para revertir cualquier reemplazo de Streamlit.
   (function(){
     var svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
       +'<defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">'
@@ -2504,12 +2503,37 @@ _v1_cmp.html(
       +'<rect width="100" height="100" rx="18" fill="url(%23g)"/>'
       +'<path d="M60 8 L37 52 L54 52 L48 92 L78 44 L61 44 L65 8 Z" fill="white"/>'
       +'</svg>';
-    var href='data:image/svg+xml,'+svg;
+    var HREF='data:image/svg+xml,'+svg;
     var doc=P.document;
-    var lk=doc.querySelector('link[rel="icon"],link[rel="shortcut icon"]');
-    if(!lk){lk=doc.createElement('link');lk.rel='icon';doc.head.appendChild(lk);}
-    lk.type='image/svg+xml';
-    lk.href=href;
+
+    function applyFavicon(){
+      var lk=doc.querySelector('link[rel="icon"],link[rel="shortcut icon"]');
+      if(!lk){lk=doc.createElement('link');lk.rel='icon';doc.head.appendChild(lk);}
+      if(lk.href!==HREF){lk.type='image/svg+xml';lk.href=HREF;}
+    }
+
+    applyFavicon();
+
+    // Vigilar el <head>: si Streamlit reemplaza o agrega un link de favicon, revertir.
+    new P.MutationObserver(function(muts){
+      muts.forEach(function(m){
+        m.addedNodes.forEach(function(n){
+          if(n.nodeType===1&&n.tagName==='LINK'&&
+             (n.rel==='icon'||n.rel==='shortcut icon')&&n.href!==HREF){
+            setTimeout(applyFavicon,0);
+          }
+        });
+        if(m.type==='attributes'&&m.target.tagName==='LINK'&&
+           (m.target.rel==='icon'||m.target.rel==='shortcut icon')&&
+           m.target.href!==HREF){
+          setTimeout(applyFavicon,0);
+        }
+      });
+    }).observe(doc.head,{childList:true,subtree:true,attributes:true,
+      attributeFilter:['href','rel']});
+
+    // Seguro extra: verificar cada 800 ms durante los primeros 8 s
+    var n=0;var iv=setInterval(function(){applyFavicon();if(++n>=10)clearInterval(iv);},800);
   })();
 
   //  2. Ajuste dinámico stMain cuando sidebar se abre/cierra 
