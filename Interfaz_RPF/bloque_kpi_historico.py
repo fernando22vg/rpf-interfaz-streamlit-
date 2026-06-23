@@ -72,12 +72,21 @@ def _load_data() -> tuple[pd.DataFrame, str, list]:
     try:
         import sharepoint_client as _spc
         session, site_url, root_path = _spc._get_session()
+        _errors.append(f"SP root_path: {root_path}")
         sp_file_path = f"{root_path}/{_SP_FOLDER}/{_SP_FILE}"
+        _errors.append(f"SP file path construida: {sp_file_path}")
+        # Listar carpetas en root_path para verificar estructura
+        try:
+            folders = _spc._list_folders(session, site_url, root_path)
+            _errors.append(f"Carpetas en root_path: {[f['Name'] for f in folders]}")
+            files = _spc._list_files(session, site_url, root_path)
+            _errors.append(f"Archivos en root_path: {[f['Name'] for f in files]}")
+        except Exception as le:
+            _errors.append(f"No se pudo listar root_path: {le}")
         dl_url = (
             f"{site_url}/_api/web"
             f"/GetFileByServerRelativeUrl('{_spc._sp_path(sp_file_path)}')/$value"
         )
-        _errors.append(f"SharePoint URL intentada: {dl_url[:120]}…")
         r = session.get(
             dl_url,
             headers={"Accept": "application/json;odata=nometadata"},
@@ -94,7 +103,7 @@ def _load_data() -> tuple[pd.DataFrame, str, list]:
             else:
                 _errors.append("SharePoint: CSV descargado pero está vacío")
         elif r.status_code == 404:
-            _errors.append(f"SharePoint: archivo no encontrado en la ruta indicada")
+            _errors.append("SharePoint: archivo no encontrado en la ruta construida")
         else:
             r.raise_for_status()
     except Exception as e:
