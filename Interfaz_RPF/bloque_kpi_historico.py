@@ -24,11 +24,13 @@ _SP_FILE   = "rpf_kpi_cobee.csv"
 #  Carga con fallback automático 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _load_data() -> tuple[pd.DataFrame, str]:
+def _load_data() -> tuple[pd.DataFrame, str, list]:
     """
     Intenta cargar desde PostgreSQL → SharePoint → cache local.
-    Devuelve (DataFrame, fuente_usada).
+    Devuelve (DataFrame, fuente_usada, [errores_diagnostico]).
     """
+    _errors: list[str] = []
+
     # 1. PostgreSQL
     try:
         import psycopg2
@@ -46,14 +48,11 @@ def _load_data() -> tuple[pd.DataFrame, str]:
         )
         conn.close()
         if not df.empty:
-            # Guardar cache local para uso offline
             os.makedirs(os.path.dirname(_CSV_LOCAL), exist_ok=True)
             df.to_csv(_CSV_LOCAL, index=False)
-            # Subir a SharePoint en background para que esté disponible fuera de la red
             try:
                 import sharepoint_client as _spc
                 import threading
-                import io as _io
                 csv_bytes = df.to_csv(index=False).encode("utf-8")
                 def _upload():
                     try:
@@ -65,9 +64,9 @@ def _load_data() -> tuple[pd.DataFrame, str]:
                 threading.Thread(target=_upload, daemon=True).start()
             except Exception:
                 pass
-            return df, "🟢 PostgreSQL (servidor local)"
-    except Exception:
-        pass
+            return df, "🟢 PostgreSQL (servidor local)", _errors
+    except Exception as e:
+        _errors.append(f"PostgreSQL: {e}")
 
     # 2. SharePoint
     try:
@@ -78,21 +77,28 @@ def _load_data() -> tuple[pd.DataFrame, str]:
             f"{site_url}/_api/web"
             f"/GetFileByServerRelativeUrl('{_spc._sp_path(sp_file_path)}')/$value"
         )
+        _errors.append(f"SharePoint URL intentada: {dl_url[:120]}…")
         r = session.get(
             dl_url,
             headers={"Accept": "application/json;odata=nometadata"},
             timeout=20,
         )
-        if r.status_code != 404:
-            r.raise_for_status()
+        _errors.append(f"SharePoint HTTP status: {r.status_code}")
+        if r.status_code == 200:
             import io
             df = pd.read_csv(io.BytesIO(r.content))
             if not df.empty:
                 os.makedirs(os.path.dirname(_CSV_LOCAL), exist_ok=True)
                 df.to_csv(_CSV_LOCAL, index=False)
-                return df, "🔵 SharePoint (nube COBEE)"
-    except Exception:
-        pass
+                return df, "🔵 SharePoint (nube COBEE)", _errors
+            else:
+                _errors.append("SharePoint: CSV descargado pero está vacío")
+        elif r.status_code == 404:
+            _errors.append(f"SharePoint: archivo no encontrado en la ruta indicada")
+        else:
+            r.raise_for_status()
+    except Exception as e:
+        _errors.append(f"SharePoint excepción: {e}")
 
     # 3. Cache local
     if os.path.exists(_CSV_LOCAL):
@@ -101,11 +107,11 @@ def _load_data() -> tuple[pd.DataFrame, str]:
             mtime = os.path.getmtime(_CSV_LOCAL)
             from datetime import datetime
             fecha = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
-            return df, f"🟡 Cache local (actualizado {fecha})"
-        except Exception:
-            pass
+            return df, f"🟡 Cache local (actualizado {fecha})", _errors
+        except Exception as e:
+            _errors.append(f"Cache local: {e}")
 
-    return pd.DataFrame(), ""
+    return pd.DataFrame(), "", _errors
 
 
 def _theme():
@@ -453,9 +459,16 @@ def _tab_reservas(df: pd.DataFrame, t: dict):
 def render_bloque_kpi(session_state):
     t = _theme()
 
+    # Botón para forzar recarga (limpia cache)
+    _col_reload, _col_sp = st.columns([1, 5])
+    with _col_reload:
+        if st.button("🔄 Recargar datos", key="b06_reload"):
+            _load_data.clear()
+            st.rerun()
+
     # Cargar datos con fallback automático
     with st.spinner("Cargando datos históricos RPF..."):
-        df, fuente = _load_data()
+        df, fuente, _diag_errors = _load_data()
 
     if df.empty:
         st.error(
@@ -464,10 +477,18 @@ def render_bloque_kpi(session_state):
             "o asegúrate de que `rpf_kpi_cobee.csv` esté en SharePoint `03_DATOS GEN`.",
             icon="❌",
         )
+        if _diag_errors:
+            with st.expander("🔍 Diagnóstico de fuentes (ver detalles del error)"):
+                for msg in _diag_errors:
+                    st.code(msg)
         return
 
-    # Indicador de fuente
+    # Indicador de fuente + diagnóstico colapsable
     st.caption(f"Fuente de datos: {fuente}")
+    if _diag_errors:
+        with st.expander("🔍 Diagnóstico de fuentes intentadas", expanded=False):
+            for msg in _diag_errors:
+                st.code(msg)
 
     # Métricas rápidas
     total_ev  = df.groupby(["semestre", "evento"]).ngroups
