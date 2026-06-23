@@ -20,6 +20,19 @@ _CSV_LOCAL = r"C:\Datos Cobee\03_DATOS GEN\rpf_kpi_cobee.csv"
 _SP_FOLDER = "04_Interfaz/Datos Cobee/03_DATOS GEN"
 _SP_FILE   = "rpf_kpi_cobee.csv"
 
+# Config Plotly: muestra solo botón de descarga como imagen PNG
+_CHART_CONFIG = {
+    "displayModeBar": True,
+    "displaylogo": False,
+    "modeBarButtonsToKeep": ["toImage"],
+    "toImageButtonOptions": {
+        "format": "png",
+        "scale": 2,
+        "width": 1400,
+        "height": 700,
+    },
+}
+
 
 #  Carga con fallback automático 
 
@@ -250,7 +263,8 @@ def _tab_cumplimiento(df: pd.DataFrame, t: dict):
         xaxis=dict(tickangle=-40, tickfont=dict(size=9), gridcolor=t["grid"]),
         yaxis=dict(autorange="reversed", tickfont=dict(size=10), gridcolor=t["grid"]),
     )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True, config={**_CHART_CONFIG,
+        "toImageButtonOptions": {**_CHART_CONFIG["toImageButtonOptions"], "filename": "RPF_heatmap_cumplimiento"}})
 
     # Leyenda manual
     leg1, leg2, leg3, leg4, leg5 = st.columns(5)
@@ -305,7 +319,8 @@ def _tab_cumplimiento(df: pd.DataFrame, t: dict):
                    range=[0, 90], gridcolor=t["grid"]),
         yaxis=dict(gridcolor=t["grid"]),
     )
-    st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig2, use_container_width=True, config={**_CHART_CONFIG,
+        "toImageButtonOptions": {**_CHART_CONFIG["toImageButtonOptions"], "filename": "RPF_ranking_incumplimiento"}})
 
 
 #  Tab 2: Frecuencia 
@@ -343,7 +358,8 @@ def _tab_frecuencia(df: pd.DataFrame, t: dict):
             legend=dict(orientation="h", x=0, y=1.1, font=dict(size=10)),
             margin=dict(t=30, r=16, b=40, l=60),
         )
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, use_container_width=True, config={**_CHART_CONFIG,
+            "toImageButtonOptions": {**_CHART_CONFIG["toImageButtonOptions"], "filename": "RPF_evolucion_fmin"}})
 
     #  Scatter droop 
     with col_b:
@@ -398,7 +414,8 @@ def _tab_frecuencia(df: pd.DataFrame, t: dict):
             ],
             margin=dict(t=30, r=16, b=40, l=60),
         )
-        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig2, use_container_width=True, config={**_CHART_CONFIG,
+            "toImageButtonOptions": {**_CHART_CONFIG["toImageButtonOptions"], "filename": "RPF_droop_declarado_vs_calculado"}})
 
 
 #  Tab 3: Reservas 
@@ -436,9 +453,10 @@ def _tab_reservas(df: pd.DataFrame, t: dict):
         xaxis=dict(tickangle=-40, tickfont=dict(size=9), gridcolor=t["grid"]),
         legend=dict(orientation="h", x=0, y=1.05, font=dict(size=10)),
     )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True, config={**_CHART_CONFIG,
+        "toImageButtonOptions": {**_CHART_CONFIG["toImageButtonOptions"], "filename": "RPF_reservas_por_unidad"}})
 
-    #  Estadísticas resumidas 
+    #  Estadísticas resumidas
     st.markdown("---")
     st.markdown("#### Estadísticas por Semestre")
 
