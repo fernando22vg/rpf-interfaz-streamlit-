@@ -17,7 +17,7 @@ from plotly.subplots import make_subplots
 # Ruta local del CSV cache
 _CSV_LOCAL = r"C:\Datos Cobee\03_DATOS GEN\rpf_kpi_cobee.csv"
 # Ruta en SharePoint (carpeta relativa dentro del share link)
-_SP_FOLDER = "03_DATOS GEN"
+_SP_FOLDER = "04_Interfaz/Datos Cobee/03_DATOS GEN"
 _SP_FILE   = "rpf_kpi_cobee.csv"
 
 
