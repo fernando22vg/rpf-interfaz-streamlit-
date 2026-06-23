@@ -97,8 +97,11 @@ def _load_data() -> tuple[pd.DataFrame, str, list]:
             import io
             df = pd.read_csv(io.BytesIO(r.content))
             if not df.empty:
-                os.makedirs(os.path.dirname(_CSV_LOCAL), exist_ok=True)
-                df.to_csv(_CSV_LOCAL, index=False)
+                try:
+                    os.makedirs(os.path.dirname(_CSV_LOCAL), exist_ok=True)
+                    df.to_csv(_CSV_LOCAL, index=False)
+                except Exception:
+                    pass  # ruta Windows no válida en Linux/cloud
                 return df, "🔵 SharePoint (nube COBEE)", _errors
             else:
                 _errors.append("SharePoint: CSV descargado pero está vacío")
