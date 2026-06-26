@@ -68,6 +68,7 @@ def create_dual_axis_timeseries(
     freq_color=None,
     pot_color=None,
     line_width=None,
+    line_style=None,
     template=None,
     height=None,
     legend_position="bottom_center",
@@ -103,31 +104,32 @@ def create_dual_axis_timeseries(
     freq_color = freq_color or _get_config_value("freq_color_real", COLOR_PALETTE["freq_real"])
     pot_color = pot_color or _get_config_value("pot_color_real", COLOR_PALETTE["power_real"])
     line_width = line_width or _get_config_value("line_width", LINE_WIDTHS["normal"])
+    line_style = line_style or _get_config_value("line_style_real", "solid")
     template = template or _get_config_value("template", LAYOUT_PRESETS["default"]["template"])
     height = height or _get_config_value("plot_height", LAYOUT_PRESETS["default"]["height"])
-    
+
     # Convertir tiempo a Plotly si es necesario
     t_plotly = _to_plotly_time(t_data, show_hhmmss)
-    
+
     # Crear figura
     fig = go.Figure()
-    
+
     # Añadir traza de frecuencia (eje Y1)
     fig.add_trace(go.Scatter(
         x=t_plotly,
         y=freq_data,
         name=freq_label,
-        line=dict(color=freq_color, width=line_width),
+        line=dict(color=freq_color, width=line_width, dash=line_style),
         yaxis="y",
         hovertemplate=f"<b>{freq_label}</b><br>Tiempo: %{{x:.2f}} s<br>Valor: %{{y:.4f}} Hz<extra></extra>",
     ))
-    
+
     # Añadir traza de potencia (eje Y2)
     fig.add_trace(go.Scatter(
         x=t_plotly,
         y=pot_data,
         name=pot_label,
-        line=dict(color=pot_color, width=line_width),
+        line=dict(color=pot_color, width=line_width, dash=line_style),
         yaxis="y2",
         hovertemplate=f"<b>{pot_label}</b><br>Tiempo: %{{x:.2f}} s<br>Valor: %{{y:.3f}} MW<extra></extra>",
     ))
@@ -183,6 +185,7 @@ def create_comparison_chart(
     title="",
     show_hhmmss=False,
     line_width=None,
+    line_style=None,
     template=None,
     height=None,
     legend_position="bottom_center",
@@ -211,48 +214,50 @@ def create_comparison_chart(
         plotly.graph_objects.Figure
     """
     line_width = line_width or _get_config_value("line_width", LINE_WIDTHS["normal"])
+    line_style = line_style or _get_config_value("line_style_real", "solid")
+    line_style_sim = _get_config_value("line_style_sim", "solid")
     template = template or _get_config_value("template", LAYOUT_PRESETS["default"]["template"])
     height = height or _get_config_value("plot_height", LAYOUT_PRESETS["default"]["height"])
-    
+
     # Convertir tiempo
     t_plotly = _to_plotly_time(t_data, show_hhmmss)
-    
+
     # Crear figura
     fig = go.Figure()
-    
+
     # Frecuencia Real (eje Y1)
     fig.add_trace(go.Scatter(
         x=t_plotly,
         y=real_freq_data,
         name="Frecuencia Real (Hz)",
-        line=dict(color=COLOR_PALETTE["freq_real"], width=line_width),
+        line=dict(color=COLOR_PALETTE["freq_real"], width=line_width, dash=line_style),
         yaxis="y",
     ))
-    
+
     # Frecuencia Simulada (eje Y1)
     fig.add_trace(go.Scatter(
         x=t_plotly,
         y=simu_freq_data,
         name="Frecuencia Simulada (Hz)",
-        line=dict(color=COLOR_PALETTE["freq_simulated"], width=line_width, dash="dash"),
+        line=dict(color=COLOR_PALETTE["freq_simulated"], width=line_width, dash=line_style_sim),
         yaxis="y",
     ))
-    
+
     # Potencia Real (eje Y2)
     fig.add_trace(go.Scatter(
         x=t_plotly,
         y=real_pot_data,
         name="Potencia Real (MW)",
-        line=dict(color=COLOR_PALETTE["power_real"], width=line_width),
+        line=dict(color=COLOR_PALETTE["power_real"], width=line_width, dash=line_style),
         yaxis="y2",
     ))
-    
+
     # Potencia Simulada (eje Y2)
     fig.add_trace(go.Scatter(
         x=t_plotly,
         y=simu_pot_data,
         name="Potencia Simulada (MW)",
-        line=dict(color=COLOR_PALETTE["power_simulated"], width=line_width, dash="dash"),
+        line=dict(color=COLOR_PALETTE["power_simulated"], width=line_width, dash=line_style_sim),
         yaxis="y2",
     ))
     

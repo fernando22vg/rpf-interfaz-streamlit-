@@ -2,23 +2,25 @@
 batch_carga_cond_pf.py — Carga condiciones iniciales en PowerFactory para todos los eventos
 
 Uso:
-  python batch_carga_cond_pf.py                           # todos los semestres/eventos
-  python batch_carga_cond_pf.py --sem "2024 sem2"         # solo un semestre
-  python batch_carga_cond_pf.py --ev "Evento 1"           # solo un evento específico
-  python batch_carga_cond_pf.py --skip-done               # omite eventos ya procesados
-  python batch_carga_cond_pf.py --dry-run                 # ver lista sin ejecutar
-  python batch_carga_cond_pf.py --con-proyecto2           # carga también en PF_PROYECTO_2 (sufijo .2)
+  python batch_carga_cond_pf.py                           # Tab 3 (Proyecto 1, sufijo .1)
+  python batch_carga_cond_pf.py --tab 1                   # Tab 3 — PF_PROYECTO  → datos_cargados_Ev*.1*.xlsx
+  python batch_carga_cond_pf.py --tab 2                   # Tab 4 — PF_PROYECTO_2 → datos_cargados_Ev*.2*.xlsx
+  python batch_carga_cond_pf.py --tab ambos               # Ambos proyectos secuencialmente
+  python batch_carga_cond_pf.py --sem "2024 sem2"         # Solo un semestre
+  python batch_carga_cond_pf.py --ev "Evento 1"           # Solo un evento específico
+  python batch_carga_cond_pf.py --skip-done               # Omite eventos ya procesados (revisa el sufijo del tab)
+  python batch_carga_cond_pf.py --dry-run                 # Ver lista sin ejecutar
+  python batch_carga_cond_pf.py --no-ajuste               # Desactivar ajuste post-LF
   python batch_carga_cond_pf.py --config ruta/config.json
 
-El ajuste post-LF (AJUSTAR_POST_LF) se activa siempre para todos los eventos.
-Para desactivarlo en casos específicos usar --no-ajuste.
+Sufijos de archivos de salida (alineados con la interfaz Bloque 1):
+  Tab 3 (Proyecto 1): datos_cargados_Ev{N}.1[_ajustado].xlsx
+  Tab 4 (Proyecto 2): datos_cargados_Ev{N}.2[_ajustado].xlsx
 
 Sin límite de tiempo por evento (PowerFactory puede tardar lo que necesite).
 
 Para excluir eventos específicos, usar "excluir_eventos" en batch_config_pf.json:
   "excluir_eventos": [{"semestre": "2024 sem2", "evento": "Evento 1"}]
-
-Configuración base: batch_config_pf.json en el mismo directorio (se crea si no existe).
 """
 
 import os
@@ -43,8 +45,8 @@ _DEFAULTS = {
     "LOC_GEN_PATH":    r"C:\Datos del CNDC\DATOS EXTRAIDOS DE DIGSILENT\Designacion de loc_name\loc_names_gen.xlsx",
     "LOC_CAR_PATH":    r"C:\Datos del CNDC\DATOS EXTRAIDOS DE DIGSILENT\Designacion de loc_name\loc_name_cargas.xlsx",
     "LOC_XFO_PATH":    r"C:\Datos del CNDC\DATOS EXTRAIDOS DE DIGSILENT\Designacion de loc_name\loc_names_xfo.xlsx",
-    "PF_PROYECTO":     "PMP_NOV25_OCT29_31102025(1)",
-    "PF_PROYECTO_2":   "PMP_NOV25_OCT29_31102025(2)",   # segundo proyecto (--con-proyecto2)
+    "PF_PROYECTO":     "PMP_NOV25_OCT29_31102025(1)",   # Tab 3
+    "PF_PROYECTO_2":   "PMP_NOV25_OCT29_31102025(2)",   # Tab 4
     "CASO_BASE":       "CNDC",
     "modo_disparo":    "1",
     "guardar_escenario": True,
@@ -53,9 +55,15 @@ _DEFAULTS = {
     "excluir_eventos": [],   # [{"semestre": "2024 sem2", "evento": "Evento 1"}, ...]
 }
 
-_CONFIG_PATH  = _HERE / "batch_config_pf.json"
-_RUNNER       = _HERE / "runners" / "CargaCondIniciales_PF_run.py"
-_LOG_DIR      = _HERE / "logs_batch_pf"
+_CONFIG_PATH = _HERE / "batch_config_pf.json"
+_RUNNER      = _HERE / "runners" / "CargaCondIniciales_PF_run.py"
+_LOG_DIR     = _HERE / "logs_batch_pf"
+
+# Mapeo tab → (nombre_display, clave_en_cfg, sufijo_ev)
+_TAB_INFO = {
+    "1": ("Tab 3 — Proyecto (1)", "PF_PROYECTO",   ".1"),
+    "2": ("Tab 4 — Proyecto (2)", "PF_PROYECTO_2", ".2"),
+}
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -66,7 +74,6 @@ def _load_config(config_path: Path) -> dict:
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
         return {**_DEFAULTS, **cfg}
-    # Primera vez: crear archivo de referencia
     config_path.write_text(
         json.dumps(_DEFAULTS, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -106,19 +113,22 @@ def _discover_eventos(raiz: str, sem_filter: str = None, ev_filter: str = None) 
     return eventos
 
 
-def _ya_procesado(ev_path: str) -> bool:
-    """True si ya existe datos_cargados_*.xlsx en la carpeta del evento."""
+def _ya_procesado(ev_path: str, ev_suffix: str) -> bool:
+    """True si ya existe datos_cargados_*{ev_suffix}*.xlsx en la carpeta del evento.
+
+    ev_suffix debe ser '.1' o '.2' para alinearse con Tab 3 / Tab 4 de la interfaz.
+    """
     import glob as _glob
-    patron = os.path.join(ev_path, "datos_cargados_*.xlsx")
+    patron = os.path.join(ev_path, f"datos_cargados_*{ev_suffix}*.xlsx")
     return len(_glob.glob(patron)) > 0
 
 
 def _run_evento(cfg: dict, sem: str, evento: str, log_path: Path, ajustar: bool,
-                pf_proyecto: str = None, ev_suffix: str = "") -> tuple:
+                pf_proyecto: str, ev_suffix: str) -> tuple:
     """Ejecuta el runner para un evento. Retorna (rc, duracion_seg).
 
-    pf_proyecto: sobreescribe cfg['PF_PROYECTO'] (para el segundo proyecto).
-    ev_suffix:   sufijo que el runner añade al nombre de archivo (ej. '.2').
+    pf_proyecto: nombre del proyecto PowerFactory a usar.
+    ev_suffix:   sufijo de archivo de salida ('.1' para Tab 3, '.2' para Tab 4).
     """
     params = {
         "semestre":          sem,
@@ -128,13 +138,13 @@ def _run_evento(cfg: dict, sem: str, evento: str, log_path: Path, ajustar: bool,
         "LOC_GEN_PATH":      cfg["LOC_GEN_PATH"],
         "LOC_CAR_PATH":      cfg.get("LOC_CAR_PATH", ""),
         "LOC_XFO_PATH":      cfg["LOC_XFO_PATH"],
-        "PF_PROYECTO":       pf_proyecto if pf_proyecto else cfg["PF_PROYECTO"],
+        "PF_PROYECTO":       pf_proyecto,
         "CASO_BASE":         cfg["CASO_BASE"],
         "modo_disparo":      str(cfg.get("modo_disparo", "1")),
         "pgini_manual":      cfg.get("pgini_manual", {}),
         "ajustar_post_lf":   ajustar,
         "guardar_escenario": cfg.get("guardar_escenario", True),
-        "keep_pf_open":      False,   # batch: siempre cerrar PF al terminar
+        "keep_pf_open":      False,   # batch: cerrar PF al terminar
         "excluir_slack":     cfg.get("excluir_slack", []),
         "xfo_pf":            cfg.get("xfo_pf", 1.0),
         "ev_suffix":         ev_suffix,
@@ -150,11 +160,11 @@ def _run_evento(cfg: dict, sem: str, evento: str, log_path: Path, ajustar: bool,
     log_path.parent.mkdir(parents=True, exist_ok=True)
     t_ini = datetime.now()
 
-    # Matar procesos PF residuales ANTES de iniciar (libera licencia de runs anteriores)
+    # Matar procesos PF residuales antes de iniciar (libera licencia)
     subprocess.run(["taskkill", "/F", "/IM", "PowerFactory.exe", "/T"],
                    capture_output=True, check=False)
     import time as _time
-    _time.sleep(5)   # espera a que el servidor de licencias registre la liberación
+    _time.sleep(5)
 
     try:
         result = subprocess.run(
@@ -172,7 +182,6 @@ def _run_evento(cfg: dict, sem: str, evento: str, log_path: Path, ajustar: bool,
         rc = -1
         output = f"[ERROR] {exc}"
     finally:
-        # Forzar cierre de PF al terminar (crash o éxito) para liberar licencia
         subprocess.run(["taskkill", "/F", "/IM", "PowerFactory.exe", "/T"],
                        capture_output=True, check=False)
         try:
@@ -182,131 +191,63 @@ def _run_evento(cfg: dict, sem: str, evento: str, log_path: Path, ajustar: bool,
 
     dur = (datetime.now() - t_ini).total_seconds()
 
-    _proyecto_log = pf_proyecto if pf_proyecto else cfg["PF_PROYECTO"]
     with open(log_path, "w", encoding="utf-8") as lf:
         lf.write(f"=== {sem} / {evento} ===\n")
-        lf.write(f"Proyecto PF:     {_proyecto_log}\n")
-        lf.write(f"Sufijo archivo:  '{ev_suffix}'\n")
-        lf.write(f"Inicio:          {t_ini.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        lf.write(f"Duración:        {dur:.0f}s\n")
-        lf.write(f"Código de salida: {rc}\n")
-        lf.write(f"Ajuste post-LF:  {ajustar}\n")
+        lf.write(f"Proyecto PF:      {pf_proyecto}\n")
+        lf.write(f"Sufijo archivo:   '{ev_suffix}'\n")
+        lf.write(f"Inicio:           {t_ini.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        lf.write(f"Duracion:         {dur:.0f}s\n")
+        lf.write(f"Codigo de salida: {rc}\n")
+        lf.write(f"Ajuste post-LF:   {ajustar}\n")
         lf.write("\n" + "─" * 60 + "\n\n")
         lf.write(output)
 
     # PowerFactory a veces crashea al cerrar (0xC0000005 / ACCESS_VIOLATION).
-    # Si datos_cargados_*.xlsx existe en la carpeta del evento, la carga fue exitosa.
-    _RC_PF_CRASH = {3221225477, -1073741819}   # 0xC0000005 con/sin signo
+    # Si el archivo de resultados existe, la carga fue exitosa.
+    _RC_PF_CRASH = {3221225477, -1073741819}
     if rc in _RC_PF_CRASH:
         import glob as _glob
         _ev_path_real = os.path.join(cfg["RAIZ"], sem, "Análisis_todos_los_eventos", evento)
         if not os.path.isdir(_ev_path_real):
             _ev_path_real = os.path.join(cfg["RAIZ"], sem, "Analisis_todos_los_eventos", evento)
-        if _glob.glob(os.path.join(_ev_path_real, "datos_cargados_*.xlsx")):
+        if _glob.glob(os.path.join(_ev_path_real, f"datos_cargados_*{ev_suffix}*.xlsx")):
             with open(log_path, "a", encoding="utf-8") as lf:
-                lf.write("\n[INFO] rc=0xC0000005: crash de PF al cerrar, pero datos_cargados_*.xlsx existe → carga OK\n")
-            rc = 0   # tratar como éxito
+                lf.write("\n[INFO] rc=0xC0000005: crash de PF al cerrar, pero datos_cargados existe → carga OK\n")
+            rc = 0
 
     return rc, dur
 
 
-# ─── Main ──────────────────────────────────────────────────────────────────────
+def _procesar_tab(cfg, eventos, tab_id, ajustar, skip_done):
+    """Ejecuta el batch para un tab (proyecto). Retorna lista de resultados."""
+    import glob as _glob
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Carga condiciones iniciales PF para todos los eventos"
-    )
-    parser.add_argument("--config",     default=str(_CONFIG_PATH),
-                        help="Ruta al JSON de configuración base")
-    parser.add_argument("--sem",        help="Filtrar por semestre (ej: '2024 sem2')")
-    parser.add_argument("--ev",         help="Filtrar por evento (ej: 'Evento 1')")
-    parser.add_argument("--skip-done",  action="store_true",
-                        help="Omitir eventos que ya tienen datos_cargados_*.xlsx")
-    parser.add_argument("--no-ajuste",  action="store_true",
-                        help="Desactivar ajuste post-LF (por defecto siempre activo)")
-    parser.add_argument("--dry-run",    action="store_true",
-                        help="Solo listar eventos sin ejecutar")
-    parser.add_argument("--con-proyecto2", action="store_true",
-                        help="Ejecutar también la carga en PF_PROYECTO_2 (sufijo .2) por cada evento")
-    args = parser.parse_args()
+    label, cfg_key, ev_suffix = _TAB_INFO[tab_id]
+    pf_proyecto = cfg[cfg_key]
+    log_dir     = _LOG_DIR / f"tab{tab_id}"
 
-    if not _RUNNER.exists():
-        print(f"[ERROR] Runner no encontrado: {_RUNNER}")
-        sys.exit(1)
-
-    cfg = _load_config(Path(args.config))
-    ajustar = not args.no_ajuste   # True por defecto
-
-    eventos = _discover_eventos(cfg["RAIZ"], sem_filter=args.sem, ev_filter=args.ev)
-    if not eventos:
-        print(f"[ERROR] No se encontraron eventos en: {cfg['RAIZ']}")
-        sys.exit(1)
-
-    # Filtrar eventos excluidos explícitamente en la config
-    _excluir = {(e["semestre"], e["evento"]) for e in cfg.get("excluir_eventos", [])}
-    excluidos_cfg = [ev for ev in eventos if (ev["semestre"], ev["evento"]) in _excluir]
-    eventos       = [ev for ev in eventos if (ev["semestre"], ev["evento"]) not in _excluir]
-
-    # Filtrar ya procesados
-    skip_list = []
-    if args.skip_done:
-        skip_list = [ev for ev in eventos if _ya_procesado(ev["ev_path"])]
-        eventos   = [ev for ev in eventos if not _ya_procesado(ev["ev_path"])]
-
-    usar_proyecto2 = args.con_proyecto2
-    pf2            = cfg.get("PF_PROYECTO_2", "")
-
-    if usar_proyecto2 and not pf2:
-        print("[ERROR] --con-proyecto2 activado pero PF_PROYECTO_2 no está definido en la config.")
-        sys.exit(1)
-
-    print(f"\n{'='*65}")
-    print(f"  BATCH CARGA CONDICIONES PF")
-    print(f"  Proyecto PF:    {cfg['PF_PROYECTO']}")
-    if usar_proyecto2:
-        print(f"  Proyecto PF 2:  {pf2}  (sufijo .2 — --con-proyecto2 activo)")
-    print(f"  Caso base:      {cfg['CASO_BASE']}")
-    print(f"  Ajuste post-LF: {'SÍ (siempre)' if ajustar else 'NO (--no-ajuste)'}")
-    print(f"  Timeout/evento: sin límite")
-    print(f"  Eventos totales: {len(eventos) + len(skip_list) + len(excluidos_cfg)}")
-    if excluidos_cfg:
-        print(f"  Excluidos (config): {len(excluidos_cfg)}")
-        for _ex in excluidos_cfg:
-            print(f"    ✗  {_ex['semestre']} / {_ex['evento']}  (excluir_eventos en config)")
-    if skip_list:
-        print(f"  Omitidos (ya procesados): {len(skip_list)}")
-    print(f"  A procesar: {len(eventos)}")
-    print(f"{'='*65}\n")
-
-    if args.dry_run:
-        for i, ev in enumerate(eventos, 1):
-            done = " [YA HECHO]" if _ya_procesado(ev["ev_path"]) else ""
-            print(f"  [{i:02d}] {ev['semestre']} / {ev['evento']}{done}")
+    # Filtrar ya procesados si --skip-done
+    if skip_done:
+        skip_list = [ev for ev in eventos if _ya_procesado(ev["ev_path"], ev_suffix)]
+        eventos   = [ev for ev in eventos if not _ya_procesado(ev["ev_path"], ev_suffix)]
         if skip_list:
-            print(f"\n  Omitidos:")
+            print(f"  Omitidos ya procesados: {len(skip_list)}")
             for ev in skip_list:
-                print(f"       {ev['semestre']} / {ev['evento']}")
-        return
+                print(f"    ~  {ev['semestre']} / {ev['evento']}")
 
-    if not eventos:
-        print("  Nada que procesar.")
-        return
+    print(f"  A procesar: {len(eventos)}\n")
 
     results = []
-    t_batch_ini = datetime.now()
-
     for i, ev in enumerate(eventos, 1):
         sem    = ev["semestre"]
         evento = ev["evento"]
-        label  = f"{sem} / {evento}"
 
         sem_slug = sem.replace(" ", "_")
         ev_slug  = evento.replace(" ", "_")
+        log_path = log_dir / sem_slug / f"{ev_slug}.log"
 
-        # ── Proyecto 1 ──────────────────────────────────────────────────────────
-        print(f"[{i:02d}/{len(eventos)}] {label}  [P1] ...", end="", flush=True)
-        log_path = _LOG_DIR / sem_slug / f"{ev_slug}.log"
-        rc, dur = _run_evento(cfg, sem, evento, log_path, ajustar)
+        print(f"[{i:02d}/{len(eventos)}] {sem} / {evento} ...", end="", flush=True)
+        rc, dur = _run_evento(cfg, sem, evento, log_path, ajustar, pf_proyecto, ev_suffix)
 
         if rc == 0:
             estado = "OK"
@@ -314,42 +255,147 @@ def main():
             estado = "CRASH-PF (0xC0000005, sin datos_cargados)"
         else:
             estado = f"ERROR (rc={rc})"
-        print(f"  {estado}  ({dur:.0f}s)  log→ {log_path.name}", flush=True)
-        results.append({"semestre": sem, "evento": evento, "proyecto": cfg["PF_PROYECTO"],
-                        "rc": rc, "dur": dur})
+        print(f"  {estado}  ({dur:.0f}s)  log-> {log_path.name}", flush=True)
+        results.append({
+            "semestre": sem,  "evento": evento,
+            "tab": label,     "proyecto": pf_proyecto,
+            "rc": rc,         "dur": dur,
+        })
 
-        # ── Proyecto 2 (opcional) ───────────────────────────────────────────────
-        if usar_proyecto2:
-            print(f"[{i:02d}/{len(eventos)}] {label}  [P2] ...", end="", flush=True)
-            log_path2 = _LOG_DIR / sem_slug / f"{ev_slug}_p2.log"
-            rc2, dur2 = _run_evento(cfg, sem, evento, log_path2, ajustar,
-                                    pf_proyecto=pf2, ev_suffix=".2")
-            if rc2 == 0:
-                estado2 = "OK"
-            elif rc2 in (3221225477, -1073741819):
-                estado2 = "CRASH-PF (0xC0000005, sin datos_cargados)"
-            else:
-                estado2 = f"ERROR (rc={rc2})"
-            print(f"  {estado2}  ({dur2:.0f}s)  log→ {log_path2.name}", flush=True)
-            results.append({"semestre": sem, "evento": evento, "proyecto": pf2,
-                            "rc": rc2, "dur": dur2})
+    return results
+
+
+# ─── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Carga condiciones iniciales PF para todos los eventos.\n\n"
+            "Seleccionar tab con --tab:\n"
+            "  1     = Tab 3, PF_PROYECTO,   sufijo .1 (DEFAULT)\n"
+            "  2     = Tab 4, PF_PROYECTO_2, sufijo .2\n"
+            "  ambos = ejecuta Tab 3 y Tab 4 secuencialmente"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--config",    default=str(_CONFIG_PATH),
+                        help="Ruta al JSON de configuración base")
+    parser.add_argument("--tab",       default="1", choices=["1", "2", "ambos"],
+                        help="Tab a cargar: 1 (Tab 3/Proyecto 1), 2 (Tab 4/Proyecto 2), ambos")
+    parser.add_argument("--sem",       help="Filtrar por semestre (ej: '2024 sem2')")
+    parser.add_argument("--ev",        help="Filtrar por evento (ej: 'Evento 1')")
+    parser.add_argument("--modo", default=None, choices=["1", "2", "3"],
+                        help=("Modo de asignación de potencia al disparo: "
+                              "1=mantener actual (default config), "
+                              "2=manual (requiere pgini_manual en config), "
+                              "3=proporcional a pgini respetando Pmax"))
+    parser.add_argument("--skip-done", action="store_true",
+                        help="Omitir eventos con datos_cargados_*{sufijo}*.xlsx ya existentes")
+    parser.add_argument("--no-ajuste", action="store_true",
+                        help="Desactivar ajuste post-LF (por defecto siempre activo)")
+    parser.add_argument("--dry-run",   action="store_true",
+                        help="Solo listar eventos sin ejecutar")
+    # Alias deprecado conservado por compatibilidad con scripts existentes
+    parser.add_argument("--con-proyecto2", action="store_true", help=argparse.SUPPRESS)
+    args = parser.parse_args()
+
+    tab = "ambos" if args.con_proyecto2 else args.tab
+
+    if not _RUNNER.exists():
+        print(f"[ERROR] Runner no encontrado: {_RUNNER}")
+        sys.exit(1)
+
+    cfg     = _load_config(Path(args.config))
+    ajustar = not args.no_ajuste
+    if args.modo is not None:
+        cfg["modo_disparo"] = args.modo
+
+    tabs_a_ejecutar = ["1", "2"] if tab == "ambos" else [tab]
+
+    # Validar que los proyectos estén configurados
+    for t in tabs_a_ejecutar:
+        label, cfg_key, _ = _TAB_INFO[t]
+        if not cfg.get(cfg_key):
+            print(f"[ERROR] {cfg_key} no está definido en la configuración para {label}.")
+            sys.exit(1)
+
+    # Descubrir eventos
+    eventos_base = _discover_eventos(cfg["RAIZ"], sem_filter=args.sem, ev_filter=args.ev)
+    if not eventos_base:
+        print(f"[ERROR] No se encontraron eventos en: {cfg['RAIZ']}")
+        sys.exit(1)
+
+    # Filtrar excluidos explícitamente en config
+    _excluir = {(e["semestre"], e["evento"]) for e in cfg.get("excluir_eventos", [])}
+    excluidos_cfg = [ev for ev in eventos_base if (ev["semestre"], ev["evento"]) in _excluir]
+    eventos_base  = [ev for ev in eventos_base if (ev["semestre"], ev["evento"]) not in _excluir]
+
+    # ── Encabezado ────────────────────────────────────────────────────────────
+    print(f"\n{'='*65}")
+    print(f"  BATCH CARGA CONDICIONES PF")
+    for t in tabs_a_ejecutar:
+        label, cfg_key, ev_suffix = _TAB_INFO[t]
+        print(f"  {label}: {cfg.get(cfg_key, '—')}  (sufijo '{ev_suffix}')")
+    _modo_desc = {"1": "mantener actual", "2": "manual", "3": "proporcional p_desc/pgini"}
+    print(f"  Caso base:       {cfg['CASO_BASE']}")
+    print(f"  Modo disparo:    {cfg['modo_disparo']} — {_modo_desc.get(str(cfg['modo_disparo']), '?')}")
+    print(f"  Ajuste post-LF:  {'SI (siempre)' if ajustar else 'NO (--no-ajuste)'}")
+    print(f"  Eventos totales: {len(eventos_base) + len(excluidos_cfg)}")
+    if excluidos_cfg:
+        print(f"  Excluidos (config): {len(excluidos_cfg)}")
+        for _ex in excluidos_cfg:
+            print(f"    x  {_ex['semestre']} / {_ex['evento']}")
+    print(f"{'='*65}\n")
+
+    if args.dry_run:
+        for t in tabs_a_ejecutar:
+            label, cfg_key, ev_suffix = _TAB_INFO[t]
+            print(f"  {label}:")
+            for i, ev in enumerate(eventos_base, 1):
+                done = " [YA HECHO]" if _ya_procesado(ev["ev_path"], ev_suffix) else ""
+                print(f"    [{i:02d}] {ev['semestre']} / {ev['evento']}{done}")
+            print()
+        return
+
+    if not eventos_base:
+        print("  Nada que procesar.")
+        return
+
+    # ── Ejecución por tab ─────────────────────────────────────────────────────
+    all_results = []
+    t_batch_ini = datetime.now()
+
+    for t in tabs_a_ejecutar:
+        label, cfg_key, ev_suffix = _TAB_INFO[t]
+        print(f"\n{'─'*65}")
+        print(f"  {label}  →  {cfg[cfg_key]}")
+        print(f"{'─'*65}\n")
+
+        resultados = _procesar_tab(
+            cfg=cfg,
+            eventos=list(eventos_base),   # copia fresca por cada tab
+            tab_id=t,
+            ajustar=ajustar,
+            skip_done=args.skip_done,
+        )
+        all_results.extend(resultados)
 
     dur_total = (datetime.now() - t_batch_ini).total_seconds()
 
     # ── Resumen ────────────────────────────────────────────────────────────────
-    ok  = [r for r in results if r["rc"] == 0]
-    err = [r for r in results if r["rc"] != 0]
+    ok  = [r for r in all_results if r["rc"] == 0]
+    err = [r for r in all_results if r["rc"] != 0]
 
     print(f"\n{'='*65}")
     print(f"  RESUMEN FINAL")
-    print(f"  Procesados: {len(results)}  |  OK: {len(ok)}  |  Errores: {len(err)}")
-    print(f"  Tiempo total: {dur_total/60:.1f} min  (~{dur_total/max(len(results),1):.0f}s/evento)")
+    print(f"  Procesados: {len(all_results)}  |  OK: {len(ok)}  |  Errores: {len(err)}")
+    print(f"  Tiempo total: {dur_total/60:.1f} min  (~{dur_total/max(len(all_results),1):.0f}s/evento)")
     print(f"{'='*65}")
 
     if err:
         print(f"\n  Eventos con errores ({len(err)}):")
         for r in err:
-            print(f"    ✗  {r['semestre']} / {r['evento']}  (rc={r['rc']}, {r['dur']:.0f}s)")
+            print(f"    x  {r['tab']} | {r['semestre']} / {r['evento']}  (rc={r['rc']}, {r['dur']:.0f}s)")
         print(f"\n  Logs en: {_LOG_DIR}")
     else:
         print("\n  Todos los eventos cargados correctamente.")
@@ -360,14 +406,12 @@ def main():
     with open(resumen_path, "w", encoding="utf-8") as f:
         json.dump({
             "fecha":           datetime.now().isoformat(),
+            "tabs":            tabs_a_ejecutar,
             "ajustar_post_lf": ajustar,
-            "proyecto_pf":     cfg["PF_PROYECTO"],
-            "proyecto_pf_2":   pf2 if usar_proyecto2 else None,
-            "con_proyecto2":   usar_proyecto2,
-            "total":           len(results),
+            "total":           len(all_results),
             "ok":              len(ok),
             "errores":         len(err),
-            "resultados":      results,
+            "resultados":      all_results,
         }, f, ensure_ascii=False, indent=2)
     print(f"  Resumen guardado: {resumen_path}\n")
 

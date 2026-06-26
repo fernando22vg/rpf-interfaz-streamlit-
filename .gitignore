@@ -43,6 +43,16 @@ Interfaz_RPF/runners/MapeoRetirosSTI_run.py
 Interfaz_RPF/Datos_Frecuencias/*.csv
 Interfaz_RPF/Datos_Frecuencias/*.xlsx
 
+# --- Logs y diagnósticos locales (datos internos COBEE) ---
+Interfaz_RPF/logs_batch_pf/
+Interfaz_RPF/diagnostico_zip_resultado.txt
+
+# --- Proyectos independientes locales ---
+Voltaje-inducido-ELT264/
+
+# --- Diseño / iteraciones UI ---
+.superdesign/
+
 # --- Archivos temporales y de compilación ---
 compile_err.txt
 **/.sync_manifest.json

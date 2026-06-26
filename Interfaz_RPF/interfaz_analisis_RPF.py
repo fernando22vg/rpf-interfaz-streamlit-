@@ -1,4 +1,4 @@
-r"""
+﻿r"""
 interfaz_analisis_RPF.py (v2 - Integrada)
 Interfaz Streamlit integrada para workflow completo RPF.
 
@@ -141,7 +141,7 @@ def _buscar_archivo_unidad(unit_name, file_list):
 # CONFIGURACIÓN DE PÁGINA
 # 
 st.set_page_config(
-    page_title="Analisis",
+    page_title="HMI RPF Análisis",
     page_icon="⚡",  # fallback; el favicon SVG real se inyecta via components.html
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -659,8 +659,8 @@ def _v4_inline_ctx(unit_name: str, evento: str, pmax_mw: float):
 _V4_BLOQUES = [
     {"id": "modelo_base",           "num": "00", "short": "Modelo",     "label": "Datos del Modelo",     "icon": "database", "grupo": "Setup",    "pf": True},
     {"id": "carga_datos",           "num": "01", "short": "Carga",      "label": "Carga de Datos",       "icon": "download", "grupo": "Setup",    "pf": True},
-    {"id": "config_unidades",       "num": "02", "short": "DSL",        "label": "Parámetros DSL",       "icon": "sliders",  "grupo": "Setup",    "pf": False},
-    {"id": "analisis_datos",        "num": "03", "short": "SCADA",      "label": "Análisis SCADA/EMF",   "icon": "activity", "grupo": "Análisis", "pf": False},
+    {"id": "config_unidades",       "num": "02", "short": "DSL",        "label": "Parámetros DSL (DigSILENT Simulation Language)",       "icon": "sliders",  "grupo": "Setup",    "pf": False},
+    {"id": "analisis_datos",        "num": "03", "short": "SCADA",      "label": "Análisis SCADA / Gráfico Ref. CNDC",   "icon": "activity", "grupo": "Análisis", "pf": False},
     {"id": "analisis_simulacion",   "num": "04", "short": "Sim",        "label": "Análisis Simulación",  "icon": "chart",    "grupo": "Análisis", "pf": True},
     {"id": "comparativa_real_simu", "num": "05", "short": "Real vs Sim","label": "Real vs Simulación",   "icon": "scale",    "grupo": "Análisis", "pf": True},
     {"id": "kpi_historico",         "num": "06", "short": "KPI",        "label": "Histórico RPF",        "icon": "chart",    "grupo": "Análisis", "pf": False},
@@ -720,13 +720,18 @@ def _load_event_header_info(ev_path: str, n_evento: str, raiz: str, semestre: st
                         except ValueError:
                             pass
 
-                # Parsear string de disparo: "SJS01, SJS02, SJE01 y SJE02"
+                # Parsear string de disparo: "SJS01, SJS02, CCERI30 y UNA01", "Medio ciclo CCSUR12"
                 if _disparo_str and _disparo_str not in ("nan", "—", ""):
-                    _raw_names = [
-                        n.strip()
-                        for n in _re.split(r"[,;]+|\s+y\s+", _disparo_str)
-                        if n.strip()
-                    ]
+                    # Extraer tokens STI (mayúsculas+números) del string completo,
+                    # incluyendo casos con texto descriptivo ("Medio ciclo CCSUR12").
+                    _sti_tokens = _re.findall(r'\b(?:CC)?[A-Z]{2,}[0-9]+\b', _disparo_str)
+                    if not _sti_tokens:
+                        # Fallback para strings sin STI reconocible (eventos de línea)
+                        _sti_tokens = [
+                            n.strip()
+                            for n in _re.split(r"[,;]+|\s+y\s+", _disparo_str)
+                            if n.strip()
+                        ]
                     # Buscar MW individual en pgini_GEN_FINAL
                     _pgini_map = {}
                     if "pgini_GEN_FINAL" in _xl.sheet_names:
@@ -740,9 +745,8 @@ def _load_event_header_info(ev_path: str, n_evento: str, raiz: str, semestre: st
                                 except (ValueError, TypeError):
                                     pass
 
-                    for _nm in _raw_names:
-                        # El nombre CNDC puede traer prefijo "CC" (ej. "CCERI30")
-                        # que no existe en loc_name PF (sym_ERI30 -> ERI30).
+                    for _nm in _sti_tokens:
+                        # Quitar prefijo CC (CCSUR12 → SUR12, CCERI30 → ERI30)
                         _nm_clean = _re.sub(r"^CC([A-Z])", r"\1", _nm)
                         _mw = _pgini_map.get(
                             _nm.upper(), _pgini_map.get(_nm_clean.upper(), 0.0)
@@ -911,8 +915,8 @@ def _build_topbar_html() -> str:
         f'<div class="v4-topbar">'
         f'<div class="v4-brand">'
         f'<div class="v4-brand-mark">{_v4_icon("bolt", 16, "#FFF")}</div>'
-        f'<div><div class="v4-brand-title">RPF Analysis</div>'
-        f'<div class="v4-brand-sub">Respuesta Primaria de Frecuencia</div></div>'
+        f'<div><div class="v4-brand-title">HMI RPF Análisis</div>'
+        f'<div class="v4-brand-sub">Regulación Primaria de Frecuencia</div></div>'
         f'</div>'
         f'<div class="v4-topbar-center">'
         f'<div class="v4-event-pill">'
@@ -1179,7 +1183,9 @@ def _parse_to_seconds(series):
     has_colon = s.str.contains(':')
     if has_colon.any():
         parts = s[has_colon].str.split(':')
-        h = pd.to_numeric(parts.str[0], errors='coerce').fillna(0)
+        # Extraer solo los dígitos de horas al final del campo:
+        # maneja tanto "HH" ("01") como strings datetime completos ("2024-12-21 01")
+        h = pd.to_numeric(parts.str[0].str.extract(r'(\d{1,2})$', expand=False), errors='coerce').fillna(0)
         m = pd.to_numeric(parts.str[1], errors='coerce').fillna(0)
         sec = pd.to_numeric(parts.str[2], errors='coerce').fillna(0)
         result[has_colon] = h * 3600 + m * 60 + sec
@@ -1386,18 +1392,10 @@ def _save_event_cfg(ev_path, key, value):
 
 # Definición de categorías de configuración para sincronización inteligente
 # X-axis: compartido por bloque/evento (todas las unidades ven el mismo zoom temporal)
-# Frecuencia: compartida en todos los bloques para el mismo evento
-# Potencia: por-unidad por-bloque en el evento (las unidades son independientes)
+# X, F y P son independientes por bloque+unidad+evento → almacenados en units[unit]
+# Solo los parámetros de timing del evento son compartidos entre todas las unidades
 _SHARED_EVENT_KEYS = {
-    "y_f_min", "y_f_max", "scada_t0_s", "emf_t0_s", "t_sim_falla", "delta_t_cndc", "y_auto",
-    # Rangos X por bloque (compartido entre todas las unidades del mismo bloque+evento)
-    "scada_xmin", "scada_xmax",
-    "emf_xmin",   "emf_xmax",
-    "sim0_xmin",  "sim0_xmax",
-    "sim1_xmin",  "sim1_xmax",
-    "simc_xmin",  "simc_xmax",
-    "comp_xmin",  "comp_xmax",
-    "b5_xmin",    "b5_xmax",
+    "scada_t0_s", "emf_t0_s", "t_sim_falla", "delta_t_cndc", "y_auto",
 }
 _UNIT_GLOBAL_KEYS: set = set()  # Potencia ahora es por-unidad-por-bloque en evento config
 
@@ -1428,69 +1426,31 @@ def _save_unit_cfg(ev_path, unit, key, value):
     cfg["units"][unit][key] = value
     return _save_event_cfg(ev_path, "units", cfg["units"])
 
-def _sync_rpf_y_axis(key_to_update, widget_key):
-    """Sincroniza frecuencia y auto-escala en todos los bloques. La potencia NO se sincroniza — es por-bloque."""
-    if not st.session_state.get("global_selected_unit"): return
-    val = st.session_state.get(widget_key)
-    if val is None: return
-
-    # Potencia es independiente por bloque — no se sincroniza globalmente
-    if key_to_update in ("y_p_min", "y_p_max"):
-        return
-
-    st.session_state[f"b3_sync_{key_to_update}"] = val
-
-    # Sincronizar frecuencia y auto-escala entre todos los bloques
-    _freq_auto_prefixes = ["b2_sc", "b2_emf", "b3_comp", "b3_sim0", "b3_sim1", "b3_simc", "b4_val",
-                           "scada", "emf", "sim0", "sim1", "simc", "comp", "b5"]
-    for pfx in _freq_auto_prefixes:
-        for sfx in (f"_{key_to_update}", f"_fmin" if key_to_update == "y_f_min" else "",
-                    f"_fmax" if key_to_update == "y_f_max" else "",
-                    f"_auto" if key_to_update == "y_auto" else ""):
-            tk = f"{pfx}{sfx}" if sfx else None
-            if tk and tk in st.session_state:
-                st.session_state[tk] = val
-
-    _save_unit_cfg(st.session_state.ev_path_global, st.session_state.global_selected_unit, key_to_update, val)
-
 def _sync_session_scale_config(ev_path, unit_name):
-    """Carga y sincroniza configuración de escala desde archivo. Potencia NO se sincroniza globalmente."""
+    """Carga parámetros de timing del evento y los sincroniza con los widgets de t0/Δt."""
     if not unit_name or not ev_path:
         return
 
-    # Compartidos por evento (frecuencia, tiempos, auto)
-    y_f_min  = _get_unit_cfg(ev_path, unit_name, "y_f_min",  49.0)
-    y_f_max  = _get_unit_cfg(ev_path, unit_name, "y_f_max",  51.0)
-    y_auto   = _get_unit_cfg(ev_path, unit_name, "y_auto",   True)
-    t0_scada = _get_unit_cfg(ev_path, unit_name, "scada_t0_s", None)
-    t0_emf   = _get_unit_cfg(ev_path, unit_name, "emf_t0_s",  None)
-    t0_sim   = _get_unit_cfg(ev_path, unit_name, "t_sim_falla", 5.0)
-    dt_cndc  = _get_unit_cfg(ev_path, unit_name, "delta_t_cndc", 35)
+    y_auto   = _get_unit_cfg(ev_path, unit_name, "y_auto",        True)
+    t0_scada = _get_unit_cfg(ev_path, unit_name, "scada_t0_s",    None)
+    t0_emf   = _get_unit_cfg(ev_path, unit_name, "emf_t0_s",      None)
+    t0_sim   = _get_unit_cfg(ev_path, unit_name, "t_sim_falla",   5.0)
+    dt_cndc  = _get_unit_cfg(ev_path, unit_name, "delta_t_cndc",  35)
 
-    # Sincronizar Session State (solo frecuencia y auto)
-    st.session_state.b3_sync_y_f_min = float(y_f_min)
-    st.session_state.b3_sync_y_f_max = float(y_f_max)
     st.session_state.b3_sync_y_auto  = bool(y_auto)
 
-    # t0 y dt en widgets
-    if t0_scada is not None: st.session_state.b2_sc_t_falla = float(t0_scada)
-    if t0_emf   is not None: st.session_state.b2_emf_t_falla = float(t0_emf)
+    if t0_scada is not None:
+        st.session_state.b2_sc_t_falla  = float(t0_scada)
+    else:
+        st.session_state.pop("b2_sc_t_falla", None)   # sin t0 guardado → widget usa _t_auto_b2
+
+    if t0_emf is not None:
+        st.session_state.b2_emf_t_falla = float(t0_emf)
+    else:
+        st.session_state.pop("b2_emf_t_falla", None)  # sin t0 guardado → widget usa _t_auto_emf
     st.session_state.b3_t_falla      = float(t0_sim)
     st.session_state.b3_dt           = int(dt_cndc)
     st.session_state.b4_delta_t_cndc = int(dt_cndc)
-
-    # Propagar frecuencia y auto a todos los prefijos de widgets
-    _all_pfx = ["b2_sc", "b2_emf", "b3_comp", "b3_sim0", "b3_sim1", "b3_simc", "b4_val",
-                "scada", "emf", "sim0", "sim1", "simc", "comp", "b5"]
-    for pfx in _all_pfx:
-        st.session_state[f"{pfx}_y_f_min"] = st.session_state.b3_sync_y_f_min
-        st.session_state[f"{pfx}_y_f_max"] = st.session_state.b3_sync_y_f_max
-        st.session_state[f"{pfx}_y_auto"]  = st.session_state.b3_sync_y_auto
-        st.session_state[f"{pfx}_fmin"]    = st.session_state.b3_sync_y_f_min
-        st.session_state[f"{pfx}_fmax"]    = st.session_state.b3_sync_y_f_max
-        st.session_state[f"{pfx}_auto"]    = st.session_state.b3_sync_y_auto
-        if f"{pfx}_y1min" in st.session_state: st.session_state[f"{pfx}_y1min"] = float(y_f_min)
-        if f"{pfx}_y1max" in st.session_state: st.session_state[f"{pfx}_y1max"] = float(y_f_max)
 
 
 def _on_freq_range_change(widget_key):
@@ -1498,54 +1458,22 @@ def _on_freq_range_change(widget_key):
     pass
 
 
-def _sync_freq_input(widget_key, which):
-    """Sincroniza un number_input de frecuencia con b3_sync y propaga a todos los bloques."""
-    val = st.session_state.get(widget_key)
-    if val is None:
-        return
-    f = float(val)
-    if which == "min":
-        st.session_state["b3_sync_y_f_min"] = f
-        for _pfx in ("scada", "emf", "sim0", "sim1", "simc", "comp", "b5"):
-            _k = f"{_pfx}_fmin_inp"
-            if _k != widget_key:
-                st.session_state[_k] = f
-    else:
-        st.session_state["b3_sync_y_f_max"] = f
-        for _pfx in ("scada", "emf", "sim0", "sim1", "simc", "comp", "b5"):
-            _k = f"{_pfx}_fmax_inp"
-            if _k != widget_key:
-                st.session_state[_k] = f
 
 
-def _compute_auto_p_range(traces, x_min, x_max, pad_pct=0.10, min_pad=5.0):
-    """Rango Y2 ajustado a los datos de potencia visibles en [x_min, x_max].
-
-    traces: iterable de (t_arr, p_arr).
-    Retorna [p_lo, p_hi] o None si no hay datos finitos en la ventana.
-    """
-    all_p = []
-    for t_arr, p_arr in traces:
-        t_a = np.asarray(t_arr, dtype=float).ravel()
-        p_a = np.asarray(p_arr, dtype=float).ravel()
-        n = min(len(t_a), len(p_a))
-        if n == 0:
-            continue
-        mask = (t_a[:n] >= x_min) & (t_a[:n] <= x_max) & np.isfinite(p_a[:n])
-        if mask.any():
-            all_p.append(p_a[:n][mask])
-    if not all_p:
-        return None
-    vals = np.concatenate(all_p)
-    lo, hi = float(vals.min()), float(vals.max())
-    pad = max((hi - lo) * pad_pct, min_pad)
-    return [max(0.0, lo - pad), hi + pad]
+def _cb_t0_scada_changed():
+    """Auto-persiste scada_t0_s al JSON cuando el usuario cambia el widget de t0 SCADA."""
+    ev_path = st.session_state.get("ev_path_global")
+    val = st.session_state.get("b2_sc_t_falla")
+    if val is not None and ev_path:
+        _save_event_cfg(ev_path, "scada_t0_s", float(val))
 
 
-def _cb_p_auto_changed(block_key, ev_path, sel_unit):
-    """Persiste el estado del toggle auto-escala al cambiar."""
-    _save_unit_cfg(ev_path, sel_unit, f"{block_key}_p_auto",
-                   bool(st.session_state.get(f"{block_key}_p_auto", True)))
+def _cb_t0_emf_changed():
+    """Auto-persiste emf_t0_s al JSON cuando el usuario cambia el widget de t0 EMF."""
+    ev_path = st.session_state.get("ev_path_global")
+    val = st.session_state.get("b2_emf_t_falla")
+    if val is not None and ev_path:
+        _save_event_cfg(ev_path, "emf_t0_s", float(val))
 
 
 def _cb_p_inp_changed(ev_path, sel_unit, cfg_key, widget_key):
@@ -1555,58 +1483,63 @@ def _cb_p_inp_changed(ev_path, sel_unit, cfg_key, widget_key):
         _save_unit_cfg(ev_path, sel_unit, cfg_key, float(val))
 
 
+def _cb_x_inp_changed(ev_path, sel_unit, cfg_key, widget_key):
+    """Persiste X mín/X máx al JSON de config cuando el usuario confirma el valor."""
+    val = st.session_state.get(widget_key)
+    if val is not None:
+        _save_unit_cfg(ev_path, sel_unit, cfg_key, float(val))
+
+
 def _render_axis_controls(block_key, ev_path, sel_unit, x_def_min, x_def_max,
-                           p_def_max=200.0, traces=None,
-                           auto_col=None, popover_col=None):
+                           p_def_max=200.0, traces=None, freq_arr=None,
+                           auto_col=None, popover_col=None, save_callback=None):
     """
     Controles de escala con entradas numéricas en columna izquierda, gráfico en columna derecha.
 
-    Crea internamente st.columns([1, 3]) y devuelve la columna derecha para el gráfico.
+    Persistencia: X, F y P son independientes por bloque+unidad+evento (almacenados en
+    units[unit] del event_config.json). Sobreviven recarga de página y cambio de bloque.
 
-    Persistencia:
-    - Eje X     : nivel evento/bloque — compartido para TODAS las unidades del bloque.
-    - Frecuencia: nivel evento global — compartida entre TODOS los bloques.
-    - Potencia  : nivel unidad/bloque en evento — independiente por unidad.
+    traces  : list of (t_arr, p_arr) — usado por botón Auto-escalar para P.
+    freq_arr: array 1D de frecuencia — usado por botón Auto-escalar para F.
 
-    traces: list of (t_arr, p_arr) para auto-escala de potencia.
-
-    Retorna: (x_min, x_max, f_min, f_max, p_min, p_max, auto_p, chart_col)
+    Retorna: (x_min, x_max, f_min, f_max, p_min, p_max, chart_col)
     """
     _k = block_key
 
-    # Detectar cambio de unidad: si la unidad es distinta a la del render anterior,
-    # limpiar las claves de session state de P para este bloque, para que los widgets
-    # carguen los valores desde el config JSON de la nueva unidad (no del anterior).
+    # Al cambiar evento O unidad: recargar X, F y P desde el config de la nueva combinación.
+    # Se usa set explícito (no pop) para que Streamlit muestre el nuevo valor en el mismo render.
     _last_unit_key = f"{_k}_last_unit"
-    if st.session_state.get(_last_unit_key) != sel_unit:
-        for _sk in (f"{_k}_p_auto", f"{_k}_pmin_inp", f"{_k}_pmax_inp"):
+    _last_ev_key   = f"{_k}_last_ev"
+    _ev_changed    = st.session_state.get(_last_ev_key) != ev_path
+    _unit_changed  = st.session_state.get(_last_unit_key) != sel_unit
+    if _ev_changed or _unit_changed:
+        _new_xmin = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_xmin", x_def_min))
+        _new_xmax = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_xmax", x_def_max))
+        _new_fmin = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_fmin", 49.0))
+        _new_fmax = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_fmax", 51.0))
+        st.session_state[f"{_k}_xmin_inp"] = _new_xmin
+        st.session_state[f"{_k}_xmax_inp"] = _new_xmax
+        st.session_state[f"{_k}_fmin_inp"] = _new_fmin
+        st.session_state[f"{_k}_fmax_inp"] = _new_fmax
+        for _sk in (f"{_k}_pmin_inp", f"{_k}_pmax_inp"):
             st.session_state.pop(_sk, None)
         st.session_state[_last_unit_key] = sel_unit
+        st.session_state[_last_ev_key]   = ev_path
 
-    # Valores persistidos en config
+    # Valores persistidos en config (base desde JSON/disco)
     _x_min = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_xmin", x_def_min))
     _x_max = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_xmax", x_def_max))
-    _f_min = float(st.session_state.get("b3_sync_y_f_min", 49.0))
-    _f_max = float(st.session_state.get("b3_sync_y_f_max", 51.0))
+    _f_min = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_fmin", 49.0))
+    _f_max = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_fmax", 51.0))
     _p_min = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_p_min", 0.0))
     _p_max = float(_get_unit_cfg(ev_path, sel_unit, f"{_k}_p_max", p_def_max))
-    # _p_auto: leer desde config (persiste entre unidades/bloques);
-    # session state toma precedencia si el widget ya fue renderizado en esta sesión.
-    _p_auto_cfg = bool(_get_unit_cfg(ev_path, sel_unit, f"{_k}_p_auto", True))
-    _p_auto = bool(st.session_state.get(f"{_k}_p_auto", _p_auto_cfg))
 
-    # Valores actuales de X desde widgets (para auto-P reactivo)
-    _cur_xmin = float(st.session_state.get(f"{_k}_xmin_inp", _x_min))
-    _cur_xmax = float(st.session_state.get(f"{_k}_xmax_inp", _x_max))
-
-    # Auto-P: calcular rango y pre-cargar en session state antes de renderizar inputs
-    if _p_auto and traces:
-        _ap = _compute_auto_p_range(traces, _cur_xmin, _cur_xmax)
-        if _ap:
-            st.session_state[f"{_k}_pmin_inp"] = round(_ap[0], 2)
-            st.session_state[f"{_k}_pmax_inp"] = round(_ap[1], 2)
-            _p_min, _p_max = _ap[0], _ap[1]
-
+    # Session state tiene prioridad para todos los ejes: refleja auto-escala y cambios manuales
+    # sin esto el value= de number_input puede discrepar del key= (sesión) y mostrar valor viejo
+    _x_min = float(st.session_state.get(f"{_k}_xmin_inp", _x_min))
+    _x_max = float(st.session_state.get(f"{_k}_xmax_inp", _x_max))
+    _f_min = float(st.session_state.get(f"{_k}_fmin_inp", _f_min))
+    _f_max = float(st.session_state.get(f"{_k}_fmax_inp", _f_max))
     _p_min = float(st.session_state.get(f"{_k}_pmin_inp", _p_min))
     _p_max = float(st.session_state.get(f"{_k}_pmax_inp", _p_max))
 
@@ -1616,47 +1549,95 @@ def _render_axis_controls(block_key, ev_path, sel_unit, x_def_min, x_def_max,
     with _ctrl_col:
         st.markdown("**📐 Controles de ejes**")
 
-        auto_w = st.toggle(
-            "Auto-escala Potencia", value=_p_auto, key=f"{_k}_p_auto",
-            help="Calcula el rango de potencia a partir de los datos visibles en la ventana X",
-            on_change=_cb_p_auto_changed, args=(_k, ev_path, sel_unit),
-        )
+        # ── Botón Auto-escalar ────────────────────────────────────────
+        if st.button("🎯 Auto-escalar", key=f"{_k}_auto_btn", use_container_width=True,
+                     help="Calcula rango óptimo de F y P a partir de los datos; X desde t₀±[10s,60s] si t₀ guardado. Pulsa Guardar para persistir."):
+            _did = False
+            # Frecuencia: mín-máx del array con margen 8%
+            if freq_arr is not None and len(freq_arr) > 0:
+                _fa = np.asarray(freq_arr, dtype=float).ravel()
+                _fa = _fa[np.isfinite(_fa)]
+                if len(_fa) > 0:
+                    _fr  = float(_fa.max() - _fa.min())
+                    _mgf = max(_fr * 0.08, 0.05)
+                    st.session_state[f"{_k}_fmin_inp"] = round(float(_fa.min()) - _mgf, 3)
+                    st.session_state[f"{_k}_fmax_inp"] = round(float(_fa.max()) + _mgf, 3)
+                    _did = True
+            # Potencia: mín-máx de todos los traces con margen 8%
+            if traces:
+                _all_p = np.concatenate([
+                    np.asarray(p, dtype=float).ravel()
+                    for _, p in traces if p is not None and len(p) > 0
+                ])
+                _all_p = _all_p[np.isfinite(_all_p)]
+                if len(_all_p) > 0:
+                    _pr  = float(_all_p.max() - _all_p.min())
+                    _mgp = max(_pr * 0.08, 1.0)
+                    st.session_state[f"{_k}_pmin_inp"] = round(float(_all_p.min()) - _mgp, 2)
+                    st.session_state[f"{_k}_pmax_inp"] = round(float(_all_p.max()) + _mgp, 2)
+                    _did = True
+            # Eje X: t0 - 10 s … t0 + 60 s (si t0 guardado en config del evento)
+            _t0_key_map = {
+                "scada": "scada_t0_s", "emf": "emf_t0_s", "comp": "scada_t0_s",
+                "sim0": "t_sim_falla", "sim1": "t_sim_falla",
+                "simc": "t_sim_falla",
+            }
+            _t0_cfg = _t0_key_map.get(_k)
+            if _k == "b5":
+                # B5: datos ya alineados a t₀=0, ventana fija -10…+60 s
+                st.session_state[f"{_k}_xmin_inp"] = -10.0
+                st.session_state[f"{_k}_xmax_inp"] =  60.0
+                _did = True
+            elif _t0_cfg:
+                _t0_raw = _get_unit_cfg(ev_path, sel_unit, _t0_cfg, None)
+                if _t0_raw is not None:
+                    _t0v = float(_t0_raw)
+                    st.session_state[f"{_k}_xmin_inp"] = round(_t0v - 10.0, 1)
+                    st.session_state[f"{_k}_xmax_inp"] = round(_t0v + 60.0, 1)
+                    _did = True
+            if _did:
+                st.rerun()
 
         # ── Eje X ────────────────────────────────────────────────────
-        st.caption("**Eje X (s)** — compartido para el bloque")
+        st.caption("**Eje X (s)**")
         _cx1, _cx2 = st.columns(2)
         x_min_w = _cx1.number_input(
             "X Mín", value=_x_min, step=1.0, format="%.1f", key=f"{_k}_xmin_inp",
+            on_change=_cb_x_inp_changed,
+            args=(ev_path, sel_unit, f"{_k}_xmin", f"{_k}_xmin_inp"),
         )
         x_max_w = _cx2.number_input(
             "X Máx", value=_x_max, step=1.0, format="%.1f", key=f"{_k}_xmax_inp",
+            on_change=_cb_x_inp_changed,
+            args=(ev_path, sel_unit, f"{_k}_xmax", f"{_k}_xmax_inp"),
         )
 
         # ── Frecuencia ───────────────────────────────────────────────
-        st.caption("**Frecuencia (Hz)** — compartida entre bloques")
+        st.caption("**Frecuencia (Hz)**")
         _cf1, _cf2 = st.columns(2)
         f_min_w = _cf1.number_input(
             "F Mín", value=_f_min, step=0.05, format="%.3f", key=f"{_k}_fmin_inp",
-            on_change=_sync_freq_input, args=(f"{_k}_fmin_inp", "min"),
+            on_change=_cb_x_inp_changed,
+            args=(ev_path, sel_unit, f"{_k}_fmin", f"{_k}_fmin_inp"),
         )
         f_max_w = _cf2.number_input(
             "F Máx", value=_f_max, step=0.05, format="%.3f", key=f"{_k}_fmax_inp",
-            on_change=_sync_freq_input, args=(f"{_k}_fmax_inp", "max"),
+            on_change=_cb_x_inp_changed,
+            args=(ev_path, sel_unit, f"{_k}_fmax", f"{_k}_fmax_inp"),
         )
 
-        # ── Potencia (deshabilitada cuando auto) ─────────────────────
-        _p_caption = f"**Potencia (MW)** — {sel_unit or 'unidad'}"
-        st.caption(_p_caption + (" *(auto)*" if (auto_w and traces) else ""))
+        # ── Potencia ─────────────────────────────────────────────────
+        st.caption(f"**Potencia (MW)** — {sel_unit or 'unidad'}")
         _cp1, _cp2 = st.columns(2)
         p_min_w = _cp1.number_input(
             "P Mín", value=_p_min, step=0.5, format="%.2f",
-            key=f"{_k}_pmin_inp", disabled=bool(auto_w and traces),
+            key=f"{_k}_pmin_inp",
             on_change=_cb_p_inp_changed,
             args=(ev_path, sel_unit, f"{_k}_p_min", f"{_k}_pmin_inp"),
         )
         p_max_w = _cp2.number_input(
             "P Máx", value=_p_max, step=0.5, format="%.2f",
-            key=f"{_k}_pmax_inp", disabled=bool(auto_w and traces),
+            key=f"{_k}_pmax_inp",
             on_change=_cb_p_inp_changed,
             args=(ev_path, sel_unit, f"{_k}_p_max", f"{_k}_pmax_inp"),
         )
@@ -1671,17 +1652,23 @@ def _render_axis_controls(block_key, ev_path, sel_unit, x_def_min, x_def_max,
                 st.session_state.pop(_rk, None)
             _save_unit_cfg(ev_path, sel_unit, f"{_k}_xmin", x_def_min)
             _save_unit_cfg(ev_path, sel_unit, f"{_k}_xmax", x_def_max)
+            _save_unit_cfg(ev_path, sel_unit, f"{_k}_fmin", 49.0)
+            _save_unit_cfg(ev_path, sel_unit, f"{_k}_fmax", 51.0)
             _save_unit_cfg(ev_path, sel_unit, f"{_k}_p_min", 0.0)
             _save_unit_cfg(ev_path, sel_unit, f"{_k}_p_max", p_def_max)
             st.rerun()
         if _b2.button("💾 Guardar", key=f"{_k}_save", use_container_width=True):
             _save_unit_cfg(ev_path, sel_unit, f"{_k}_xmin", x_min_w)
             _save_unit_cfg(ev_path, sel_unit, f"{_k}_xmax", x_max_w)
+            _save_unit_cfg(ev_path, sel_unit, f"{_k}_fmin", f_min_w)
+            _save_unit_cfg(ev_path, sel_unit, f"{_k}_fmax", f_max_w)
             _save_unit_cfg(ev_path, sel_unit, f"{_k}_p_min", p_min_w)
             _save_unit_cfg(ev_path, sel_unit, f"{_k}_p_max", p_max_w)
             st.toast(f"✅ Escala '{_k}' guardada")
+            if save_callback is not None:
+                save_callback()
 
-    return x_min_w, x_max_w, f_min_w, f_max_w, p_min_w, p_max_w, auto_w, _chart_col
+    return x_min_w, x_max_w, f_min_w, f_max_w, p_min_w, p_max_w, _chart_col
 
 
 def _widget_pmax_rp(loc_key, loc_gen_path, extra_cols=None, key_prefix=""):
@@ -2176,9 +2163,6 @@ if "b2_emf_df" not in st.session_state:
 if "b2_selected_unit" not in st.session_state:
     st.session_state.b2_selected_unit = None
 # Inicialización global de variables de sincronización para el Bloque 3
-# Global defaults for Block 3 Y-axis synchronization
-if "b3_sync_y_f_min" not in st.session_state: st.session_state.b3_sync_y_f_min = 49.0
-if "b3_sync_y_f_max" not in st.session_state: st.session_state.b3_sync_y_f_max = 51.0
 if "b3_sync_y_p_min" not in st.session_state: st.session_state.b3_sync_y_p_min = 0.0
 if "b3_sync_y_p_max" not in st.session_state: st.session_state.b3_sync_y_p_max = 200.0
 if "b3_sync_y_p_max" not in st.session_state: st.session_state.b3_sync_y_p_max = 200.0 # Generic default
@@ -2207,7 +2191,7 @@ if "b4_sim_zip_name" not in st.session_state: st.session_state.b4_sim_zip_name =
 # Navegación: usar el stepper (clickeable) en la zona superior de la página
 # 
 with st.sidebar:
-    st.markdown('<div style="padding:6px 4px 4px 4px;font-size:13px;font-weight:700">⚡ RPF Analysis</div>', unsafe_allow_html=True)
+    st.markdown('<div style="padding:6px 4px 4px 4px;font-size:13px;font-weight:700">⚡ HMI RPF Análisis</div>', unsafe_allow_html=True)
     st.markdown('<div class="v4-nav-group-label">Apariencia</div>', unsafe_allow_html=True)
     _dark_on = st.toggle(
         "🌙 Modo oscuro",
@@ -2635,6 +2619,79 @@ def _df_safe(df):
         if out[col].dtype == object:
             out[col] = out[col].astype(str)
     return out
+
+def _b5_save_kpis_pmax(ev_path, n_evento, semestre, unidad,
+                        kpi_pmax_per_src, src_file_per_src):
+    """Guarda KPIs de P_máxima (Bloque 5) en rpf_kpi_sim.csv con upsert."""
+    _SIM_CSV_B5 = r"C:\Datos Cobee\03_DATOS GEN\rpf_kpi_sim.csv"
+
+    def _norm_fuente(key):
+        if key.startswith("Real (") and "SCADA" in key:
+            return "SCADA"
+        if key.startswith("Real (") and "EMF" in key:
+            return "EMF"
+        if key.startswith("Sim "):
+            return key[4:]
+        return key
+
+    evento_str = n_evento if isinstance(n_evento, str) else f"Evento_{n_evento}"
+    records = []
+    for key, (kpi_pm, p_max_v, t_pmax_v, p_pmax_v) in kpi_pmax_per_src.items():
+        if kpi_pm is None:
+            continue
+        droop_calc_v = kpi_pm.get("droop_calc")
+        if not isinstance(droop_calc_v, (int, float)):
+            droop_calc_v = None
+        records.append({
+            "semestre":        semestre,
+            "evento":          evento_str,
+            "fecha_evento":    None,
+            "unidad":          unidad,
+            "fuente":          _norm_fuente(key),
+            "source_file":     src_file_per_src.get(key, ""),
+            "p_max_mw":        round(float(p_max_v),              3),
+            "p_0_mw":          round(float(kpi_pm["p0"]),         3),
+            "p_pmax_mw":       round(float(p_pmax_v),             3),
+            "dp_mw_pmax":      round(float(kpi_pm["dp"]),         3),
+            "dp_pct_pmax":     round(float(kpi_pm["dp_pct"]),     3),
+            "f_0_hz":          round(float(kpi_pm["f0"]),         4),
+            "f_min_hz":        round(float(kpi_pm["f_min"]),      4),
+            "f_pmax_hz":       round(float(kpi_pm["f_dt"]),       4),
+            "t_min_s":         round(float(kpi_pm["t_min"]),      1),
+            "t_pmax_s":        round(float(t_pmax_v),             1),
+            "r_inicial_mw":    round(float(kpi_pm["r_inic"]),     3),
+            "r_inicial_pct":   round(float(kpi_pm["r_inic_pct"]), 2),
+            "droop_inf_pct":   round(float(kpi_pm["droop_nom"]),  1),
+            "droop_calc_pmax": round(float(droop_calc_v), 2) if droop_calc_v is not None else None,
+            "aporta_pmax":     "Sí" if kpi_pm["aporta"] else "No",
+        })
+
+    if not records:
+        return False, "No hay KPIs de P_max disponibles para guardar."
+
+    new_df = pd.DataFrame(records)
+    fuentes_nuevas = new_df["fuente"].tolist()
+
+    if os.path.exists(_SIM_CSV_B5):
+        try:
+            existing = pd.read_csv(_SIM_CSV_B5)
+            mask_keep = ~(
+                (existing["semestre"] == semestre) &
+                (existing["evento"]   == evento_str) &
+                (existing["unidad"]   == unidad) &
+                (existing["fuente"].isin(fuentes_nuevas))
+            )
+            new_df = pd.concat([existing[mask_keep], new_df], ignore_index=True)
+        except Exception:
+            pass
+
+    try:
+        os.makedirs(os.path.dirname(_SIM_CSV_B5), exist_ok=True)
+        new_df.to_csv(_SIM_CSV_B5, index=False)
+        return True, f"Guardados {len(records)} registros."
+    except Exception as exc:
+        return False, str(exc)
+
 
 if bloque_trabajo == "modelo_base":
     _render_block_header("00", "Datos del Modelo",
@@ -3089,7 +3146,7 @@ if bloque_trabajo == "modelo_base":
         )
 
 elif bloque_trabajo == "config_unidades":
-    _render_block_header("02", "Parámetros DSL",
+    _render_block_header("02", "Parámetros DSL (DigSILENT Simulation Language)",
         "Gestión y optimización de parámetros DSL Andritz por familia de gobernador.",
         "Setup", pf_required=False)
     from bloque_dsl_params import render_bloque_dsl
@@ -3258,6 +3315,20 @@ elif bloque_trabajo == "config_global": # type: ignore
             st.session_state.graph_config["pot_color_sim1"] = st.color_picker("Potencia Sim E.1", st.session_state.graph_config["pot_color_sim1"])
         with c3:
             st.session_state.graph_config["line_width"] = st.slider("Grosor de línea", 1.0, 5.0, float(st.session_state.graph_config["line_width"]), 0.5)
+            _ls_opts   = ["solid", "dash", "dot", "dashdot"]
+            _ls_labels = ["Continua ─────", "Segmentada ─ ─ ─", "Punteada · · · ·", "Mixta ─ · ─ · ─"]
+            _cur_lr = st.session_state.graph_config.get("line_style_real", "solid")
+            _cur_lr_idx = _ls_opts.index(_cur_lr) if _cur_lr in _ls_opts else 0
+            _sel_lr = st.selectbox("Estilo línea — Datos Reales", _ls_labels, index=_cur_lr_idx,
+                key="cfg_line_style_real",
+                help="Estilo de línea para curvas SCADA / EMF (datos reales).")
+            st.session_state.graph_config["line_style_real"] = _ls_opts[_ls_labels.index(_sel_lr)]
+            _cur_ls = st.session_state.graph_config.get("line_style_sim", "solid")
+            _cur_ls_idx = _ls_opts.index(_cur_ls) if _cur_ls in _ls_opts else 0
+            _sel_ls = st.selectbox("Estilo línea — Datos Simulados", _ls_labels, index=_cur_ls_idx,
+                key="cfg_line_style_sim",
+                help="Estilo de línea para curvas de simulación (E.0, E.1).")
+            st.session_state.graph_config["line_style_sim"] = _ls_opts[_ls_labels.index(_sel_ls)]
             st.session_state.graph_config["marker_size"] = st.slider("Tamaño de marcadores", 5, 25, int(st.session_state.graph_config["marker_size"]))
             st.session_state.graph_config["show_grid"] = st.checkbox("Mostrar cuadrícula", value=st.session_state.graph_config["show_grid"])
             st.session_state.graph_config["plot_height"] = st.slider("Altura del gráfico (px)", 400, 1000, int(st.session_state.graph_config["plot_height"]), 20)
@@ -3963,8 +4034,14 @@ elif bloque_trabajo == "carga_datos":
                     _disp_units = [] # type: ignore
                     if df_pgini is not None and info_ci:
                         _disparo_str = info_ci.get("Disparo", "")
-                        _disp_str_clean = re.sub(r"\by\b", ",", _disparo_str, flags=re.IGNORECASE)
-                        _sti_disp = {x.strip() for x in _disp_str_clean.split(",") if x.strip() and x.strip() != "nan"}
+                        _tokens_disp = re.findall(r'\b(?:CC)?[A-Z]{2,}[0-9]+\b', _disparo_str)
+                        if not _tokens_disp:
+                            _disp_str_clean = re.sub(r"\by\b", ",", _disparo_str, flags=re.IGNORECASE)
+                            _tokens_disp = [x.strip() for x in _disp_str_clean.split(",") if x.strip()]
+                        _sti_disp = {
+                            re.sub(r"^CC([A-Z])", r"\1", tok)
+                            for tok in _tokens_disp if tok and tok != "nan"
+                        }
 
                         def _sti_de_ui(loc_name):
                             s = re.sub(r"\(\d+\)$", "", str(loc_name).strip())
@@ -4625,8 +4702,14 @@ elif bloque_trabajo == "carga_datos":
                     _disp_units2 = []
                     if df_pgini2 is not None and info_ci2:
                         _disparo_str2   = info_ci2.get("Disparo", "")
-                        _disp_str_clean2 = re.sub(r"\by\b", ",", _disparo_str2, flags=re.IGNORECASE)
-                        _sti_disp2 = {x.strip() for x in _disp_str_clean2.split(",") if x.strip() and x.strip() != "nan"}
+                        _tokens_disp2 = re.findall(r'\b(?:CC)?[A-Z]{2,}[0-9]+\b', _disparo_str2)
+                        if not _tokens_disp2:
+                            _disp_str_clean2 = re.sub(r"\by\b", ",", _disparo_str2, flags=re.IGNORECASE)
+                            _tokens_disp2 = [x.strip() for x in _disp_str_clean2.split(",") if x.strip()]
+                        _sti_disp2 = {
+                            re.sub(r"^CC([A-Z])", r"\1", tok)
+                            for tok in _tokens_disp2 if tok and tok != "nan"
+                        }
 
                         def _sti_de_ui2(loc_name):
                             s = re.sub(r"\(\d+\)$", "", str(loc_name).strip())
@@ -5135,8 +5218,8 @@ elif bloque_trabajo == "carga_datos":
             st.warning("👈 Seleccione Semestre y Evento en la barra lateral para habilitar el bloque de carga.")
 
 elif bloque_trabajo == "analisis_datos":
-    _render_block_header("03", "Análisis SCADA / EMF",
-        "Procesa registros SCADA (1SEG) y curvas EMF del CNDC, detecta t₀ automáticamente y calcula KPIs CNDC.",
+    _render_block_header("03", "Análisis SCADA / Gráfico Referencial CNDC",
+        "Procesa registros SCADA y Gráfico Referencial CNDC, detecta t₀ automáticamente y calcula KPIs CNDC.",
         "Análisis", pf_required=False)
 
     if not st.session_state.semestre_global or not st.session_state.evento_global:
@@ -5167,8 +5250,8 @@ elif bloque_trabajo == "analisis_datos":
 
     #  Tab bar persistente 
     _b3_tab = _v4_tab_bar([
-        {"id": "scada", "icon": "activity", "label": "SCADA COBEE (1SEG)"},
-        {"id": "emf",   "icon": "chart",    "label": "EMF CNDC"},
+        {"id": "scada", "icon": "activity", "label": "SCADA"},
+        {"id": "emf",   "icon": "chart",    "label": "Gráfico Referencial CNDC"},
         {"id": "comp",  "icon": "scale",    "label": "Comparativa SCADA vs CNDC"},
     ], "b03")
 
@@ -5297,11 +5380,7 @@ elif bloque_trabajo == "analisis_datos":
                     _freq_b2_arr = pd.to_numeric(df_scada['Frecuencia_Hz'], errors='coerce').ffill().values
                     _pot_b2_arr  = pd.to_numeric(df_scada[unit_col], errors='coerce').ffill().values
 
-                    # Inicialización de límites de ejes X para SCADA (evita NameError)
-                    xaxis_min_sc = _get_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmin", float(t_norm.min()))
-                    xaxis_max_sc = _get_unit_cfg(ev_path, _sel_unit, "b3_tab_scada_xmax", float(t_norm.max()))
-
-                    #  Parámetros CNDC (antes del gráfico) 
+                    #  Parámetros CNDC (antes del gráfico)
                     _v4_section_head("Parámetros CNDC", icon="sliders")
                     _pmax_cargado_b2 = _load_pmax_cargado(ev_path, n_evento) # type: ignore
                     _tmap_b2         = _load_tech_map(LOC_NAMES_GEN_PATH)
@@ -5344,15 +5423,23 @@ elif bloque_trabajo == "analisis_datos":
                         _save_unit_cfg(ev_path, _sel_unit, "scada_wall_clock_t0", float(t_raw.iloc[_idx_sv]))
                         st.toast(f"t₀ SCADA = {_t0_sv:.1f} s guardado para todas las unidades", icon="✅")
 
-                    #  Fila 3: input numérico (sin label visible) 
+                    #  Fila 3: input numérico (sin label visible)
+                    _t_min_b2 = float(t_norm.min())
+                    _t_max_b2 = float(t_norm.max())
+                    # Clampear valor residual de session_state si viene de otro archivo
+                    _t_stored_b2 = st.session_state.get("b2_sc_t_falla", _t_auto_b2)
+                    if not (_t_min_b2 <= float(_t_stored_b2) <= _t_max_b2):
+                        st.session_state["b2_sc_t_falla"] = float(
+                            np.clip(float(_t_stored_b2), _t_min_b2, _t_max_b2))
                     _t_input_b2 = st.number_input(
                         "t₀ inicio de falla [s]",
                         value=st.session_state.get("b2_sc_t_falla", _t_auto_b2),
-                        min_value=float(t_norm.min()),
-                        max_value=float(t_norm.max()),
+                        min_value=_t_min_b2,
+                        max_value=_t_max_b2,
                         step=1.0, format="%.1f",
                         key="b2_sc_t_falla",
                         label_visibility="collapsed",
+                        on_change=_cb_t0_scada_changed,
                     )
                     _idx_falla_b2 = int(np.argmin(np.abs(t_norm.values - _t_input_b2)))
                     _t_falla_abs  = float(t_norm.iloc[_idx_falla_b2])
@@ -5366,11 +5453,34 @@ elif bloque_trabajo == "analisis_datos":
                     _cm1.metric("t falla", f"{_t_falla_abs:.1f} s")
                     _cm2.metric("f₀",      f"{_freq_b2_arr[_idx_falla_b2]:.4f} Hz")
                     _cm3.metric("P₀",      f"{_pot_b2_arr[_idx_falla_b2]:.3f} MW")
-                    xaxis_min, xaxis_max, yaxis1_min, yaxis1_max, yaxis2_min, yaxis2_max, auto_scale_sc, _sc_chart_col = \
+                    # Rango X por defecto centrado en el evento (±120 s)
+                    _x_def_min = max(float(t_norm.min()), _t_auto_b2 - 120.0)
+                    _x_def_max = min(float(t_norm.max()), _t_auto_b2 + float(_b2_dt) + 120.0)
+
+                    def _b3_scada_kpi_callback():
+                        _cache = st.session_state.get("_b3_scada_kpi_cache")
+                        if not _cache:
+                            st.toast("⚠️ Sin KPIs disponibles aún. Espere a que carguen los datos.", icon="⚠️")
+                            return
+                        _ok_kpi, _msg_kpi = _b5_save_kpis_pmax(
+                            ev_path=ev_path, n_evento=str(n_evento),
+                            semestre=st.session_state.get("semestre_global", ""),
+                            unidad=_sel_unit,
+                            kpi_pmax_per_src=_cache["kpi_pmax_per_src"],
+                            src_file_per_src=_cache["src_file_per_src"],
+                        )
+                        if _ok_kpi:
+                            st.toast("✅ KPIs SCADA guardados en histórico B6", icon="✅")
+                        else:
+                            st.error(f"Error guardando KPIs SCADA: {_msg_kpi}")
+
+                    xaxis_min, xaxis_max, yaxis1_min, yaxis1_max, yaxis2_min, yaxis2_max, _sc_chart_col = \
                         _render_axis_controls("scada", ev_path, _sel_unit,
-                                              float(t_norm.min()), float(t_norm.max()),
+                                              _x_def_min, _x_def_max,
                                               float(_b2_pmax * 1.1),
-                                              traces=[(t_norm.values, _pot_b2_arr)])
+                                              traces=[(t_norm.values, _pot_b2_arr)],
+                                              freq_arr=_freq_b2_arr,
+                                              save_callback=_b3_scada_kpi_callback)
 
                     #  Gráfico con marcadores CNDC (usando funciones estándares)  # type: ignore
                     _gcfg = st.session_state.graph_config
@@ -5480,7 +5590,7 @@ elif bloque_trabajo == "analisis_datos":
 
                     #  Tabla KPIs CNDC
                     st.markdown("---") # type: ignore
-                    _v4_section_head("KPIs CNDC — Criterio RPF", "Registro Real SCADA COBEE", icon="chart")
+                    _v4_section_head("KPIs CNDC — Criterio RPF", "Registro Real SCADA", icon="chart")
                     _kpi_pmax_b2 = None
                     if _t_pmax_b2_al is not None:
                         _kpi_pmax_b2 = _cndc_kpis(
@@ -5488,9 +5598,16 @@ elif bloque_trabajo == "analisis_datos":
                             _b2_pmax, _b2_rp_pct / 100.0, _t_pmax_b2_al,
                         )
                     _mostrar_tabla_cndc_duo(
-                        _kpi_b2, _b2_pmax, int(_b2_dt), "SCADA COBEE (1SEG)", rocof=_rocof_b2,
+                        _kpi_b2, _b2_pmax, int(_b2_dt), "SCADA", rocof=_rocof_b2,
                         kpi2=_kpi_pmax_b2, delta_t2=_t_pmax_b2_al, fuente2="P_máxima SCADA",
                     )
+                    if _t_pmax_b2_al is not None and _kpi_pmax_b2 is not None:
+                        st.session_state["_b3_scada_kpi_cache"] = {
+                            "kpi_pmax_per_src": {
+                                "SCADA": (_kpi_pmax_b2, float(_b2_pmax), _t_pmax_b2_al, float(_p_pmax_b2)),
+                            },
+                            "src_file_per_src": {"SCADA": _scada_file},
+                        }
 
                 elif _sel_unit:
                     st.warning(f"La unidad **{_sel_unit}** no tiene datos SCADA procesados para este evento.")
@@ -5570,7 +5687,7 @@ elif bloque_trabajo == "analisis_datos":
     # ═════════════════════════════════════════════════════════════════════════
     elif _b3_tab == "emf":
         _v4_section_head(
-            "Extracción de Datos desde Gráficos EMF CNDC",
+            "Extracción de Datos desde Gráfico Referencial CNDC",
             "Digitaliza archivos EMF (Enhanced Metafile) para extraer los puntos "
             "exactos de frecuencia y potencia graficados por el CNDC.",
             "chart",
@@ -5723,14 +5840,22 @@ elif bloque_trabajo == "analisis_datos":
                     _t_auto_emf = float(t_norm.iloc[_initial_auto_idx_emf])
 
                     _cemf1, _cemf2, _cemf_btn = st.columns([3, 1, 1])
+                    _t_min_emf = float(t_norm.min())
+                    _t_max_emf = float(t_norm.max())
+                    _t_stored_emf = st.session_state.get("b2_emf_t_falla", _t_auto_emf)
+                    if not (_t_min_emf <= float(_t_stored_emf) <= _t_max_emf):
+                        st.session_state["b2_emf_t_falla"] = float(
+                            np.clip(float(_t_stored_emf), _t_min_emf, _t_max_emf))
                     _t_input_emf = _cemf1.number_input(
                         "t₀ inicio de falla [s]",
                         value=st.session_state.get("b2_emf_t_falla", _t_auto_emf),
-                        min_value=float(t_norm.min()),
-                        max_value=float(t_norm.max()),
+                        min_value=_t_min_emf,
+                        max_value=_t_max_emf,
                         step=1.0, format="%.1f",
                         key="b2_emf_t_falla",
                         help=f"Escriba el tiempo exacto en segundos. Auto-detectado: {_t_auto_emf:.1f} s",
+                        on_change=_cb_t0_emf_changed,
+                        args=(ev_path,),
                     )
                     _idx_falla_emf = int(np.argmin(np.abs(t_norm.values - _t_input_emf)))
                     if _cemf2.button("↩ Auto", key="reset_b2emf_t0",
@@ -5743,11 +5868,15 @@ elif bloque_trabajo == "analisis_datos":
                         st.toast(f"t₀ EMF = {_t_input_emf:.1f} s guardado para todas las unidades", icon="✅")
 
                     #  Controles de escala EMF
-                    xaxis_min, xaxis_max, yaxis1_min, yaxis1_max, yaxis2_min, yaxis2_max, auto_scale_emf, _emf_chart_col = \
+                    # Rango X por defecto centrado en el evento (±120 s)
+                    _x_def_min_emf = max(float(t_norm.min()), _t_auto_emf - 120.0)
+                    _x_def_max_emf = min(float(t_norm.max()), _t_auto_emf + float(_emf_dt) + 120.0)
+                    xaxis_min, xaxis_max, yaxis1_min, yaxis1_max, yaxis2_min, yaxis2_max, _emf_chart_col = \
                         _render_axis_controls("emf", ev_path, _sel_unit,
-                                              float(t_norm.min()), float(t_norm.max()),
+                                              _x_def_min_emf, _x_def_max_emf,
                                               float(_emf_pmax * 1.1),
-                                              traces=[(t_norm.values, _pot_emf_arr)])
+                                              traces=[(t_norm.values, _pot_emf_arr)],
+                                              freq_arr=_freq_emf_arr)
 
                     _t_falla_emf = float(t_norm.iloc[_idx_falla_emf])
                     _t_al_emf = (t_norm - _t_falla_emf).values
@@ -5845,7 +5974,7 @@ elif bloque_trabajo == "analisis_datos":
 
                     _emf_chart_col.plotly_chart(fig_emf, use_container_width=True, key="b2emf_plotly_chart")
 
-                    _v4_section_head("KPIs CNDC — Criterio RPF", "Registro EMF CNDC", icon="chart")
+                    _v4_section_head("KPIs CNDC — Criterio RPF", "Gráfico Referencial CNDC", icon="chart")
                     if st.button("Descargar datos EMF a Excel", key=f"dl_emf_data_{_sel_unit}"): # type: ignore
                         excel_data = _apply_excel_formatting(
                             df_emf,
@@ -5863,7 +5992,7 @@ elif bloque_trabajo == "analisis_datos":
                             _emf_pmax, _emf_rp_pct / 100.0, _t_pmax_emf_al,
                         )
                     _mostrar_tabla_cndc_duo(
-                        _kpi_emf, _emf_pmax, _emf_dt, "Gráfico EMF CNDC",
+                        _kpi_emf, _emf_pmax, _emf_dt, "Gráfico Referencial CNDC",
                         kpi2=_kpi_pmax_emf, delta_t2=_t_pmax_emf_al, fuente2="P_máxima EMF",
                     )
                 elif _sel_unit:
@@ -5965,8 +6094,8 @@ elif bloque_trabajo == "analisis_datos":
             _has_e = _e_file is not None
 
             # Cargar tiempos de falla guardados en el evento (segundos relativos)
-            t0_scada_s = _get_unit_cfg(ev_path, _sel_unit, "scada_t0_s", 0.0)
-            t0_emf_s   = _get_unit_cfg(ev_path, _sel_unit, "emf_t0_s", 0.0)
+            _t0_scada_saved = _get_unit_cfg(ev_path, _sel_unit, "scada_t0_s", None)
+            _t0_emf_saved   = _get_unit_cfg(ev_path, _sel_unit, "emf_t0_s", None)
 
             if _has_s and _has_e:
                 # --- CARGA Y ALINEACIÓN DE DATOS ---
@@ -5974,11 +6103,22 @@ elif bloque_trabajo == "analisis_datos":
                 df_e = pd.read_excel(os.path.join(emf_dir, _e_file), engine="calamine").dropna()
 
                 ts_raw = _parse_to_seconds(df_s.iloc[:, 0])
-                df_s['t_norm'] = ts_raw - ts_raw.min() 
+                df_s['t_norm'] = ts_raw - ts_raw.min()
+                if _t0_scada_saved is not None:
+                    t0_scada_s = float(_t0_scada_saved)
+                else:
+                    # fallback: auto-detectar inicio de falla en datos SCADA (igual que B5)
+                    _fq_s = pd.to_numeric(df_s.get('Frecuencia_Hz', df_s.iloc[:, 1]), errors='coerce').ffill().values
+                    t0_scada_s = float(df_s['t_norm'].iloc[_detectar_inicio_falla(_fq_s)])
                 t_scada_aligned = df_s['t_norm'] - t0_scada_s
 
                 te_raw = _parse_to_seconds(df_e['tiempo_s'])
-                df_e['t_norm'] = te_raw - te_raw.min() 
+                df_e['t_norm'] = te_raw - te_raw.min()
+                if _t0_emf_saved is not None:
+                    t0_emf_s = float(_t0_emf_saved)
+                else:
+                    _fq_e = pd.to_numeric(df_e.get('frecuencia_hz', df_e.iloc[:, 1]), errors='coerce').ffill().values
+                    t0_emf_s = float(df_e['t_norm'].iloc[_detectar_inicio_falla(_fq_e)])
                 t_emf_aligned = df_e['t_norm'] - t0_emf_s
 
                 # --- CONSTRUCCIÓN DEL GRÁFICO ESTANDARIZADO ---
@@ -6065,13 +6205,14 @@ elif bloque_trabajo == "analisis_datos":
 
                 _t_comb_aligned = pd.concat([t_scada_aligned, t_emf_aligned]).dropna()
                 _p_comb_max = max(df_s[p_col_s].max(), df_e[p_col_e].max()) * 1.1 if not _t_comb_aligned.empty else 200.0
-                xaxis_min, xaxis_max, yaxis1_min, yaxis1_max, yaxis2_min, yaxis2_max, auto_scale_comp, _comp_chart_col = \
+                xaxis_min, xaxis_max, yaxis1_min, yaxis1_max, yaxis2_min, yaxis2_max, _comp_chart_col = \
                     _render_axis_controls("comp", ev_path, _sel_unit,
                                           float(_t_comb_aligned.min()) if not _t_comb_aligned.empty else -10.0,
                                           float(_t_comb_aligned.max()) if not _t_comb_aligned.empty else 100.0,
                                           float(_p_comb_max),
                                           traces=[(t_scada_aligned.values, df_s[p_col_s].values),
-                                                  (t_emf_aligned.values, df_e[p_col_e].values)])
+                                                  (t_emf_aligned.values, df_e[p_col_e].values)],
+                                          freq_arr=df_s["Frecuencia_Hz"].values if "Frecuencia_Hz" in df_s.columns else None)
 
                 fig_c.update_layout(
                     xaxis=dict(range=[_to_plotly_time(xaxis_min, show_hhmmss), _to_plotly_time(xaxis_max, show_hhmmss)]),
@@ -6083,7 +6224,7 @@ elif bloque_trabajo == "analisis_datos":
             else:
                 _missing = []
                 if not _has_s: _missing.append("SCADA")
-                if not _has_e: _missing.append("EMF CNDC")
+                if not _has_e: _missing.append("Gráfico Referencial CNDC")
                 st.warning(f"La unidad **{_sel_unit}** no tiene datos procesados en: {', '.join(_missing)}.")
         else:
             st.info("Asegúrese de haber ejecutado los procesadores en las pestañas anteriores.")
@@ -6452,10 +6593,29 @@ elif bloque_trabajo == "analisis_simulacion":
         _xmin_cfg = f"{pfx}_xmin"
         _xmax_cfg = f"{pfx}_xmax"
 
-        _xmin_w, _xmax_w, _y1min_w, _y1max_w, _y2min_w, _y2max_w, auto_s, _sim_chart_col = \
+        def _b4_sim_kpi_callback(_pfx=pfx, _sv=sim_ver):
+            _cache = st.session_state.get(f"_b4_{_pfx}_kpi_cache")
+            if not _cache:
+                st.toast("⚠️ Sin KPIs disponibles aún. Espere a que carguen los datos.", icon="⚠️")
+                return
+            _ok_kpi, _msg_kpi = _b5_save_kpis_pmax(
+                ev_path=ev_path, n_evento=str(n_evento),
+                semestre=st.session_state.get("semestre_global", ""),
+                unidad=_sel_unit or "",
+                kpi_pmax_per_src=_cache["kpi_pmax_per_src"],
+                src_file_per_src=_cache["src_file_per_src"],
+            )
+            if _ok_kpi:
+                st.toast(f"✅ KPIs {_sv} guardados en histórico B6", icon="✅")
+            else:
+                st.error(f"Error guardando KPIs {_sv}: {_msg_kpi}")
+
+        _xmin_w, _xmax_w, _y1min_w, _y1max_w, _y2min_w, _y2max_w, _sim_chart_col = \
             _render_axis_controls(pfx, ev_path, _sel_unit or "",
                                   _xdef_min, _xdef_max, float(pm_v * 1.1),
-                                  traces=[(ts_aligned, ps_mw)])
+                                  traces=[(ts_aligned, ps_mw)],
+                                  freq_arr=fs_hz,
+                                  save_callback=_b4_sim_kpi_callback)
 
         fig_s = create_dual_axis_timeseries(
             t_data=ts_aligned, freq_data=fs_hz, pot_data=ps_mw,
@@ -6463,7 +6623,8 @@ elif bloque_trabajo == "analisis_simulacion":
             freq_label=f"Frecuencia {sim_ver} (Hz)",
             pot_label=f"Potencia {sim_ver} (MW)",
             freq_color=sim_color_f, pot_color=sim_color_p,
-            line_width=_gcfg["line_width"], template=_gcfg["template"],
+            line_width=_gcfg["line_width"], line_style=_gcfg.get("line_style_sim", "solid"),
+            template=_gcfg["template"],
             height=_gcfg["plot_height"], legend_position="bottom_center",
             x_range=[_xmin_w, _xmax_w],
             y1_range=[_y1min_w, _y1max_w],
@@ -6524,6 +6685,13 @@ elif bloque_trabajo == "analisis_simulacion":
             _kpi, pm_v, _b3_dt, f"Simulación {sim_ver}", rocof=_rocof,
             kpi2=_kpi_pmax_s3, delta_t2=_t_pmax_s3, fuente2=f"P_máxima {sim_ver}",
         )
+        if _t_pmax_s3 is not None and _kpi_pmax_s3 is not None:
+            st.session_state[f"_b4_{pfx}_kpi_cache"] = {
+                "kpi_pmax_per_src": {
+                    f"Sim {sim_ver}": (_kpi_pmax_s3, float(pm_v), _t_pmax_s3, float(_p_pmax_s3)),
+                },
+                "src_file_per_src": {f"Sim {sim_ver}": _sel_file_b3},
+            }
         return _kpi, ts_aligned, fs_hz, ps_mw, pm_v, rp_v
 
     # Pestaña 1: Simulación E{N}.0 (CNDC)
@@ -6580,10 +6748,11 @@ elif bloque_trabajo == "analisis_simulacion":
                     _ts_ov, _fs_ov, _ps_ov, _ = _d1
                     _simc_traces.append((_ts_ov, _ps_ov))
 
-                _sc_xmin, _sc_xmax, _sc_y1min, _sc_y1max, _sc_y2min, _sc_y2max, auto_sc, _simc_chart_col = \
+                _sc_xmin, _sc_xmax, _sc_y1min, _sc_y1max, _sc_y2min, _sc_y2max, _simc_chart_col = \
                     _render_axis_controls("simc", ev_path, _sel_unit or "",
                                           -10.0, 100.0, float(pm_vc * 1.1),
-                                          traces=_simc_traces)
+                                          traces=_simc_traces,
+                                          freq_arr=_fs_b)
 
                 fig_sc = create_dual_axis_timeseries(
                     t_data=_ts_b, freq_data=_fs_b, pot_data=_ps_b,
@@ -6600,13 +6769,14 @@ elif bloque_trabajo == "analisis_simulacion":
 
                 # Overlay de la otra simulación
                 if _d0 and _d1:
+                    _ls_sim = _gcfg.get("line_style_sim", "solid")
                     fig_sc.add_trace(go.Scatter(
                         x=_ts_ov, y=_fs_ov, name=f"Frecuencia E{n_evento}.1 (Hz)",
-                        line=dict(color=_gcfg["freq_color_sim1"], dash="dash", width=_gcfg["line_width"]), yaxis="y",
+                        line=dict(color=_gcfg["freq_color_sim1"], dash=_ls_sim, width=_gcfg["line_width"]), yaxis="y",
                     ))
                     fig_sc.add_trace(go.Scatter(
                         x=_ts_ov, y=_ps_ov, name=f"Potencia E{n_evento}.1 (MW)",
-                        line=dict(color=_gcfg["pot_color_sim1"], dash="dash", width=_gcfg["line_width"]), yaxis="y2",
+                        line=dict(color=_gcfg["pot_color_sim1"], dash=_ls_sim, width=_gcfg["line_width"]), yaxis="y2",
                     ))
 
                 fig_sc = add_reference_lines(
@@ -6653,442 +6823,559 @@ elif bloque_trabajo == "comparativa_real_simu":
         st.warning("⬆️ Seleccione una unidad en el selector superior para ver el análisis.")
         st.stop()
 
-    #  Funciones auxiliares 
-    def _local_parse_sec(series):
-        def _to_sec(val):
-            if pd.isna(val): return 0.0
-            s = str(val).strip()
-            if ':' in s:
-                parts = s.split(':')
-                try: return int(parts[0]) * 3600 + int(parts[1]) * 60 + (int(parts[2]) if len(parts) > 2 else 0)
-                except: pass
-            try: return float(s.replace(',', '.'))
-            except: return 0.0
-        return series.apply(_to_sec)
+    if True:
 
-    #  Panel de configuración — mismo patrón que B04 
-    # Orden: t₀ (col1) · Δt (col2) · Fuente (col3) · Simulaciones (col4) · Guardar (col5)
-    _v4_section_head("⚙️ Parámetros de Análisis CNDC", icon="sliders")
-    _event_cfg = _load_event_cfg(ev_path)
-    _pc1, _pc2, _pc3, _pc4, _pc5 = st.columns([1, 1, 1.2, 1.6, 0.9])
-    with _pc1:
-        t_sim_falla = st.number_input(
-            "t₀ falla sim. [s]",
-            value=_event_cfg.get("t_sim_falla", 5.0), min_value=0.0, max_value=300.0, step=0.5,
-            help="Instante t en la simulación RMS donde ocurre el evento (PowerFactory).",
-            key="b4_t_sim_falla",
-        )
-    with _pc2:
-        delta_t_cndc = st.number_input(
-            "Δt CNDC [s]",
-            value=35, min_value=20, max_value=60, step=1,
-            help="Tiempo desde t₀ para leer f_Δt y P_Δt. CNDC usa entre 30–50 s (típicamente 35 s).",
-            key="b4_delta_t_cndc",
-        )
-    with _pc3:
-        src_real = st.radio("Fuente Real:", ["SCADA COBEE (1SEG)", "EMF CNDC"], key="b4_src_real")
-    with _pc4:
-        src_sim = st.multiselect(
-            "Simulaciones:",
-            [f"E{n_evento}.0", f"E{n_evento}.1"],
-            default=[f"E{n_evento}.0", f"E{n_evento}.1"],
-        )
-    with _pc5:
-        st.markdown('<div style="height:20px"></div>', unsafe_allow_html=True)
-        if st.button("💾 Guardar t₀", key="save_t_sim_falla", help="Guardar tiempo de falla en config del evento"):
-            if _save_event_cfg(ev_path, "t_sim_falla", t_sim_falla):
-                st.toast("t₀ guardado.")
+        #  Funciones auxiliares 
+        def _local_parse_sec(series):
+            def _to_sec(val):
+                if pd.isna(val): return 0.0
+                s = str(val).strip()
+                if ':' in s:
+                    parts = s.split(':')
+                    try: return int(parts[0]) * 3600 + int(parts[1]) * 60 + (int(parts[2]) if len(parts) > 2 else 0)
+                    except: pass
+                try: return float(s.replace(',', '.'))
+                except: return 0.0
+            return series.apply(_to_sec)
+
+        #  Panel de configuración — mismo patrón que B04 
+        # Orden: t₀ (col1) · Δt (col2) · Fuente (col3) · Simulaciones (col4) · Guardar (col5)
+        _v4_section_head("⚙️ Parámetros de Análisis CNDC", icon="sliders")
+        _event_cfg = _load_event_cfg(ev_path)
+        _pc1, _pc2, _pc3, _pc4, _pc5 = st.columns([1, 1, 1.2, 1.6, 0.9])
+        with _pc1:
+            t_sim_falla = st.number_input(
+                "t₀ falla sim. [s]",
+                value=_event_cfg.get("t_sim_falla", 5.0), min_value=0.0, max_value=300.0, step=0.5,
+                help="Instante t en la simulación RMS donde ocurre el evento (PowerFactory).",
+                key="b4_t_sim_falla",
+            )
+        with _pc2:
+            delta_t_cndc = st.number_input(
+                "Δt CNDC [s]",
+                value=35, min_value=20, max_value=60, step=1,
+                help="Tiempo desde t₀ para leer f_Δt y P_Δt. CNDC usa entre 30–50 s (típicamente 35 s).",
+                key="b4_delta_t_cndc",
+            )
+        with _pc3:
+            src_real = st.radio("Fuente Real:", ["SCADA", "Gráfico Referencial CNDC"], key="b4_src_real")
+        with _pc4:
+            src_sim = st.multiselect(
+                "Simulaciones:",
+                [f"E{n_evento}.0", f"E{n_evento}.1"],
+                default=[f"E{n_evento}.0", f"E{n_evento}.1"],
+            )
+        with _pc5:
+            st.markdown('<div style="height:20px"></div>', unsafe_allow_html=True)
+            if st.button("💾 Guardar t₀", key="save_t_sim_falla", help="Guardar tiempo de falla en config del evento"):
+                if _save_event_cfg(ev_path, "t_sim_falla", t_sim_falla):
+                    st.toast("t₀ guardado.")
+            try:
+                df_tech = pd.read_excel(LOC_NAMES_GEN_PATH, sheet_name="Detalle_PF", engine="calamine")
+                _pcol = 'P_max (MW)' if 'P_max (MW)' in df_tech.columns else 'P nom. (MW)'
+                tech_map = (df_tech.set_index('loc_name PF')[[_pcol]]
+                            .rename(columns={_pcol: 'P_max (MW)'})
+                            .to_dict('index'))
+                st.caption(f"✅ P_max: {len(tech_map)} uds.")
+            except Exception as _e:
+                tech_map = {}
+                st.caption(f"⚠️ Sin P_max")
+
+        # ── Experimentos DSL disponibles para este evento ─────────────────────
+        _dsl_exps = {}
         try:
-            df_tech = pd.read_excel(LOC_NAMES_GEN_PATH, sheet_name="Detalle_PF", engine="calamine")
-            _pcol = 'P_max (MW)' if 'P_max (MW)' in df_tech.columns else 'P nom. (MW)'
-            tech_map = (df_tech.set_index('loc_name PF')[[_pcol]]
-                        .rename(columns={_pcol: 'P_max (MW)'})
-                        .to_dict('index'))
-            st.caption(f"✅ P_max: {len(tech_map)} uds.")
-        except Exception as _e:
-            tech_map = {}
-            st.caption(f"⚠️ Sin P_max")
+            import dsl_db as _dsl_db_b5
+            _ev_ref_b5 = (f"{st.session_state.get('semestre_global', '')}"
+                          f"::{st.session_state.get('evento_global', '')}")
+            _df_dsl_b5 = _dsl_db_b5.listar_experimentos(sym=_sel_unit_b5)
+            if not _df_dsl_b5.empty:
+                _df_dsl_b5 = _df_dsl_b5[
+                    (_df_dsl_b5["evento_ref"] == _ev_ref_b5) &
+                    _df_dsl_b5["carpeta_curvas"].notna() &
+                    (_df_dsl_b5["estado"].isin(["simulado", "analizado"]))
+                ]
+                for _, _r_dsl in _df_dsl_b5.iterrows():
+                    _dsl_exps[f"DSL · {_r_dsl['nombre']}"] = str(_r_dsl["carpeta_curvas"])
+        except Exception:
+            pass
 
-    # Parámetros avanzados de detección (colapsados — opcionales)
-    with st.expander("⚙ Detección avanzada de t₀", expanded=False):
-        _da1, _da2, _da3 = st.columns(3)
-        with _da1:
-            umbral_dfdt = st.number_input(
-                "Umbral df/dt (Hz/s)",
-                value=-0.04, min_value=-2.0, max_value=-0.001, step=0.005, format="%.3f",
-                help="Caída sostenida de frecuencia (suavizada) para detectar inicio de falla.",
-                key="b4_umbral_dfdt",
-            )
-        with _da2:
-            ventana_suavizado = st.number_input(
-                "Ventana suavizado (muestras)",
-                value=5, min_value=2, max_value=20, step=1,
-                help="Número de muestras para rolling mean antes de calcular df/dt.",
-                key="b4_ventana_suav",
-            )
-        with _da3:
-            ventana_pre = st.number_input(
-                "Ventana pre-falla (s)",
-                value=10, min_value=0, max_value=120, step=5,
-                help="Segundos antes de t=0 a incluir en la gráfica.",
-                key="b4_ventana_pre",
+        src_dsl = []
+        if _dsl_exps:
+            src_dsl = st.multiselect(
+                "Experimentos DSL:",
+                options=list(_dsl_exps.keys()),
+                key="b5_src_dsl",
+                help="Simulaciones con parámetros ajustados en Bloque 2 (estado 'simulado').",
             )
 
-    _b5_sel_unit = st.session_state.get("global_selected_unit", "")
-    _xmin_v, _xmax_v, _y1min_v, _y1max_v, _y2min_v, _y2max_v, auto_v, _b5_chart_col = \
-        _render_axis_controls("b5", ev_path, _b5_sel_unit, -10.0, 100.0, 200.0)
+        # Parámetros avanzados de detección (colapsados — opcionales)
+        with st.expander("⚙ Detección avanzada de t₀", expanded=False):
+            _da1, _da2, _da3 = st.columns(3)
+            with _da1:
+                umbral_dfdt = st.number_input(
+                    "Umbral df/dt (Hz/s)",
+                    value=-0.04, min_value=-2.0, max_value=-0.001, step=0.005, format="%.3f",
+                    help="Caída sostenida de frecuencia (suavizada) para detectar inicio de falla.",
+                    key="b4_umbral_dfdt",
+                )
+            with _da2:
+                ventana_suavizado = st.number_input(
+                    "Ventana suavizado (muestras)",
+                    value=5, min_value=2, max_value=20, step=1,
+                    help="Número de muestras para rolling mean antes de calcular df/dt.",
+                    key="b4_ventana_suav",
+                )
+            with _da3:
+                ventana_pre = st.number_input(
+                    "Ventana pre-falla (s)",
+                    value=10, min_value=0, max_value=120, step=5,
+                    help="Segundos antes de t=0 a incluir en la gráfica.",
+                    key="b4_ventana_pre",
+                )
 
-    #  Carga y Alineación Real 
-    _sel_unit = st.session_state.global_selected_unit
-    real_subdir = "Graficas Registro 1SEG COBEE" if "SCADA" in src_real else "Resultados_COBEE"
-    _r_dir = os.path.join(ev_path, real_subdir)
-    
-    if _sel_unit and os.path.isdir(_r_dir):
-        _rf_match = _buscar_archivo_unidad(_sel_unit, os.listdir(_r_dir))
-        if _rf_match:
-            # _cached_real_arrays: caché compartido con B3 → hit si ya fue leído
-            _r_fpath = os.path.join(_r_dir, _rf_match)
-            tr_aligned, _fr_arr, _pr_arr, idx_f_r, _t_f_auto = _cached_real_arrays(
-                _r_fpath, umbral_dfdt, int(ventana_suavizado)
-            )
+        _b5_sel_unit = st.session_state.get("global_selected_unit", "")
+        _b5_cached_traces = st.session_state.get("_b5_auto_traces")
+        _b5_cached_freq   = st.session_state.get("_b5_auto_freq")
+        _xmin_v, _xmax_v, _y1min_v, _y1max_v, _y2min_v, _y2max_v, _b5_chart_col = \
+            _render_axis_controls("b5", ev_path, _b5_sel_unit, -10.0, 60.0, 200.0,
+                                  traces=_b5_cached_traces, freq_arr=_b5_cached_freq)
 
-            # Aplicar t₀ guardado en B3 (si el usuario lo ajustó manualmente)
-            _src_key = "scada_t0_s" if "SCADA" in src_real else "emf_t0_s"
-            _t0_manual = _event_cfg.get(_src_key)
-            if _t0_manual is not None:
-                # tr_aligned = tr_norm - t_f_auto → recentrar en el t₀ manual
-                tr_aligned = tr_aligned + (_t_f_auto - float(_t0_manual))
+        #  Carga y Alineación Real 
+        _sel_unit = st.session_state.global_selected_unit
+        real_subdir = "Graficas Registro 1SEG COBEE" if "SCADA" in src_real else "Resultados_COBEE"
+        _r_dir = os.path.join(ev_path, real_subdir)
+        
+        if _sel_unit and os.path.isdir(_r_dir):
+            _rf_match = _buscar_archivo_unidad(_sel_unit, os.listdir(_r_dir))
+            if _rf_match:
+                # _cached_real_arrays: caché compartido con B3 → hit si ya fue leído
+                _r_fpath = os.path.join(_r_dir, _rf_match)
+                tr_aligned, _fr_arr, _pr_arr, idx_f_r, _t_f_auto = _cached_real_arrays(
+                    _r_fpath, umbral_dfdt, int(ventana_suavizado)
+                )
 
-            # Auto-P para B5: los widgets están deshabilitados en modo auto,
-            # así que solo actualizamos las variables locales para el gráfico.
-            if auto_v:
-                _ap_b5 = _compute_auto_p_range([(tr_aligned, _pr_arr)], _xmin_v, _xmax_v)
-                if _ap_b5:
-                    _y2min_v, _y2max_v = _ap_b5[0], _ap_b5[1]
+                # Aplicar t₀ guardado en B3 (si el usuario lo ajustó manualmente)
+                _src_key = "scada_t0_s" if "SCADA" in src_real else "emf_t0_s"
+                _t0_manual = _event_cfg.get(_src_key)
+                if _t0_manual is not None:
+                    # tr_aligned = tr_norm - t_f_auto → recentrar en el t₀ manual
+                    tr_aligned = tr_aligned + (_t_f_auto - float(_t0_manual))
 
-            # --- Construcción del Gráfico de Validación ---
-            _gcfg = st.session_state.graph_config
-            fig = create_dual_axis_timeseries(
-                t_data=tr_aligned, freq_data=_fr_arr, pot_data=_pr_arr,
-                title=f"Validación Real vs Simulación — {_sel_unit}",
-                freq_label=f"Frec. Real ({src_real})", pot_label=f"Pot. Real ({src_real})",
-                freq_color=_gcfg["freq_color_real"], pot_color=_gcfg["pot_color_real"],
-                show_hhmmss=False,
-                x_range=[_xmin_v, _xmax_v],
-                y1_range=[_y1min_v, _y1max_v],
-                y2_range=[_y2min_v, _y2max_v],
-            )
-            
-            # Marcadores y KPIs — Datos Reales
-            _pmax_map_v = _load_pmax_cargado(ev_path, n_evento)
-            _pm_v, _tk, _pm_fuente = _get_pmax_from_cargado(_sel_unit, _pmax_map_v, _load_tech_map(LOC_NAMES_GEN_PATH))
-            _rp_v = _get_rp_default(_tk, LOC_NAMES_GEN_PATH) / 100.0
-            _kr    = _cndc_kpis(tr_aligned, _fr_arr, _pr_arr, _pm_v, _rp_v, delta_t_cndc)
-            _rocof_r = _calcular_rocof(tr_aligned, _fr_arr, 3.0)
+                _b5_curves = {}
+                _b5_curves["Real"] = (tr_aligned, _fr_arr, _pr_arr)
+                _b5_auto_traces_new = [(tr_aligned, _pr_arr)]
+                _b5_auto_freq_list  = [np.asarray(_fr_arr, dtype=float).ravel()]
 
-            if _kr:
-                fig = add_kpi_markers(
-                    fig, t_fault_abs=0.0, kpi_dict=_kr, show_hhmmss=False,
-                    dt_seconds=delta_t_cndc,
+                # --- Construcción del Gráfico de Validación ---
+                _gcfg = st.session_state.graph_config
+                fig = create_dual_axis_timeseries(
+                    t_data=tr_aligned, freq_data=_fr_arr, pot_data=_pr_arr,
+                    title=f"Validación Real vs Simulación — {_sel_unit}",
+                    freq_label=f"Frec. Real ({src_real})", pot_label=f"Pot. Real ({src_real})",
                     freq_color=_gcfg["freq_color_real"], pot_color=_gcfg["pot_color_real"],
+                    show_hhmmss=False,
+                    x_range=[_xmin_v, _xmax_v],
+                    y1_range=[_y1min_v, _y1max_v],
+                    y2_range=[_y2min_v, _y2max_v],
                 )
-            fig = add_reference_lines(
-                fig, t_fault_abs=0.0, t_eval_abs=delta_t_cndc, show_hhmmss=False,
-                show_deadband=_gcfg["show_deadband"],
-                eval_line_label=f"t₀+Δt ({delta_t_cndc} s)",
-            )
-            # P_máxima — datos reales en [t_nadir, t₀+Δt]
-            _t_nadir_r5 = float(_kr['t_min']) if _kr else 0.0
-            _t_pmax_r5, _p_pmax_r5 = _find_pmax_time(
-                tr_aligned, _pr_arr, delta_t_cndc, t_min_eval=_t_nadir_r5
-            )
-            _kpi_pmax_per_src5 = {}
-            if _t_pmax_r5 is not None:
-                _idx_pm_r5  = int(np.argmin(np.abs(tr_aligned - _t_pmax_r5)))
-                _f_pmax_r5  = float(_fr_arr[_idx_pm_r5])
-                if _gcfg.get("show_pmax_marker", True):
-                    fig = add_pmax_marker(
-                        fig, _t_pmax_r5, _p_pmax_r5, _f_pmax_r5,
-                        pot_color=_gcfg["pot_color_real"], freq_color=_gcfg["freq_color_real"],
-                        marker_size=_gcfg["marker_size"],
-                    )
+                
+                # Marcadores y KPIs — Datos Reales
+                _pmax_map_v = _load_pmax_cargado(ev_path, n_evento)
+                _pm_v, _tk, _pm_fuente = _get_pmax_from_cargado(_sel_unit, _pmax_map_v, _load_tech_map(LOC_NAMES_GEN_PATH))
+                _rp_v = _get_rp_default(_tk, LOC_NAMES_GEN_PATH) / 100.0
+                _kr    = _cndc_kpis(tr_aligned, _fr_arr, _pr_arr, _pm_v, _rp_v, delta_t_cndc)
+                _rocof_r = _calcular_rocof(tr_aligned, _fr_arr, 3.0)
+
                 if _kr:
-                    _kpi_pm_r5 = _cndc_kpis(tr_aligned, _fr_arr, _pr_arr, float(_pm_v), _rp_v, _t_pmax_r5)
-                    _kpi_pmax_per_src5[f"Real ({src_real})"] = (_kpi_pm_r5, float(_pm_v), _t_pmax_r5, _p_pmax_r5)
-
-            #  Carga y Alineación Simulaciones
-            _kpi_rows   = [{"Fuente": f"REAL ({src_real})", **_kr}] if _kr else []
-            _rocof_rows = {f"REAL ({src_real})": _rocof_r}
-            _sim_for_error = []
-            _kpi_per_src  = {}   # fuente → (kpi_dict, rocof, pm_v)
-
-            for s_ver in src_sim:
-                _s_dir = os.path.join(ev_path, s_ver, CARPETA_DATOS_CURVAS)
-                if not os.path.isdir(_s_dir):
-                    continue
-                _sf_match = _buscar_archivo_unidad(_sel_unit, os.listdir(_s_dir))
-                if not _sf_match:
-                    continue
-
-                # _cached_sim_arrays: mismo caché que B3/B4 → hit si ya fue leído
-                _s_cached = _cached_sim_arrays(os.path.join(_s_dir, _sf_match), t_sim_falla)
-                ts_al, fs_hz, ps_mw, _ = _s_cached
-
-                _color_f = _gcfg["freq_color_sim0"] if "0" in s_ver else _gcfg["freq_color_sim1"]
-                _color_p = _gcfg["pot_color_sim0"]  if "0" in s_ver else _gcfg["pot_color_sim1"]
-
-                fig.add_trace(go.Scatter(
-                    x=ts_al, y=fs_hz, name=f"Frec. {s_ver}",
-                    line=dict(color=_color_f, dash="dash", width=_gcfg["line_width"]), yaxis="y",
-                ))
-                fig.add_trace(go.Scatter(
-                    x=ts_al, y=ps_mw, name=f"Pot. {s_ver}",
-                    line=dict(color=_color_p, dash="dash", width=_gcfg["line_width"]), yaxis="y2",
-                ))
-
-                _ks    = _cndc_kpis(ts_al, fs_hz, ps_mw, _pm_v, _rp_v, delta_t_cndc)
-                _roc_s = _calcular_rocof(ts_al, fs_hz, 3.0)
-                if _ks:
-                    _kpi_rows.append({"Fuente": s_ver, **_ks})
-                    _kpi_per_src[s_ver] = (_ks, _roc_s, float(_pm_v))
-                _rocof_rows[s_ver] = _roc_s
-                _sim_for_error.append({"ver": s_ver, "t": ts_al, "f": fs_hz, "color": _color_f})
-
-                # P_máxima por fuente de simulación en [t_nadir, t₀+Δt]
-                _t_nadir_s5 = float(_ks['t_min']) if _ks else 0.0
-                _t_pmax_s5, _p_pmax_s5 = _find_pmax_time(
-                    ts_al, ps_mw, delta_t_cndc, t_min_eval=_t_nadir_s5
+                    fig = add_kpi_markers(
+                        fig, t_fault_abs=0.0, kpi_dict=_kr, show_hhmmss=False,
+                        dt_seconds=delta_t_cndc,
+                        freq_color=_gcfg["freq_color_real"], pot_color=_gcfg["pot_color_real"],
+                    )
+                fig = add_reference_lines(
+                    fig, t_fault_abs=0.0, t_eval_abs=delta_t_cndc, show_hhmmss=False,
+                    show_deadband=_gcfg["show_deadband"],
+                    eval_line_label=f"t₀+Δt ({delta_t_cndc} s)",
                 )
-                if _t_pmax_s5 is not None:
-                    _idx_pm_s5 = int(np.argmin(np.abs(ts_al - _t_pmax_s5)))
-                    _f_pmax_s5 = float(fs_hz[_idx_pm_s5])
+                # P_máxima — datos reales en [t_nadir, t₀+Δt]
+                _t_nadir_r5 = float(_kr['t_min']) if _kr else 0.0
+                _t_pmax_r5, _p_pmax_r5 = _find_pmax_time(
+                    tr_aligned, _pr_arr, delta_t_cndc, t_min_eval=_t_nadir_r5
+                )
+                _kpi_pmax_per_src5 = {}
+                _src_file_per_src5 = {}
+                if _t_pmax_r5 is not None:
+                    _idx_pm_r5  = int(np.argmin(np.abs(tr_aligned - _t_pmax_r5)))
+                    _f_pmax_r5  = float(_fr_arr[_idx_pm_r5])
                     if _gcfg.get("show_pmax_marker", True):
                         fig = add_pmax_marker(
-                            fig, _t_pmax_s5, _p_pmax_s5, _f_pmax_s5,
-                            pot_color=_color_p, freq_color=_color_f,
+                            fig, _t_pmax_r5, _p_pmax_r5, _f_pmax_r5,
+                            pot_color=_gcfg["pot_color_real"], freq_color=_gcfg["freq_color_real"],
                             marker_size=_gcfg["marker_size"],
                         )
+                    if _kr:
+                        _kpi_pm_r5 = _cndc_kpis(tr_aligned, _fr_arr, _pr_arr, float(_pm_v), _rp_v, _t_pmax_r5)
+                        _kpi_pmax_per_src5[f"Real ({src_real})"] = (_kpi_pm_r5, float(_pm_v), _t_pmax_r5, _p_pmax_r5)
+                        _src_file_per_src5[f"Real ({src_real})"] = _r_fpath
+
+                #  Carga y Alineación Simulaciones
+                _kpi_rows   = [{"Fuente": f"REAL ({src_real})", **_kr}] if _kr else []
+                _rocof_rows = {f"REAL ({src_real})": _rocof_r}
+                _sim_for_error = []
+                _kpi_per_src  = {}   # fuente → (kpi_dict, rocof, pm_v)
+
+                for s_ver in src_sim:
+                    _s_dir = os.path.join(ev_path, s_ver, CARPETA_DATOS_CURVAS)
+                    if not os.path.isdir(_s_dir):
+                        continue
+                    _sf_match = _buscar_archivo_unidad(_sel_unit, os.listdir(_s_dir))
+                    if not _sf_match:
+                        continue
+
+                    # _cached_sim_arrays: mismo caché que B3/B4 → hit si ya fue leído
+                    _s_cached = _cached_sim_arrays(os.path.join(_s_dir, _sf_match), t_sim_falla)
+                    ts_al, fs_hz, ps_mw, _ = _s_cached
+
+                    _color_f = _gcfg["freq_color_sim0"] if "0" in s_ver else _gcfg["freq_color_sim1"]
+                    _color_p = _gcfg["pot_color_sim0"]  if "0" in s_ver else _gcfg["pot_color_sim1"]
+
+                    _ls_sim_b5 = _gcfg.get("line_style_sim", "solid")
+                    fig.add_trace(go.Scatter(
+                        x=ts_al, y=fs_hz, name=f"Frec. {s_ver}",
+                        line=dict(color=_color_f, dash=_ls_sim_b5, width=_gcfg["line_width"]), yaxis="y",
+                    ))
+                    fig.add_trace(go.Scatter(
+                        x=ts_al, y=ps_mw, name=f"Pot. {s_ver}",
+                        line=dict(color=_color_p, dash=_ls_sim_b5, width=_gcfg["line_width"]), yaxis="y2",
+                    ))
+
+                    _ks    = _cndc_kpis(ts_al, fs_hz, ps_mw, _pm_v, _rp_v, delta_t_cndc)
+                    _roc_s = _calcular_rocof(ts_al, fs_hz, 3.0)
                     if _ks:
-                        _kpi_pm_s5 = _cndc_kpis(ts_al, fs_hz, ps_mw, float(_pm_v), _rp_v, _t_pmax_s5)
-                        _kpi_pmax_per_src5[f"Sim {s_ver}"] = (_kpi_pm_s5, float(_pm_v), _t_pmax_s5, _p_pmax_s5)
+                        _kpi_rows.append({"Fuente": s_ver, **_ks})
+                        _kpi_per_src[s_ver] = (_ks, _roc_s, float(_pm_v))
+                    _rocof_rows[s_ver] = _roc_s
+                    _sim_for_error.append({"ver": s_ver, "t": ts_al, "f": fs_hz, "color": _color_f})
+                    _b5_curves[f"Sim {s_ver}"] = (ts_al, fs_hz, ps_mw)
+                    _b5_auto_traces_new.append((ts_al, ps_mw))
+                    _b5_auto_freq_list.append(np.asarray(fs_hz, dtype=float).ravel())
 
-            _b5_chart_col.plotly_chart(fig, use_container_width=True)
-
-            #  Tabla comparativa KPIs (todas las fuentes en una sola vista) 
-            if _pm_fuente:
-                st.caption(f"✅ P_max desde `{_pm_fuente}` → **{float(_pm_v):.2f} MW** | Rp = {_rp_v*100:.1f}%")
-            else:
-                st.warning(f"⚠️ No se encontró Pmax para **{_sel_unit}** en datos_cargados ni loc_names_gen.")
-
-            st.markdown("---")
-            _v4_section_head("KPIs CNDC — Comparativa Real vs. Simulación", icon="chart")
-
-            # Definición de filas: (etiqueta, función(kpi, p_max, rocof) → str)
-            _dt = delta_t_cndc  # captura local para lambdas
-            _KPI_FILAS_B5 = [
-                ("P_max [MW]",                   lambda k, pm, roc: f"{pm:.2f}"),
-                ("f₀ — Inicio evento [Hz]",      lambda k, pm, roc: f"{k['f0']:.4f}"),
-                ("P₀ — Inicio evento [MW]",      lambda k, pm, roc: f"{k['p0']:.3f}"),
-                ("f_min — Nadir [Hz]",           lambda k, pm, roc: f"{k['f_min']:.4f}"),
-                ("t_min — Nadir [s]",            lambda k, pm, roc: f"{k['t_min']:.1f}"),
-                ("Δf = f₀ − f_min [Hz]",        lambda k, pm, roc: f"{k['delta_f']:.4f}"),
-                (f"f_Δt ({_dt}s) [Hz]",         lambda k, pm, roc: f"{k['f_dt']:.4f}"),
-                (f"P_Δt ({_dt}s) [MW]",         lambda k, pm, roc: f"{k['p_dt']:.3f}"),
-                ("R_inic [MW]",                  lambda k, pm, roc: f"{k['r_inic']:.3f}"),
-                ("R_inic [%]",                   lambda k, pm, roc: f"{k['r_inic_pct']:.2f}"),
-                ("ΔP entregada [MW]",            lambda k, pm, roc: f"{k['dp']:.3f}"),
-                ("ΔP% aporte [%]",               lambda k, pm, roc: f"{k['dp_pct']:.2f}"),
-                ("¿Aporta RPF? (ΔP% ≥ 1.5%)",   lambda k, pm, roc: "✅ Sí" if k['aporta'] else "❌ No"),
-                ("Droop Nominal [%]",            lambda k, pm, roc: f"{k['droop_nom']:.1f}"),
-                ("Droop Calculado [%]",          lambda k, pm, roc: str(k['droop_calc'])),
-                ("ROCOF [Hz/s]",                 lambda k, pm, roc: f"{roc:.4f}" if (roc is not None and roc == roc) else "—"),
-            ]
-
-            # Construir dict ordenado: nombre fuente → (kpi, p_max, rocof)
-            _comp_srcs = {}
-            if _kr:
-                _comp_srcs[f"Real ({src_real})"] = (_kr, float(_pm_v), _rocof_r)
-            for _sv, (_ks_i, _roc_i, _pm_i) in _kpi_per_src.items():
-                _comp_srcs[f"Sim {_sv}"] = (_ks_i, float(_pm_i), _roc_i)
-
-            if _comp_srcs:
-                _tabla_b5 = []
-                for _lbl, _fn in _KPI_FILAS_B5:
-                    _row = {"KPI": _lbl}
-                    for _sname, (_kpi_s, _pm_s, _roc_s) in _comp_srcs.items():
-                        try:
-                            _row[_sname] = _fn(_kpi_s, _pm_s, _roc_s)
-                        except Exception:
-                            _row[_sname] = "—"
-                    _tabla_b5.append(_row)
-
-                _df_comp_b5 = pd.DataFrame(_tabla_b5)
-
-                # Tabla comparativa: HTML puro — centrada, sin scrollbars
-                _src_names_b5 = list(_comp_srcs.keys())
-                _th_k5 = ("padding:7px 12px;text-align:left;font-weight:600;"
-                           "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
-                _th_v5 = ("padding:7px 12px;text-align:right;font-weight:600;"
-                           "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
-                _td_k5 = "padding:5px 12px;border-bottom:1px solid #e0e0e0;font-size:12px;white-space:nowrap;"
-                _td_v5 = ("padding:5px 12px;border-bottom:1px solid #e0e0e0;"
-                           "font-size:12px;text-align:right;white-space:nowrap;min-width:110px;")
-                _hdr5 = f'<th style="{_th_k5}">KPI</th>' + "".join(
-                    f'<th style="{_th_v5}">{_sn}</th>' for _sn in _src_names_b5
-                )
-                _body5 = ""
-                for _row5 in _tabla_b5:
-                    _lbl5    = _row5["KPI"]
-                    _aporta5 = "Aporta" in _lbl5
-                    _ispmax5 = "P_max"  in _lbl5
-                    _bgrow5  = "background:#f2f2f2;" if _ispmax5 else ""
-                    _cells5  = f'<td style="{_td_k5}{_bgrow5}">{_lbl5}</td>'
-                    for _sn5 in _src_names_b5:
-                        _val5 = _row5.get(_sn5, "—")
-                        _cs5  = _td_v5
-                        if _aporta5:
-                            if "✅" in str(_val5):   _cs5 += "background:#d4edda;color:#155724;"
-                            elif "❌" in str(_val5): _cs5 += "background:#f8d7da;color:#721c24;"
-                        elif _ispmax5:
-                            _cs5 += _bgrow5
-                        _cells5 += f'<td style="{_cs5}">{_val5}</td>'
-                    _body5 += f'<tr>{_cells5}</tr>'
-                _html_b5 = (
-                    '<div style="display:flex;justify-content:center;margin:8px 0 4px 0;">'
-                    '<table style="border-collapse:collapse;border:1px solid #d0d0d0;border-radius:6px;overflow:hidden;">'
-                    f'<thead><tr>{_hdr5}</tr></thead>'
-                    f'<tbody>{_body5}</tbody>'
-                    '</table></div>'
-                )
-                st.markdown(_html_b5, unsafe_allow_html=True)
-
-                # Exportar tabla comparativa
-                if st.button("⬇️ Exportar comparativa a Excel", key="dl_b5_comp"):
-                    try:
-                        _excel_comp = _apply_excel_formatting(
-                            _df_comp_b5,
-                            sheet_name="Comparativa_KPIs",
-                            kpi_col="¿Aporta RPF? (ΔP% ≥ 1.5%)",
-                            kpi_ok_val="✅ Sí",
-                            kpi_error_val="❌ No",
-                        )
-                        st.download_button(
-                            "📥 Descargar",
-                            _excel_comp,
-                            file_name=f"kpis_comparativa_Ev{n_evento}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="dl_b5_comp_file",
-                        )
-                    except Exception as _ex:
-                        st.error(f"Error exportando: {_ex}")
-
-                # KPIs evaluados en P_máxima por fuente — tabla multi-columna
-                if _kpi_pmax_per_src5:
-                    st.markdown("---")
-                    _v4_section_head("KPIs CNDC — P_máxima (por fuente)", icon="chart")
-                    _src_pm5 = list(_kpi_pmax_per_src5.keys())
-                    _KPI_FILAS_PM5 = [
-                        ("P_max [MW]",                    lambda k, pm, t, p: f"{pm:.2f}"),
-                        ("t_Pmáx [s]",                    lambda k, pm, t, p: f"{t:.1f}"),
-                        ("f₀ — Inicio evento [Hz]",       lambda k, pm, t, p: f"{k['f0']:.4f}" if k else "—"),
-                        ("P₀ — Inicio evento [MW]",       lambda k, pm, t, p: f"{k['p0']:.3f}" if k else "—"),
-                        ("f_min — Nadir [Hz]",            lambda k, pm, t, p: f"{k['f_min']:.4f}" if k else "—"),
-                        ("t_min — Nadir [s]",             lambda k, pm, t, p: f"{k['t_min']:.1f}" if k else "—"),
-                        ("f en t_Pmáx [Hz]",              lambda k, pm, t, p: f"{k['f_dt']:.4f}" if k else "—"),
-                        ("P en t_Pmáx [MW]",              lambda k, pm, t, p: f"{p:.3f}"),
-                        ("R_inic [MW]",                   lambda k, pm, t, p: f"{k['r_inic']:.3f}" if k else "—"),
-                        ("R_inic [%]",                    lambda k, pm, t, p: f"{k['r_inic_pct']:.2f}" if k else "—"),
-                        ("ΔP entregada [MW]",             lambda k, pm, t, p: f"{k['dp']:.3f}" if k else "—"),
-                        ("ΔP% aporte [%]",                lambda k, pm, t, p: f"{k['dp_pct']:.2f}" if k else "—"),
-                        ("¿Aporta RPF? (ΔP% ≥ 1.5%)",    lambda k, pm, t, p: ("✅ Sí" if k['aporta'] else "❌ No") if k else "—"),
-                        ("Droop Nominal [%]",             lambda k, pm, t, p: f"{k['droop_nom']:.1f}" if k else "—"),
-                        ("Droop Calculado [%]",           lambda k, pm, t, p: str(k['droop_calc']) if k else "—"),
-                    ]
-                    _th_kpm = ("padding:7px 12px;text-align:left;font-weight:600;"
-                               "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
-                    _th_vpm = ("padding:7px 12px;text-align:right;font-weight:600;"
-                               "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
-                    _td_kpm = "padding:5px 12px;border-bottom:1px solid #e0e0e0;font-size:12px;white-space:nowrap;"
-                    _td_vpm = ("padding:5px 12px;border-bottom:1px solid #e0e0e0;"
-                               "font-size:12px;text-align:right;white-space:nowrap;min-width:110px;")
-                    _hdrpm = f'<th style="{_th_kpm}">KPI</th>' + "".join(
-                        f'<th style="{_th_vpm}">{_sn}</th>' for _sn in _src_pm5
+                    # P_máxima por fuente de simulación en [t_nadir, t₀+Δt]
+                    _t_nadir_s5 = float(_ks['t_min']) if _ks else 0.0
+                    _t_pmax_s5, _p_pmax_s5 = _find_pmax_time(
+                        ts_al, ps_mw, delta_t_cndc, t_min_eval=_t_nadir_s5
                     )
-                    _bodypm = ""
-                    for _lblpm, _fnpm in _KPI_FILAS_PM5:
-                        _aporta_rowpm = "Aporta" in _lblpm
-                        _ispmax_rowpm = "P_max"  in _lblpm
-                        _bgrow_pm     = "background:#f2f2f2;" if _ispmax_rowpm else ""
-                        _cells_pm     = f'<td style="{_td_kpm}{_bgrow_pm}">{_lblpm}</td>'
-                        for _snpm in _src_pm5:
-                            _kpm5, _pm5p, _t5p, _p5p = _kpi_pmax_per_src5[_snpm]
+                    if _t_pmax_s5 is not None:
+                        _idx_pm_s5 = int(np.argmin(np.abs(ts_al - _t_pmax_s5)))
+                        _f_pmax_s5 = float(fs_hz[_idx_pm_s5])
+                        if _gcfg.get("show_pmax_marker", True):
+                            fig = add_pmax_marker(
+                                fig, _t_pmax_s5, _p_pmax_s5, _f_pmax_s5,
+                                pot_color=_color_p, freq_color=_color_f,
+                                marker_size=_gcfg["marker_size"],
+                            )
+                        if _ks:
+                            _kpi_pm_s5 = _cndc_kpis(ts_al, fs_hz, ps_mw, float(_pm_v), _rp_v, _t_pmax_s5)
+                            _kpi_pmax_per_src5[f"Sim {s_ver}"] = (_kpi_pm_s5, float(_pm_v), _t_pmax_s5, _p_pmax_s5)
+                            _src_file_per_src5[f"Sim {s_ver}"] = os.path.join(_s_dir, _sf_match)
+
+                # ── Curvas DSL (experimentos Bloque 2) ────────────────────────────
+                from bloque_dsl_params import _leer_curva_experimento as _leer_curva_dsl
+                _DSL_COLORS_F = ["#a855f7", "#ec4899", "#14b8a6", "#f97316"]
+                _DSL_COLORS_P = ["#7c3aed", "#be185d", "#0f766e", "#c2410c"]
+                for _dsl_idx, _dsl_label in enumerate(src_dsl):
+                    _carp_dsl = _dsl_exps[_dsl_label]
+                    for _fname_dsl in (f"{_sel_unit}.xlsx", f"F.P. {_sel_unit}.xlsx",
+                                       f"sym_{_sel_unit}.xlsx"):
+                        _dsl_path = os.path.join(_carp_dsl, _fname_dsl)
+                        if os.path.isfile(_dsl_path):
                             try:
-                                _val_pm = _fnpm(_kpm5, _pm5p, _t5p, _p5p)
+                                _ts_d, _fs_d, _ps_d = _leer_curva_dsl(_dsl_path, _sel_unit)
+                                _ts_d = np.asarray(_ts_d)
+                                _fs_d = np.asarray(_fs_d)
+                                _ps_d = np.asarray(_ps_d)
+                                _b5_curves[_dsl_label] = (_ts_d, _fs_d, _ps_d)
+                                _b5_auto_traces_new.append((_ts_d, _ps_d))
+                                _b5_auto_freq_list.append(np.asarray(_fs_d, dtype=float).ravel())
+                                _cf_dsl = _DSL_COLORS_F[_dsl_idx % 4]
+                                _cp_dsl = _DSL_COLORS_P[_dsl_idx % 4]
+                                fig.add_trace(go.Scatter(
+                                    x=_ts_d, y=_fs_d, name=f"Frec. {_dsl_label}",
+                                    line=dict(color=_cf_dsl, dash="dot", width=_gcfg["line_width"]),
+                                    yaxis="y",
+                                ))
+                                fig.add_trace(go.Scatter(
+                                    x=_ts_d, y=_ps_d, name=f"Pot. {_dsl_label}",
+                                    line=dict(color=_cp_dsl, dash="dot", width=_gcfg["line_width"]),
+                                    yaxis="y2",
+                                ))
+                                _ks_d = _cndc_kpis(_ts_d, _fs_d, _ps_d, _pm_v, _rp_v, delta_t_cndc)
+                                _roc_d = _calcular_rocof(_ts_d, _fs_d, 3.0)
+                                if _ks_d:
+                                    _kpi_rows.append({"Fuente": _dsl_label, **_ks_d})
+                                    _kpi_per_src[_dsl_label] = (_ks_d, _roc_d, float(_pm_v))
+                                _rocof_rows[_dsl_label] = _roc_d
                             except Exception:
-                                _val_pm = "—"
-                            _cspm = _td_vpm
-                            if _aporta_rowpm:
-                                if "✅" in str(_val_pm):   _cspm += "background:#d4edda;color:#155724;"
-                                elif "❌" in str(_val_pm): _cspm += "background:#f8d7da;color:#721c24;"
-                            elif _ispmax_rowpm:
-                                _cspm += _bgrow_pm
-                            _cells_pm += f'<td style="{_cspm}">{_val_pm}</td>'
-                        _bodypm += f'<tr>{_cells_pm}</tr>'
-                    _html_pm5 = (
+                                pass
+                            break
+
+                _b5_chart_col.plotly_chart(fig, use_container_width=True)
+
+                #  Tabla comparativa KPIs (todas las fuentes en una sola vista)
+                if _pm_fuente:
+                    st.caption(f"✅ P_max desde `{_pm_fuente}` → **{float(_pm_v):.2f} MW** | Rp = {_rp_v*100:.1f}%")
+                else:
+                    st.warning(f"⚠️ No se encontró Pmax para **{_sel_unit}** en datos_cargados ni loc_names_gen.")
+
+                st.markdown("---")
+                _v4_section_head("KPIs CNDC — Comparativa Real vs. Simulación", icon="chart")
+
+                # Definición de filas: (etiqueta, función(kpi, p_max, rocof) → str)
+                _dt = delta_t_cndc  # captura local para lambdas
+                _KPI_FILAS_B5 = [
+                    ("P_max [MW]",                   lambda k, pm, roc: f"{pm:.2f}"),
+                    ("f₀ — Inicio evento [Hz]",      lambda k, pm, roc: f"{k['f0']:.4f}"),
+                    ("P₀ — Inicio evento [MW]",      lambda k, pm, roc: f"{k['p0']:.3f}"),
+                    ("f_min — Nadir [Hz]",           lambda k, pm, roc: f"{k['f_min']:.4f}"),
+                    ("t_min — Nadir [s]",            lambda k, pm, roc: f"{k['t_min']:.1f}"),
+                    ("Δf = f₀ − f_min [Hz]",        lambda k, pm, roc: f"{k['delta_f']:.4f}"),
+                    (f"f_Δt ({_dt}s) [Hz]",         lambda k, pm, roc: f"{k['f_dt']:.4f}"),
+                    (f"P_Δt ({_dt}s) [MW]",         lambda k, pm, roc: f"{k['p_dt']:.3f}"),
+                    ("R_inic [MW]",                  lambda k, pm, roc: f"{k['r_inic']:.3f}"),
+                    ("R_inic [%]",                   lambda k, pm, roc: f"{k['r_inic_pct']:.2f}"),
+                    ("ΔP entregada [MW]",            lambda k, pm, roc: f"{k['dp']:.3f}"),
+                    ("ΔP% aporte [%]",               lambda k, pm, roc: f"{k['dp_pct']:.2f}"),
+                    ("¿Aporta RPF? (ΔP% ≥ 1.5%)",   lambda k, pm, roc: "✅ Sí" if k['aporta'] else "❌ No"),
+                    ("Droop Nominal [%]",            lambda k, pm, roc: f"{k['droop_nom']:.1f}"),
+                    ("Droop Calculado [%]",          lambda k, pm, roc: str(k['droop_calc'])),
+                    ("ROCOF [Hz/s]",                 lambda k, pm, roc: f"{roc:.4f}" if (roc is not None and roc == roc) else "—"),
+                ]
+
+                # Construir dict ordenado: nombre fuente → (kpi, p_max, rocof)
+                _comp_srcs = {}
+                if _kr:
+                    _comp_srcs[f"Real ({src_real})"] = (_kr, float(_pm_v), _rocof_r)
+                for _sv, (_ks_i, _roc_i, _pm_i) in _kpi_per_src.items():
+                    _comp_srcs[f"Sim {_sv}"] = (_ks_i, float(_pm_i), _roc_i)
+
+                if _comp_srcs:
+                    _tabla_b5 = []
+                    for _lbl, _fn in _KPI_FILAS_B5:
+                        _row = {"KPI": _lbl}
+                        for _sname, (_kpi_s, _pm_s, _roc_s) in _comp_srcs.items():
+                            try:
+                                _row[_sname] = _fn(_kpi_s, _pm_s, _roc_s)
+                            except Exception:
+                                _row[_sname] = "—"
+                        _tabla_b5.append(_row)
+
+                    _df_comp_b5 = pd.DataFrame(_tabla_b5)
+
+                    # Tabla comparativa: HTML puro — centrada, sin scrollbars
+                    _src_names_b5 = list(_comp_srcs.keys())
+                    _th_k5 = ("padding:7px 12px;text-align:left;font-weight:600;"
+                               "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
+                    _th_v5 = ("padding:7px 12px;text-align:right;font-weight:600;"
+                               "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
+                    _td_k5 = "padding:5px 12px;border-bottom:1px solid #e0e0e0;font-size:12px;white-space:nowrap;"
+                    _td_v5 = ("padding:5px 12px;border-bottom:1px solid #e0e0e0;"
+                               "font-size:12px;text-align:right;white-space:nowrap;min-width:110px;")
+                    _hdr5 = f'<th style="{_th_k5}">KPI</th>' + "".join(
+                        f'<th style="{_th_v5}">{_sn}</th>' for _sn in _src_names_b5
+                    )
+                    _body5 = ""
+                    for _row5 in _tabla_b5:
+                        _lbl5    = _row5["KPI"]
+                        _aporta5 = "Aporta" in _lbl5
+                        _ispmax5 = "P_max"  in _lbl5
+                        _bgrow5  = "background:#f2f2f2;" if _ispmax5 else ""
+                        _cells5  = f'<td style="{_td_k5}{_bgrow5}">{_lbl5}</td>'
+                        for _sn5 in _src_names_b5:
+                            _val5 = _row5.get(_sn5, "—")
+                            _cs5  = _td_v5
+                            if _aporta5:
+                                if "✅" in str(_val5):   _cs5 += "background:#d4edda;color:#155724;"
+                                elif "❌" in str(_val5): _cs5 += "background:#f8d7da;color:#721c24;"
+                            elif _ispmax5:
+                                _cs5 += _bgrow5
+                            _cells5 += f'<td style="{_cs5}">{_val5}</td>'
+                        _body5 += f'<tr>{_cells5}</tr>'
+                    _html_b5 = (
                         '<div style="display:flex;justify-content:center;margin:8px 0 4px 0;">'
-                        '<table style="border-collapse:collapse;border:1px solid #d0d0d0;'
-                        'border-radius:6px;overflow:hidden;">'
-                        f'<thead><tr>{_hdrpm}</tr></thead>'
-                        f'<tbody>{_bodypm}</tbody>'
+                        '<table style="border-collapse:collapse;border:1px solid #d0d0d0;border-radius:6px;overflow:hidden;">'
+                        f'<thead><tr>{_hdr5}</tr></thead>'
+                        f'<tbody>{_body5}</tbody>'
                         '</table></div>'
                     )
-                    st.markdown(_html_pm5, unsafe_allow_html=True)
+                    st.markdown(_html_b5, unsafe_allow_html=True)
 
-                # --- Curva de Error de Seguimiento y Barras KPI ---------------
-                if _sim_for_error:
-                    ce_col, bar_col = st.columns([1, 1])
-                    with ce_col:
-                        fig_err = go.Figure()
-                        for s in _sim_for_error:
-                            f_real_interp = np.interp(s["t"], tr_aligned, _fr_arr)
-                            err = f_real_interp - s["f"]
-                            fig_err.add_trace(go.Scatter(
-                                x=s["t"], y=err, name=f"Err {s['ver']}",
-                                line=dict(color=s["color"]),
-                            ))
-                        fig_err.update_layout(
-                            title="Error de Seguimiento de Frecuencia (Hz)",
-                            xaxis_title="Tiempo desde t₀ (s)",
-                            yaxis_title="Error (Hz)",
-                            height=350, template=_gcfg["template"],
-                        )
-                        st.plotly_chart(fig_err, use_container_width=True)
+                    # Exportar tabla comparativa
+                    if st.button("⬇️ Exportar comparativa a Excel", key="dl_b5_comp"):
+                        try:
+                            _excel_comp = _apply_excel_formatting(
+                                _df_comp_b5,
+                                sheet_name="Comparativa_KPIs",
+                                kpi_col="¿Aporta RPF? (ΔP% ≥ 1.5%)",
+                                kpi_ok_val="✅ Sí",
+                                kpi_error_val="❌ No",
+                            )
+                            st.download_button(
+                                "📥 Descargar",
+                                _excel_comp,
+                                file_name=f"kpis_comparativa_Ev{n_evento}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="dl_b5_comp_file",
+                            )
+                        except Exception as _ex:
+                            st.error(f"Error exportando: {_ex}")
 
-                    with bar_col:
-                        fig_bar = go.Figure()
-                        _fuentes_bar = [r["Fuente"] for r in _kpi_rows]
-                        _dps_bar     = [r["dp_pct"] for r in _kpi_rows]
-                        _bar_colors  = [
-                            _gcfg["pot_color_real"] if "REAL" in f
-                            else (_gcfg["pot_color_sim0"] if "0" in f else _gcfg["pot_color_sim1"])
-                            for f in _fuentes_bar
+                    # KPIs evaluados en P_máxima por fuente — tabla multi-columna
+                    if _kpi_pmax_per_src5:
+                        st.markdown("---")
+                        _v4_section_head("KPIs CNDC — P_máxima (por fuente)", icon="chart")
+                        _src_pm5 = list(_kpi_pmax_per_src5.keys())
+                        _KPI_FILAS_PM5 = [
+                            ("P_max [MW]",                    lambda k, pm, t, p: f"{pm:.2f}"),
+                            ("t_Pmáx [s]",                    lambda k, pm, t, p: f"{t:.1f}"),
+                            ("f₀ — Inicio evento [Hz]",       lambda k, pm, t, p: f"{k['f0']:.4f}" if k else "—"),
+                            ("P₀ — Inicio evento [MW]",       lambda k, pm, t, p: f"{k['p0']:.3f}" if k else "—"),
+                            ("f_min — Nadir [Hz]",            lambda k, pm, t, p: f"{k['f_min']:.4f}" if k else "—"),
+                            ("t_min — Nadir [s]",             lambda k, pm, t, p: f"{k['t_min']:.1f}" if k else "—"),
+                            ("f en t_Pmáx [Hz]",              lambda k, pm, t, p: f"{k['f_dt']:.4f}" if k else "—"),
+                            ("P en t_Pmáx [MW]",              lambda k, pm, t, p: f"{p:.3f}"),
+                            ("R_inic [MW]",                   lambda k, pm, t, p: f"{k['r_inic']:.3f}" if k else "—"),
+                            ("R_inic [%]",                    lambda k, pm, t, p: f"{k['r_inic_pct']:.2f}" if k else "—"),
+                            ("ΔP entregada [MW]",             lambda k, pm, t, p: f"{k['dp']:.3f}" if k else "—"),
+                            ("ΔP% aporte [%]",                lambda k, pm, t, p: f"{k['dp_pct']:.2f}" if k else "—"),
+                            ("¿Aporta RPF? (ΔP% ≥ 1.5%)",    lambda k, pm, t, p: ("✅ Sí" if k['aporta'] else "❌ No") if k else "—"),
+                            ("Droop Nominal [%]",             lambda k, pm, t, p: f"{k['droop_nom']:.1f}" if k else "—"),
+                            ("Droop Calculado [%]",           lambda k, pm, t, p: str(k['droop_calc']) if k else "—"),
                         ]
-                        fig_bar.add_trace(go.Bar(
-                            x=_fuentes_bar, y=_dps_bar,
-                            marker_color=_bar_colors,
-                            text=[f"{v:.2f}%" for v in _dps_bar],
-                            textposition="outside",
-                        ))
-                        fig_bar.add_hline(
-                            y=1.5, line_dash="dash", line_color="red",
-                            annotation_text="Mínimo 1.5% (CNDC)",
+                        _th_kpm = ("padding:7px 12px;text-align:left;font-weight:600;"
+                                   "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
+                        _th_vpm = ("padding:7px 12px;text-align:right;font-weight:600;"
+                                   "background:#2E4057;color:#fff;font-size:12px;white-space:nowrap;")
+                        _td_kpm = "padding:5px 12px;border-bottom:1px solid #e0e0e0;font-size:12px;white-space:nowrap;"
+                        _td_vpm = ("padding:5px 12px;border-bottom:1px solid #e0e0e0;"
+                                   "font-size:12px;text-align:right;white-space:nowrap;min-width:110px;")
+                        _hdrpm = f'<th style="{_th_kpm}">KPI</th>' + "".join(
+                            f'<th style="{_th_vpm}">{_sn}</th>' for _sn in _src_pm5
                         )
-                        fig_bar.update_layout(
-                            title="Aporte Porcentual ΔP (%) por Fuente",
-                            yaxis_title="ΔP%",
-                            height=350, template=_gcfg["template"],
+                        _bodypm = ""
+                        for _lblpm, _fnpm in _KPI_FILAS_PM5:
+                            _aporta_rowpm = "Aporta" in _lblpm
+                            _ispmax_rowpm = "P_max"  in _lblpm
+                            _bgrow_pm     = "background:#f2f2f2;" if _ispmax_rowpm else ""
+                            _cells_pm     = f'<td style="{_td_kpm}{_bgrow_pm}">{_lblpm}</td>'
+                            for _snpm in _src_pm5:
+                                _kpm5, _pm5p, _t5p, _p5p = _kpi_pmax_per_src5[_snpm]
+                                try:
+                                    _val_pm = _fnpm(_kpm5, _pm5p, _t5p, _p5p)
+                                except Exception:
+                                    _val_pm = "—"
+                                _cspm = _td_vpm
+                                if _aporta_rowpm:
+                                    if "✅" in str(_val_pm):   _cspm += "background:#d4edda;color:#155724;"
+                                    elif "❌" in str(_val_pm): _cspm += "background:#f8d7da;color:#721c24;"
+                                elif _ispmax_rowpm:
+                                    _cspm += _bgrow_pm
+                                _cells_pm += f'<td style="{_cspm}">{_val_pm}</td>'
+                            _bodypm += f'<tr>{_cells_pm}</tr>'
+                        _html_pm5 = (
+                            '<div style="display:flex;justify-content:center;margin:8px 0 4px 0;">'
+                            '<table style="border-collapse:collapse;border:1px solid #d0d0d0;'
+                            'border-radius:6px;overflow:hidden;">'
+                            f'<thead><tr>{_hdrpm}</tr></thead>'
+                            f'<tbody>{_bodypm}</tbody>'
+                            '</table></div>'
                         )
-                        st.plotly_chart(fig_bar, use_container_width=True)
+                        st.markdown(_html_pm5, unsafe_allow_html=True)
+
+                    # --- Curva de Error de Seguimiento y Barras KPI ---------------
+                    if _sim_for_error or src_dsl:
+                        ce_col, bar_col = st.columns([1, 1])
+                        with ce_col:
+                            fig_err = go.Figure()
+                            for s in _sim_for_error:
+                                f_real_interp = np.interp(s["t"], tr_aligned, _fr_arr)
+                                err = f_real_interp - s["f"]
+                                fig_err.add_trace(go.Scatter(
+                                    x=s["t"], y=err, name=f"Err {s['ver']}",
+                                    line=dict(color=s["color"]),
+                                ))
+                            for _dii_e, _dll_e in enumerate(src_dsl):
+                                if _dll_e in _b5_curves:
+                                    _ts_de, _fs_de, _ = _b5_curves[_dll_e]
+                                    _ts_de = np.asarray(_ts_de)
+                                    _fs_de = np.asarray(_fs_de)
+                                    _f_interp_de = np.interp(
+                                        _ts_de, np.asarray(tr_aligned), np.asarray(_fr_arr),
+                                        left=np.nan, right=np.nan,
+                                    )
+                                    _err_de = _fs_de - _f_interp_de
+                                    _mask_de = np.isfinite(_err_de)
+                                    if _mask_de.any():
+                                        fig_err.add_trace(go.Scatter(
+                                            x=_ts_de[_mask_de], y=_err_de[_mask_de],
+                                            name=f"Err {_dll_e}",
+                                            line=dict(color=_DSL_COLORS_F[_dii_e % 4],
+                                                      dash="dot", width=1.5),
+                                        ))
+                            fig_err.update_layout(
+                                title="Error de Seguimiento de Frecuencia (Hz)",
+                                xaxis_title="Tiempo desde t₀ (s)",
+                                yaxis_title="Error (Hz)",
+                                height=350, template=_gcfg["template"],
+                            )
+                            st.plotly_chart(fig_err, use_container_width=True)
+
+                        with bar_col:
+                            fig_bar = go.Figure()
+                            _fuentes_bar = [r["Fuente"] for r in _kpi_rows]
+                            _dps_bar     = [r["dp_pct"] for r in _kpi_rows]
+                            _bar_colors  = []
+                            _dsl_bar_clr_idx = 0
+                            for _fbr in _fuentes_bar:
+                                if "REAL" in _fbr:
+                                    _bar_colors.append(_gcfg["pot_color_real"])
+                                elif "DSL" in _fbr:
+                                    _bar_colors.append(_DSL_COLORS_P[_dsl_bar_clr_idx % 4])
+                                    _dsl_bar_clr_idx += 1
+                                elif "0" in _fbr:
+                                    _bar_colors.append(_gcfg["pot_color_sim0"])
+                                else:
+                                    _bar_colors.append(_gcfg["pot_color_sim1"])
+                            fig_bar.add_trace(go.Bar(
+                                x=_fuentes_bar, y=_dps_bar,
+                                marker_color=_bar_colors,
+                                text=[f"{v:.2f}%" for v in _dps_bar],
+                                textposition="outside",
+                            ))
+                            fig_bar.add_hline(
+                                y=1.5, line_dash="dash", line_color="red",
+                                annotation_text="Mínimo 1.5% (CNDC)",
+                            )
+                            fig_bar.update_layout(
+                                title="Aporte Porcentual ΔP (%) por Fuente",
+                                yaxis_title="ΔP%",
+                                height=350, template=_gcfg["template"],
+                            )
+                            st.plotly_chart(fig_bar, use_container_width=True)
+
+                    # Guardar contexto para Tab "Análisis de Error"
+                    st.session_state["_b5_kpi_pmax_cache"] = _kpi_pmax_per_src5
+                    st.session_state["_b5_kpi_per_src_cache"] = _kpi_per_src
+                    if _kr:
+                        st.session_state["_b5_kr_cache"] = (_kr, float(_pm_v), _rocof_r)
+                    st.session_state["_b5_ctx"] = {
+                        "unit": _sel_unit, "src_real": src_real, "delta_t": delta_t_cndc
+                    }
+                    st.session_state["_b5_curves_cache"]  = _b5_curves
+                    st.session_state["_b5_auto_traces"]   = _b5_auto_traces_new
+                    st.session_state["_b5_auto_freq"]     = np.concatenate(_b5_auto_freq_list)
+
+                    # ── Guardar KPIs P_max en histórico de Bloque 6 ──────────────────────
+
 else:
         st.info("ℹ️ Seleccione una unidad y verifique los archivos en las carpetas correspondientes.")
 
@@ -7377,7 +7664,7 @@ if bloque_trabajo == "reporte_tecnico":
                 _audit_cols = st.columns(4)
                 _audit_info = [
                     ("SCADA (1SEG)",           _ctx_dl.kpi_scada  is not None),
-                    ("EMF CNDC",               _ctx_dl.kpi_emf    is not None),
+                    ("Gráfico Referencial CNDC", _ctx_dl.kpi_emf    is not None),
                     (f"Sim E{n_evento}.0",     _ctx_dl.kpi_sim_e0 is not None),
                     (f"Sim E{n_evento}.1",     _ctx_dl.kpi_sim_e1 is not None),
                 ]

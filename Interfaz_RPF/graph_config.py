@@ -311,7 +311,8 @@ DEFAULT_GRAPH_CONFIG = {
     
     # Estilos de línea
     "line_width": LINE_WIDTHS["normal"],
-    "line_style": LINE_STYLES["solid"],
+    "line_style_real": LINE_STYLES["solid"],
+    "line_style_sim":  LINE_STYLES["solid"],
     
     # Marcadores KPI
     "marker_size": MARKER_SIZES["normal"],

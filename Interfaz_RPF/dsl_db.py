@@ -1,316 +1,276 @@
 """
 dsl_db.py
 ---------
-Capa de acceso a PostgreSQL para el módulo de optimización de parámetros DSL.
-Base de datos: rpf_intelligence (servidor 192.168.0.92)
+Almacenamiento local de experimentos DSL en archivos CSV.
+Reemplaza la capa PostgreSQL anterior; mantiene exactamente la misma API pública
+para que bloque_dsl_params.py no necesite ningún cambio.
 
-Tablas nuevas:
-  dsl_experimentos  — metadatos de cada experimento
-  dsl_exp_params    — parámetros DSL usados en el experimento
-  dsl_exp_kpis      — KPIs obtenidos de la simulación
+Archivos en C:\\Datos Cobee\\03_DATOS GEN\\dsl_local\\:
+  experimentos.csv  — metadatos de cada experimento
+  exp_params.csv    — parámetros DSL por experimento
+  exp_kpis.csv      — KPIs por experimento
 """
 
 from __future__ import annotations
 import os
 import pandas as pd
 from datetime import datetime
+from pathlib import Path
 
-# ── Configuración de conexión ──────────────────────────────────────────────────
-_PG_DEFAULTS = {
-    "host":     os.getenv("PG_HOST",     "192.168.0.92"),
-    "port":     int(os.getenv("PG_PORT", "5432")),
-    "dbname":   os.getenv("PG_DB",       "rpf_intelligence"),
-    "user":     os.getenv("PG_USER",     "jose"),
-    "password": os.getenv("PG_PASSWORD", ""),
-}
+# ── Ubicación de almacenamiento local ─────────────────────────────────────────
+_LOCAL_DIR = Path(r"C:\Datos Cobee\03_DATOS GEN\dsl_local")
 
-# ── DDL ───────────────────────────────────────────────────────────────────────
-_DDL = """
-CREATE TABLE IF NOT EXISTS dsl_experimentos (
-    id          SERIAL PRIMARY KEY,
-    sym         VARCHAR(10)  NOT NULL,
-    familia     VARCHAR(5),
-    evento_ref  VARCHAR(100),
-    nombre      VARCHAR(200),
-    fecha       TIMESTAMPTZ  DEFAULT NOW(),
-    notas       TEXT,
-    estado      VARCHAR(20)  DEFAULT 'configurado',
-    excel_path  TEXT
-);
+_EXP_CSV    = _LOCAL_DIR / "experimentos.csv"
+_PARAMS_CSV = _LOCAL_DIR / "exp_params.csv"
+_KPIS_CSV   = _LOCAL_DIR / "exp_kpis.csv"
 
-CREATE TABLE IF NOT EXISTS dsl_exp_params (
-    id           SERIAL PRIMARY KEY,
-    exp_id       INT REFERENCES dsl_experimentos(id) ON DELETE CASCADE,
-    bloque       VARCHAR(30),
-    simbolo      VARCHAR(60)  NOT NULL,
-    descripcion  TEXT,
-    valor_base   FLOAT,
-    valor        FLOAT        NOT NULL,
-    es_ajustable BOOLEAN      DEFAULT TRUE
-);
-
-CREATE TABLE IF NOT EXISTS dsl_exp_kpis (
-    id          SERIAL PRIMARY KEY,
-    exp_id      INT REFERENCES dsl_experimentos(id) ON DELETE CASCADE,
-    f0          FLOAT,
-    f_min       FLOAT,
-    t_min       FLOAT,
-    delta_f     FLOAT,
-    f_delta_t   FLOAT,
-    p0          FLOAT,
-    p_max       FLOAT,
-    p_delta_t   FLOAT,
-    rocof       FLOAT,
-    delta_p     FLOAT,
-    delta_p_pct FLOAT,
-    aporta_rpf  BOOLEAN
-);
-
-CREATE INDEX IF NOT EXISTS idx_dsl_exp_sym   ON dsl_experimentos(sym);
-CREATE INDEX IF NOT EXISTS idx_dsl_exp_fam   ON dsl_experimentos(familia);
-CREATE INDEX IF NOT EXISTS idx_dsl_exp_fecha ON dsl_experimentos(fecha DESC);
-CREATE INDEX IF NOT EXISTS idx_dsl_params_exp ON dsl_exp_params(exp_id);
-CREATE INDEX IF NOT EXISTS idx_dsl_kpis_exp   ON dsl_exp_kpis(exp_id);
-"""
+# ── Esquemas de columnas ──────────────────────────────────────────────────────
+_EXP_COLS = [
+    "id", "sym", "familia", "evento_ref", "nombre",
+    "fecha", "notas", "estado", "excel_path", "carpeta_curvas",
+]
+_PARAMS_COLS = [
+    "id", "exp_id", "bloque", "simbolo", "descripcion",
+    "valor_base", "valor", "es_ajustable",
+]
+_KPIS_COLS = [
+    "id", "exp_id",
+    "f0", "f_min", "t_min", "delta_f", "f_delta_t",
+    "p0", "p_max", "p_delta_t", "rocof",
+    "delta_p", "delta_p_pct", "aporta_rpf",
+]
 
 
-# ── Conexión ──────────────────────────────────────────────────────────────────
+# ── Helpers de lectura/escritura ───────────────────────────────────────────────
 
-def _conectar(**overrides):
-    """Devuelve una conexión psycopg2. Lanza ImportError si no está instalado."""
+def _leer_csv(path: Path, columns: list[str]) -> pd.DataFrame:
+    if path.is_file():
+        try:
+            df = pd.read_csv(path, encoding="utf-8-sig")
+            if "id" in df.columns:
+                df["id"] = pd.to_numeric(df["id"], errors="coerce").fillna(0).astype(int)
+            if "exp_id" in df.columns:
+                df["exp_id"] = pd.to_numeric(df["exp_id"], errors="coerce").fillna(0).astype(int)
+            return df
+        except Exception:
+            return pd.DataFrame(columns=columns)
+    return pd.DataFrame(columns=columns)
+
+
+def _guardar_csv(df: pd.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(path, index=False, encoding="utf-8-sig")
+
+
+def _next_id(df: pd.DataFrame) -> int:
+    if not df.empty and "id" in df.columns:
+        ids = pd.to_numeric(df["id"], errors="coerce").dropna()
+        if not ids.empty:
+            return int(ids.max()) + 1
+    return 1
+
+
+# ── API pública ───────────────────────────────────────────────────────────────
+
+def probar_conexion(**_) -> tuple[bool, str]:
+    """Verifica que el directorio local sea accesible."""
     try:
-        import psycopg2
-    except ImportError as e:
-        raise ImportError("Instalar psycopg2-binary: pip install psycopg2-binary") from e
-    cfg = {**_PG_DEFAULTS, **overrides}
-    return psycopg2.connect(**cfg)
-
-
-def probar_conexion(**overrides) -> tuple[bool, str]:
-    """Devuelve (ok, mensaje). Útil para el widget de estado en Streamlit."""
-    try:
-        conn = _conectar(**overrides)
-        conn.close()
-        return True, "Conectado a rpf_intelligence"
+        _LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+        return True, f"Almacenamiento local activo: {_LOCAL_DIR}"
     except Exception as e:
         return False, str(e)
 
 
-# ── Inicialización de tablas ──────────────────────────────────────────────────
+def crear_tablas(**_) -> None:
+    """Crea los CSVs con cabeceras si no existen (idempotente)."""
+    _LOCAL_DIR.mkdir(parents=True, exist_ok=True)
+    for path, cols in [(_EXP_CSV, _EXP_COLS),
+                       (_PARAMS_CSV, _PARAMS_COLS),
+                       (_KPIS_CSV, _KPIS_COLS)]:
+        if not path.is_file():
+            pd.DataFrame(columns=cols).to_csv(path, index=False, encoding="utf-8-sig")
 
-def crear_tablas(**overrides):
-    """Crea las tablas DSL si no existen (idempotente)."""
-    conn = _conectar(**overrides)
-    try:
-        with conn.cursor() as cur:
-            cur.execute(_DDL)
-            cur.execute(
-                "ALTER TABLE dsl_experimentos ADD COLUMN IF NOT EXISTS carpeta_curvas TEXT"
-            )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-# ── Experimentos ──────────────────────────────────────────────────────────────
 
 def registrar_experimento(sym: str, familia: str, evento_ref: str,
                           nombre: str, notas: str = "",
-                          excel_path: str = "", **overrides) -> int:
-    """INSERT en dsl_experimentos. Devuelve el id generado."""
-    conn = _conectar(**overrides)
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """INSERT INTO dsl_experimentos
-                   (sym, familia, evento_ref, nombre, notas, excel_path)
-                   VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
-                (sym, familia, evento_ref, nombre, notas, excel_path),
-            )
-            exp_id = cur.fetchone()[0]
-        conn.commit()
-        return exp_id
-    finally:
-        conn.close()
+                          excel_path: str = "", **_) -> int:
+    """Añade un nuevo experimento. Devuelve el id generado."""
+    df = _leer_csv(_EXP_CSV, _EXP_COLS)
+    new_id = _next_id(df)
+    nuevo = pd.DataFrame([{
+        "id":          new_id,
+        "sym":         sym,
+        "familia":     familia,
+        "evento_ref":  evento_ref,
+        "nombre":      nombre,
+        "fecha":       datetime.now().isoformat(timespec="seconds"),
+        "notas":       notas,
+        "estado":      "configurado",
+        "excel_path":  excel_path,
+        "carpeta_curvas": "",
+    }])
+    _guardar_csv(pd.concat([df, nuevo], ignore_index=True), _EXP_CSV)
+    return new_id
 
 
-def actualizar_estado(exp_id: int, estado: str, **overrides):
-    """Actualiza estado: 'configurado' | 'simulado' | 'analizado'."""
-    conn = _conectar(**overrides)
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE dsl_experimentos SET estado=%s WHERE id=%s",
-                (estado, exp_id),
-            )
-        conn.commit()
-    finally:
-        conn.close()
+def actualizar_estado(exp_id: int, estado: str, **_) -> None:
+    """Actualiza el campo estado de un experimento."""
+    df = _leer_csv(_EXP_CSV, _EXP_COLS)
+    mask = df["id"] == int(exp_id)
+    if mask.any():
+        df.loc[mask, "estado"] = estado
+        _guardar_csv(df, _EXP_CSV)
 
 
-def vincular_curva(exp_id: int, carpeta_curvas: str, **overrides):
-    """UPDATE dsl_experimentos.carpeta_curvas. No cambia el estado (eso lo hace registrar_kpis)."""
-    conn = _conectar(**overrides)
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE dsl_experimentos SET carpeta_curvas=%s WHERE id=%s",
-                (carpeta_curvas, exp_id),
-            )
-        conn.commit()
-    finally:
-        conn.close()
+def vincular_curva(exp_id: int, carpeta_curvas: str, **_) -> None:
+    """Actualiza carpeta_curvas de un experimento."""
+    df = _leer_csv(_EXP_CSV, _EXP_COLS)
+    mask = df["id"] == int(exp_id)
+    if mask.any():
+        df.loc[mask, "carpeta_curvas"] = carpeta_curvas
+        _guardar_csv(df, _EXP_CSV)
 
 
-# ── Parámetros ────────────────────────────────────────────────────────────────
-
-def registrar_params(exp_id: int, params: list[dict], **overrides):
+def registrar_params(exp_id: int, params: list[dict], **_) -> None:
     """
-    INSERT en dsl_exp_params.
+    Añade filas a exp_params.csv.
     params = [{"bloque": str, "simbolo": str, "descripcion": str,
                "valor_base": float, "valor": float, "es_ajustable": bool}, ...]
     """
     if not params:
         return
-    conn = _conectar(**overrides)
-    try:
-        with conn.cursor() as cur:
-            cur.executemany(
-                """INSERT INTO dsl_exp_params
-                   (exp_id, bloque, simbolo, descripcion, valor_base, valor, es_ajustable)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-                [
-                    (exp_id,
-                     p.get("bloque", ""),
-                     p["simbolo"],
-                     p.get("descripcion", ""),
-                     p.get("valor_base"),
-                     p["valor"],
-                     p.get("es_ajustable", True))
-                    for p in params
-                ],
-            )
-        conn.commit()
-    finally:
-        conn.close()
+    df = _leer_csv(_PARAMS_CSV, _PARAMS_COLS)
+    next_id = _next_id(df)
+    nuevas = []
+    for i, p in enumerate(params):
+        nuevas.append({
+            "id":          next_id + i,
+            "exp_id":      int(exp_id),
+            "bloque":      p.get("bloque", ""),
+            "simbolo":     p["simbolo"],
+            "descripcion": p.get("descripcion", ""),
+            "valor_base":  p.get("valor_base"),
+            "valor":       p["valor"],
+            "es_ajustable": p.get("es_ajustable", True),
+        })
+    _guardar_csv(pd.concat([df, pd.DataFrame(nuevas)], ignore_index=True), _PARAMS_CSV)
 
 
-# ── KPIs ──────────────────────────────────────────────────────────────────────
-
-def registrar_kpis(exp_id: int, kpis: dict, **overrides):
+def registrar_kpis(exp_id: int, kpis: dict, **_) -> None:
     """
-    INSERT/UPDATE en dsl_exp_kpis.
-    kpis = {"f0": float, "f_min": float, "t_min": float, "delta_f": float,
-             "f_delta_t": float, "p0": float, "p_max": float, "p_delta_t": float,
-             "rocof": float, "delta_p": float, "delta_p_pct": float,
-             "aporta_rpf": bool}
+    Añade (o reemplaza si ya existe) la fila de KPIs de un experimento.
+    kpis = {"f0": float, "f_min": float, ...}
     """
-    conn = _conectar(**overrides)
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """INSERT INTO dsl_exp_kpis
-                   (exp_id, f0, f_min, t_min, delta_f, f_delta_t,
-                    p0, p_max, p_delta_t, rocof, delta_p, delta_p_pct, aporta_rpf)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                   ON CONFLICT DO NOTHING""",
-                (exp_id,
-                 kpis.get("f0"), kpis.get("f_min"), kpis.get("t_min"),
-                 kpis.get("delta_f"), kpis.get("f_delta_t"),
-                 kpis.get("p0"), kpis.get("p_max"), kpis.get("p_delta_t"),
-                 kpis.get("rocof"), kpis.get("delta_p"), kpis.get("delta_p_pct"),
-                 kpis.get("aporta_rpf")),
-            )
-        conn.commit()
-        actualizar_estado(exp_id, "simulado", **overrides)
-    finally:
-        conn.close()
+    df = _leer_csv(_KPIS_CSV, _KPIS_COLS)
+    df = df[df["exp_id"] != int(exp_id)]  # upsert: quitar fila anterior si existe
+    next_id = _next_id(df)
+    nueva = pd.DataFrame([{
+        "id":          next_id,
+        "exp_id":      int(exp_id),
+        "f0":          kpis.get("f0"),
+        "f_min":       kpis.get("f_min"),
+        "t_min":       kpis.get("t_min"),
+        "delta_f":     kpis.get("delta_f"),
+        "f_delta_t":   kpis.get("f_delta_t"),
+        "p0":          kpis.get("p0"),
+        "p_max":       kpis.get("p_max"),
+        "p_delta_t":   kpis.get("p_delta_t"),
+        "rocof":       kpis.get("rocof"),
+        "delta_p":     kpis.get("delta_p"),
+        "delta_p_pct": kpis.get("delta_p_pct"),
+        "aporta_rpf":  kpis.get("aporta_rpf"),
+    }])
+    _guardar_csv(pd.concat([df, nueva], ignore_index=True), _KPIS_CSV)
+    actualizar_estado(exp_id, "simulado")
 
-
-# ── Consultas ─────────────────────────────────────────────────────────────────
 
 def listar_experimentos(sym: str | None = None,
                         familia: str | None = None,
                         estado: str | None = None,
                         desde: datetime | None = None,
                         hasta: datetime | None = None,
-                        **overrides) -> pd.DataFrame:
+                        **_) -> pd.DataFrame:
     """
-    SELECT de experimentos con KPIs JOIN.
-    Devuelve DataFrame listo para mostrar en Streamlit.
+    Devuelve DataFrame de experimentos con KPIs JOIN.
+    Columnas idénticas a la versión PostgreSQL.
     """
-    where, args = [], []
+    df_e = _leer_csv(_EXP_CSV, _EXP_COLS)
+    df_k = _leer_csv(_KPIS_CSV, _KPIS_COLS)
+
+    if df_e.empty:
+        return pd.DataFrame(columns=[
+            "id", "sym", "familia", "evento_ref", "nombre",
+            "fecha", "estado", "notas", "carpeta_curvas",
+            "f_min", "t_min", "delta_f", "rocof",
+            "delta_p", "delta_p_pct", "aporta_rpf",
+        ])
+
+    # Filtros
     if sym:
-        where.append("e.sym = %s");    args.append(sym)
+        df_e = df_e[df_e["sym"] == sym]
     if familia:
-        where.append("e.familia = %s"); args.append(familia)
+        df_e = df_e[df_e["familia"] == familia]
     if estado:
-        where.append("e.estado = %s");  args.append(estado)
+        df_e = df_e[df_e["estado"] == estado]
     if desde:
-        where.append("e.fecha >= %s");  args.append(desde)
+        df_e = df_e[pd.to_datetime(df_e["fecha"], errors="coerce") >= pd.Timestamp(desde)]
     if hasta:
-        where.append("e.fecha <= %s");  args.append(hasta)
+        df_e = df_e[pd.to_datetime(df_e["fecha"], errors="coerce") <= pd.Timestamp(hasta)]
 
-    sql = """
-        SELECT e.id, e.sym, e.familia, e.evento_ref, e.nombre,
-               e.fecha, e.estado, e.notas, e.carpeta_curvas,
-               k.f_min, k.t_min, k.delta_f, k.rocof,
-               k.delta_p, k.delta_p_pct, k.aporta_rpf
-        FROM   dsl_experimentos e
-        LEFT JOIN dsl_exp_kpis k ON k.exp_id = e.id
-    """
-    if where:
-        sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY e.fecha DESC"
+    # Join con KPIs
+    kpi_cols = ["exp_id", "f_min", "t_min", "delta_f", "rocof",
+                "delta_p", "delta_p_pct", "aporta_rpf"]
+    df_k_sub = df_k[kpi_cols] if not df_k.empty else pd.DataFrame(columns=kpi_cols)
 
-    conn = _conectar(**overrides)
-    try:
-        return pd.read_sql(sql, conn, params=args)
-    finally:
-        conn.close()
+    result = df_e.merge(df_k_sub, left_on="id", right_on="exp_id", how="left")
+    result = result.drop(columns=["exp_id"], errors="ignore")
+
+    # Ordenar más reciente primero
+    if "fecha" in result.columns:
+        result["fecha"] = pd.to_datetime(result["fecha"], errors="coerce")
+        result = result.sort_values("fecha", ascending=False)
+
+    return result.reset_index(drop=True)
 
 
-def params_de_experimento(exp_id: int, **overrides) -> pd.DataFrame:
+def params_de_experimento(exp_id: int, **_) -> pd.DataFrame:
     """Devuelve los parámetros de un experimento."""
-    sql = """
-        SELECT bloque, simbolo, descripcion, valor_base, valor, es_ajustable
-        FROM   dsl_exp_params
-        WHERE  exp_id = %s
-        ORDER  BY bloque, simbolo
-    """
-    conn = _conectar(**overrides)
-    try:
-        return pd.read_sql(sql, conn, params=[exp_id])
-    finally:
-        conn.close()
+    df = _leer_csv(_PARAMS_CSV, _PARAMS_COLS)
+    if df.empty:
+        return pd.DataFrame(columns=[
+            "bloque", "simbolo", "descripcion", "valor_base", "valor", "es_ajustable"])
+    result = df[df["exp_id"] == int(exp_id)][
+        ["bloque", "simbolo", "descripcion", "valor_base", "valor", "es_ajustable"]
+    ].copy()
+    return result.sort_values(["bloque", "simbolo"]).reset_index(drop=True)
 
 
-def exportar_para_ia(sym: str | None = None, **overrides) -> pd.DataFrame:
+def exportar_para_ia(sym: str | None = None, **_) -> pd.DataFrame:
     """
-    Devuelve un DataFrame wide con una fila por experimento:
-      features = parámetros DSL, targets = KPIs
+    Devuelve DataFrame wide con una fila por experimento:
+      features = parámetros DSL, targets = KPIs.
     Listo para entrenamiento de modelos ML.
     """
-    exps = listar_experimentos(sym=sym, estado="simulado", **overrides)
+    exps = listar_experimentos(sym=sym, estado="simulado")
     if exps.empty:
         return exps
 
     filas = []
     for _, row in exps.iterrows():
-        params_df = params_de_experimento(int(row["id"]), **overrides)
+        params_df = params_de_experimento(int(row["id"]))
         fila = {
-            "exp_id":       row["id"],
-            "sym":          row["sym"],
-            "familia":      row["familia"],
-            "evento_ref":   row["evento_ref"],
-            "fecha":        row["fecha"],
-            "f_min":        row["f_min"],
-            "t_min":        row["t_min"],
-            "delta_f":      row["delta_f"],
-            "rocof":        row["rocof"],
-            "delta_p":      row["delta_p"],
-            "delta_p_pct":  row["delta_p_pct"],
-            "aporta_rpf":   row["aporta_rpf"],
+            "exp_id":      row["id"],
+            "sym":         row["sym"],
+            "familia":     row["familia"],
+            "evento_ref":  row["evento_ref"],
+            "fecha":       row["fecha"],
+            "f_min":       row["f_min"],
+            "t_min":       row["t_min"],
+            "delta_f":     row["delta_f"],
+            "rocof":       row["rocof"],
+            "delta_p":     row["delta_p"],
+            "delta_p_pct": row["delta_p_pct"],
+            "aporta_rpf":  row["aporta_rpf"],
         }
         for _, p in params_df.iterrows():
             fila[p["simbolo"]] = p["valor"]

@@ -52,8 +52,8 @@ UNIDADES_DSL: dict[str, tuple[str, str]] = {
     "CUT04": ("F2", "04_CUT/CUT04"),
     "ANG03": ("F2", "11_ANG03"),
     "CRB01": ("F2", "12_CRB"),   # Excel: CRB_Comparacion_Final.xlsx (stem diferente)
-    "SRO01": ("F3", "05_SRO"),
-    "SRO02": ("F3", "05_SRO"),
+    "SRO01": ("F3", "05_SRO/SRO01"),
+    "SRO02": ("F3", "05_SRO/SRO02"),
     "SAI01": ("F3", "06_SAI"),
 }
 
@@ -61,6 +61,12 @@ FAMILIAS = {
     "F1": "Andritz HIPASE T/E",
     "F2": "Reivax RTVX 1000",
     "F3": "VA TECH / Andritz TM1703",
+}
+
+# Nombres de Excel comparativo no estándar (cuando no sigue el patrón {SYM}_Comparacion_Final.xlsx)
+_EXCEL_NOMBRES: dict[str, str] = {
+    "SRO02": "SR02_Comparativa.xlsx",
+    "SAI01": "SAI01_Comparacion.xlsx",
 }
 
 # Columnas del Excel comparativo (base 1)
@@ -203,6 +209,10 @@ def _excel_path(sym: str) -> Path | None:
     if sym not in UNIDADES_DSL:
         return None
     _, subdir = UNIDADES_DSL[sym]
+    # Nombre de archivo personalizado (ej. SR02_Comparativa.xlsx, SAI01_Comparacion.xlsx)
+    if sym in _EXCEL_NOMBRES:
+        p = BASE_DATOS / subdir / _EXCEL_NOMBRES[sym]
+        return p if p.exists() else None
     # Caso normal: {SYM}_Comparacion_Final.xlsx
     p = BASE_DATOS / subdir / f"{sym}_Comparacion_Final.xlsx"
     if p.exists():
@@ -521,7 +531,6 @@ def _tab_parametros_actuales():
         f"col R (Parámetros Actuales) es el punto de partida para experimentos."
     )
 
-    # Construir filas editables para min/max/relevante
     filas_edit = []
     for _, row in df_vis.iterrows():
         sym_p = row["simbolo"]
@@ -537,7 +546,7 @@ def _tab_parametros_actuales():
             "Actual (R)":   row["val_actual"],
             "Min":          p_cfg.get("min", None),
             "Max":          p_cfg.get("max", None),
-            "Relevante":    p_cfg.get("relevante", False),
+            "Editable":     p_cfg.get("relevante", False),
         })
 
     df_edit = pd.DataFrame(filas_edit)
@@ -558,7 +567,7 @@ def _tab_parametros_actuales():
                                help="Límite inferior para variación en experimentos"),
             "Max":         st.column_config.NumberColumn(format="%.4g",
                                help="Límite superior para variación en experimentos"),
-            "Relevante":   st.column_config.CheckboxColumn(
+            "Editable":    st.column_config.CheckboxColumn(
                                help="Marcar para incluir en experimentos de optimización"),
         },
         hide_index=True,
@@ -567,11 +576,17 @@ def _tab_parametros_actuales():
         num_rows="fixed",
     )
 
-    #  Guardar selección 
-    n_rel = int(edited["Relevante"].sum())
+    #  Guardar selección
+    n_edit = int(edited["Editable"].sum())
+    familia_sym, _ = UNIDADES_DSL[sym]
+    propaga_familia = familia_sym in ("F1", "F2")
+
     col_g1, col_g2 = st.columns([2, 1])
     with col_g1:
-        st.caption(f"**{n_rel}** parámetros marcados como relevantes")
+        st.caption(
+            f"**{n_edit}** parámetros marcados como editables"
+            + (f" — se propagarán a todas las unidades {familia_sym}" if propaga_familia else "")
+        )
     with col_g2:
         if st.button("💾 Guardar selección + rangos", type="primary",
                      key="dsl_guardar_cfg"):
@@ -580,16 +595,35 @@ def _tab_parametros_actuales():
             for _, row in edited.iterrows():
                 sp = row["Símbolo"]
                 cfg[sym][sp] = {
-                    "relevante":   bool(row["Relevante"]),
-                    "ajustable":   bool(row["Relevante"]),
+                    "relevante":   bool(row["Editable"]),
+                    "ajustable":   bool(row["Editable"]),
                     "min":         row["Min"] if pd.notna(row["Min"]) else None,
                     "max":         row["Max"] if pd.notna(row["Max"]) else None,
                 }
+            # Para F1 y F2: propagar flag Editable (y min/max) a todas las unidades de la familia
+            if propaga_familia:
+                otras = [s for s, (f, _) in UNIDADES_DSL.items() if f == familia_sym and s != sym]
+                for otra in otras:
+                    cfg.setdefault(otra, {})
+                    for _, row in edited.iterrows():
+                        sp = row["Símbolo"]
+                        entry = cfg[otra].get(sp, {})
+                        entry["relevante"] = bool(row["Editable"])
+                        entry["ajustable"] = bool(row["Editable"])
+                        if pd.notna(row["Min"]):
+                            entry["min"] = row["Min"]
+                        if pd.notna(row["Max"]):
+                            entry["max"] = row["Max"]
+                        cfg[otra][sp] = entry
             _guardar_config(cfg)
             for k in list(st.session_state.keys()):
                 if k.startswith("dsl_params_relevantes_"):
                     del st.session_state[k]
-            st.success("Configuración guardada.")
+            msg = "Configuración guardada."
+            if propaga_familia:
+                otras_names = [s for s, (f, _) in UNIDADES_DSL.items() if f == familia_sym and s != sym]
+                msg += f" Propagado a: {', '.join(otras_names)}."
+            st.success(msg)
 
     #  Carga completa a PowerFactory (todos los parámetros actuales) 
     st.divider()
@@ -998,9 +1032,9 @@ def _tab_historial():
             )
             st.session_state["hist_df_cache"] = df_hist
         except Exception as e:
-            st.error(f"Error al conectar con la base de datos: {e}")
-            st.info("Verificar que el servidor PostgreSQL (192.168.0.92) esté accesible "
-                    "y las tablas DSL existan. Ejecutar `dsl_db.crear_tablas()` si es la primera vez.")
+            st.error(f"Error al leer el historial de experimentos: {e}")
+            st.info("Verificar que el directorio de datos local sea accesible. "
+                    "Ejecutar `dsl_db.crear_tablas()` para inicializar si es la primera vez.")
             return
 
     df_hist: pd.DataFrame = st.session_state.get("hist_df_cache", pd.DataFrame())
@@ -1109,281 +1143,6 @@ def _tab_historial():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — Comparar Curvas
-# ══════════════════════════════════════════════════════════════════════════════
-# Replica la UI de la pestaña "Comparativa E0 vs E1" del Bloque 4 de
-# interfaz_analisis_RPF.py (mismo toggle de auto-escala, mismo expander de
-# Opciones de Ejes, mismo patrón de overlay con líneas discontinuas y misma
-# tabla de KPIs apilada) — solo cambian las fuentes de las curvas, que ahora
-# incluyen experimentos DSL además de E0/E1/SCADA/EMF.
-
-_COMP_PALETTE = [
-    ("#E45756", "#54A24B"),
-    ("#4C78A8", "#F58518"),
-    ("#B279A2", "#FF9DA6"),
-    ("#9D755D", "#BAB0AC"),
-    ("#72B7B2", "#EECA3B"),
-]
-
-
-def _df_safe_local(df):
-    """Convierte columnas object con tipos mixtos a str para evitar ArrowTypeError."""
-    out = df.copy()
-    for col in out.columns:
-        if out[col].dtype == object:
-            out[col] = out[col].astype(str)
-    return out
-
-
-def _tab_comparar_curvas():
-    st.caption(
-        "Superpone curvas de experimentos DSL contra las simulaciones E0 (CNDC) / "
-        "E1 (COBEE) y SCADA/EMF reales del mismo evento. Permite ver tanto la "
-        "unidad bajo prueba como el efecto sistémico (frecuencia SIN, otras unidades)."
-    )
-
-    familia_sel = st.session_state.get("dsl_familia", "F1")
-    unidades_familia = [s for s, (f, _) in UNIDADES_DSL.items() if f == familia_sel]
-
-    col_s, col_sem, col_ev = st.columns(3)
-    with col_s:
-        sym_ref = st.selectbox("Unidad de referencia", options=unidades_familia, key="dsl_comp_sym")
-
-    _raiz_dsl = st.session_state.get("cfg_RAIZ") or r"C:\Datos del CNDC\01_INFO CNDC_RPF"
-    try:
-        semestres_dsl = sorted(d for d in os.listdir(_raiz_dsl)
-                               if os.path.isdir(os.path.join(_raiz_dsl, d)))
-    except OSError:
-        semestres_dsl = []
-
-    with col_sem:
-        semestre_sel = st.selectbox(
-            "Semestre", options=semestres_dsl or ["(no encontrado)"],
-            key="dsl_comp_semestre", disabled=not semestres_dsl,
-        )
-
-    eventos_dsl = []
-    if semestres_dsl:
-        _base_ev_dsl = os.path.join(_raiz_dsl, semestre_sel, "Análisis_todos_los_eventos")
-        try:
-            eventos_dsl = sorted(
-                (d for d in os.listdir(_base_ev_dsl) if os.path.isdir(os.path.join(_base_ev_dsl, d))),
-                key=lambda d: int(m.group(1)) if (m := re.search(r"(\d+)$", d)) else -1)
-        except OSError:
-            eventos_dsl = []
-
-    with col_ev:
-        evento_sel = st.selectbox(
-            "Evento", options=eventos_dsl or ["(no encontrado)"],
-            key="dsl_comp_evento", disabled=not eventos_dsl,
-        )
-
-    if not (semestres_dsl and eventos_dsl):
-        st.warning(f"No se encontraron semestres/eventos en `{_raiz_dsl}`.")
-        return
-
-    m_ev = re.search(r"(\d+)", evento_sel)
-    n_ev = m_ev.group(1) if m_ev else "0"
-    ev_path = os.path.join(_raiz_dsl, semestre_sel, "Análisis_todos_los_eventos", evento_sel)
-    dir0 = os.path.join(ev_path, f"E{n_ev}.0", "Datos Curvas")
-    dir1 = os.path.join(ev_path, f"E{n_ev}.1", "Datos Curvas")
-    dir_scada = os.path.join(ev_path, "Graficas Registro 1SEG COBEE")
-    dir_emf = os.path.join(ev_path, "Resultados_COBEE")
-
-    if not os.path.isdir(dir0) and not os.path.isdir(dir1):
-        st.warning(
-            f"Faltan carpetas: `E{n_ev}.0/Datos Curvas`, `E{n_ev}.1/Datos Curvas`. "
-            "Ejecute `DatosCurvas_v3.py` en PowerFactory."
-        )
-
-    evento_ref_actual = f"{semestre_sel}::{evento_sel}"
-    df_exp = pd.DataFrame()
-    try:
-        import dsl_db
-        df_exp = dsl_db.listar_experimentos(sym=sym_ref)
-        if not df_exp.empty:
-            df_exp = df_exp[
-                (df_exp.get("evento_ref") == evento_ref_actual)
-                & df_exp.get("carpeta_curvas").notna()
-            ]
-    except Exception as e:
-        st.info(f"No se pudieron cargar experimentos vinculados: {e}")
-
-    #  Páginas disponibles (unión de archivos .xlsx en E0/E1/experimentos) 
-    paginas = set()
-    for d in (dir0, dir1):
-        if os.path.isdir(d):
-            paginas.update(os.path.splitext(f)[0] for f in os.listdir(d)
-                           if f.endswith(".xlsx") and not f.startswith("~$"))
-    for _, exp_row in df_exp.iterrows():
-        _carp = exp_row.get("carpeta_curvas")
-        if _carp and os.path.isdir(_carp):
-            paginas.update(os.path.splitext(f)[0] for f in os.listdir(_carp)
-                           if f.endswith(".xlsx") and not f.startswith("~$"))
-
-    if not paginas:
-        st.info("ℹ️ No hay páginas disponibles para esta unidad/evento todavía.")
-        return
-
-    paginas_ord = sorted(paginas)
-    pagina_default = f"F.P. {sym_ref}" if f"F.P. {sym_ref}" in paginas else paginas_ord[0]
-    pagina_sel = st.selectbox(
-        "Página/variable a comparar", options=paginas_ord,
-        index=paginas_ord.index(pagina_default), key="dsl_comp_pagina",
-        help="F. Barras SIN / F.slack = frecuencia de sistema; F.P. {unidad} = unidad específica.",
-    )
-
-    #  Fuentes candidatas para esa página 
-    fuentes = {}
-    f0 = os.path.join(dir0, f"{pagina_sel}.xlsx")
-    if os.path.isfile(f0):
-        fuentes[f"E{n_ev}.0 (CNDC)"] = f0
-    f1 = os.path.join(dir1, f"{pagina_sel}.xlsx")
-    if os.path.isfile(f1):
-        fuentes[f"E{n_ev}.1 (COBEE)"] = f1
-    f_sc = os.path.join(dir_scada, f"{pagina_sel}.xlsx")
-    if os.path.isfile(f_sc):
-        fuentes["SCADA 1SEG"] = f_sc
-    f_emf = os.path.join(dir_emf, f"{pagina_sel}.xlsx")
-    if os.path.isfile(f_emf):
-        fuentes["EMF"] = f_emf
-    for _, exp_row in df_exp.iterrows():
-        _carp = exp_row.get("carpeta_curvas")
-        if not _carp:
-            continue
-        _f = os.path.join(_carp, f"{pagina_sel}.xlsx")
-        if os.path.isfile(_f):
-            fuentes[f"EXP-{exp_row['id']} {exp_row['nombre']}"] = _f
-
-    if not fuentes:
-        st.warning(f"No hay archivos `{pagina_sel}.xlsx` disponibles para ninguna fuente.")
-        return
-
-    seleccion = st.multiselect(
-        "Curvas a superponer", options=list(fuentes.keys()),
-        default=list(fuentes.keys())[:2], key="dsl_comp_multisel",
-    )
-    if not seleccion:
-        st.info("ℹ️ Seleccione al menos una curva.")
-        return
-
-    #  Opciones de ejes (mismo patrón que Bloque 3/4 de interfaz_analisis_RPF.py) 
-    auto_sc = st.toggle("Auto-escala (Plotly)", value=True, key="dsl_comp_auto_toggle")
-    with st.expander("Opciones de Ejes"):
-        _cx1, _cx2, _cx3 = st.columns(3)
-        xmin_w = _cx1.number_input("X Min (s)", value=-10.0, key="dsl_comp_xmin")
-        xmax_w = _cx1.number_input("X Max (s)", value=100.0, key="dsl_comp_xmax")
-        y1min_w = _cx2.number_input("Y1 Min (Hz)", value=49.0, key="dsl_comp_y1min")
-        y1max_w = _cx2.number_input("Y1 Max (Hz)", value=51.0, key="dsl_comp_y1max")
-        y2min_w = _cx3.number_input("Y2 Min (MW)", value=0.0, key="dsl_comp_y2min")
-        y2max_w = _cx3.number_input("Y2 Max (MW)", value=200.0, key="dsl_comp_y2max")
-
-    col_tf, col_dt = st.columns(2)
-    with col_tf:
-        t_falla_comp = st.number_input(
-            "t₀ falla [s]", min_value=0.0, max_value=300.0, step=0.5,
-            value=5.0, key="dsl_comp_t_falla",
-        )
-    with col_dt:
-        dt_comp = st.number_input(
-            "Δt evaluación [s]", min_value=1, max_value=120, step=1,
-            value=35, key="dsl_comp_dt",
-        )
-
-    #  Cargar curvas seleccionadas 
-    curvas_cargadas = {}
-    for nombre_fuente in seleccion:
-        try:
-            curvas_cargadas[nombre_fuente] = _leer_curva_experimento(
-                fuentes[nombre_fuente], t_falla_comp
-            )
-        except Exception as e:
-            st.warning(f"No se pudo leer `{nombre_fuente}`: {e}")
-
-    if not curvas_cargadas:
-        st.warning("Ninguna curva pudo cargarse.")
-        return
-
-    import graph_builders
-    import plotly.graph_objects as go
-
-    nombres_cargadas = list(curvas_cargadas.keys())
-    ts0, fs0, ps0 = curvas_cargadas[nombres_cargadas[0]]
-    fig = graph_builders.create_dual_axis_timeseries(
-        t_data=ts0, freq_data=fs0, pot_data=ps0,
-        title=f"Comparativa — {pagina_sel}",
-        freq_label=f"Frecuencia {nombres_cargadas[0]} (Hz)",
-        pot_label=f"Potencia {nombres_cargadas[0]} (MW)",
-        freq_color=_COMP_PALETTE[0][0], pot_color=_COMP_PALETTE[0][1],
-        line_width=2, template="plotly_white", height=520,
-        legend_position="bottom_center",
-        x_range=None if auto_sc else [xmin_w, xmax_w],
-        y1_range=None if auto_sc else [y1min_w, y1max_w],
-        y2_range=None if auto_sc else [y2min_w, y2max_w],
-    )
-
-    for i, nombre_fuente in enumerate(nombres_cargadas[1:], start=1):
-        ts_ov, fs_ov, ps_ov = curvas_cargadas[nombre_fuente]
-        cf, cp = _COMP_PALETTE[i % len(_COMP_PALETTE)]
-        fig.add_trace(go.Scatter(
-            x=ts_ov, y=fs_ov, name=f"Frecuencia {nombre_fuente} (Hz)",
-            line=dict(color=cf, dash="dash", width=2), yaxis="y",
-        ))
-        fig.add_trace(go.Scatter(
-            x=ts_ov, y=ps_ov, name=f"Potencia {nombre_fuente} (MW)",
-            line=dict(color=cp, dash="dash", width=2), yaxis="y2",
-        ))
-
-    fig = graph_builders.add_reference_lines(
-        fig, t_fault_abs=0.0, t_eval_abs=dt_comp, show_hhmmss=False,
-        eval_line_label=f"t₀+Δt ({dt_comp} s)",
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    #  Tabla de KPIs apilada (igual patrón que Bloque 4) 
-    st.markdown("**Comparativa de KPIs**")
-    kpi_rows = []
-    _pm_cache, _tm_cache = None, None
-    _loc_gen_path = st.session_state.get("cfg_LOC_NAMES_GEN_PATH") or ""
-
-    for nombre_fuente, (ts, fs, ps) in curvas_cargadas.items():
-        _kpi_guardado = None
-        if nombre_fuente.startswith("EXP-") and pagina_sel == f"F.P. {sym_ref}":
-            try:
-                _eid = int(nombre_fuente.split(" ", 1)[0].replace("EXP-", ""))
-                _row = df_exp[df_exp["id"] == _eid]
-                if not _row.empty and pd.notna(_row.iloc[0].get("f_min")):
-                    _kpi_guardado = _row.iloc[0]
-            except Exception:
-                pass
-
-        if _kpi_guardado is not None:
-            kpi_rows.append({
-                "Fuente": nombre_fuente,
-                "f_min": _kpi_guardado["f_min"], "t_min": _kpi_guardado["t_min"],
-                "delta_f": _kpi_guardado["delta_f"], "rocof": _kpi_guardado["rocof"],
-                "dp_pct": _kpi_guardado["delta_p_pct"], "aporta": _kpi_guardado["aporta_rpf"],
-            })
-        else:
-            if _pm_cache is None:
-                _pm_cache = kpi_calc._load_pmax_cargado(ev_path, n_ev)
-                _tm_cache = kpi_calc._load_tech_map(_loc_gen_path)
-            pm_v, tk, _ = kpi_calc._get_pmax_from_cargado(sym_ref, _pm_cache, _tm_cache)
-            rp_v = float(kpi_calc._get_rp_default(tk, _loc_gen_path)) / 100.0
-            _k = kpi_calc._cndc_kpis(ts, fs, ps, pm_v, rp_v, dt_comp)
-            _rocof = kpi_calc._calcular_rocof(ts, fs, 3.0)
-            if _k:
-                kpi_rows.append({
-                    "Fuente": nombre_fuente,
-                    "f_min": _k["f_min"], "t_min": _k["t_min"], "delta_f": _k["delta_f"],
-                    "rocof": _rocof, "dp_pct": _k["dp_pct"], "aporta": _k["aporta"],
-                })
-
-    if kpi_rows:
-        st.dataframe(_df_safe_local(pd.DataFrame(kpi_rows)), hide_index=True, use_container_width=True)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 # PUNTO DE ENTRADA PRINCIPAL
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1413,13 +1172,12 @@ def _tab_bar(tab_defs: list, block_key: str) -> str:
 def render_bloque_dsl(session_state=None):
     """Renderiza el bloque completo. Llamar desde interfaz_analisis_RPF.py."""
 
-    st.markdown("### ⚙ Gestión de Parámetros DSL — Optimización")
+    st.markdown("### ⚙ Gestión de Parámetros DSL (DigSILENT Simulation Language) — Optimización")
 
     active_tab = _tab_bar([
         {"id": "params",  "label": "Parámetros Actuales"},
         {"id": "exp",     "label": "Experimentos"},
         {"id": "hist",    "label": "Historial / Comparación"},
-        {"id": "comp",    "label": "Comparar Curvas"},
     ], "b02_dsl")
 
     if active_tab == "params":
@@ -1428,5 +1186,3 @@ def render_bloque_dsl(session_state=None):
         _tab_experimentos()
     elif active_tab == "hist":
         _tab_historial()
-    elif active_tab == "comp":
-        _tab_comparar_curvas()
